@@ -38,6 +38,14 @@ const DB_PATH = path.join(DATA_DIR, 'pc-parts-flipper.duckdb');
 // behind the previous one instead of interleaving.
 let connectionPromise: Promise<DuckDBConnection> | null = null;
 
+// Companion to connectionPromise: the underlying DuckDBInstance that owns
+// the open database file handle. DuckDBConnection has no way to reach back
+// to the DuckDBInstance that created it, so closeConnection() below needs
+// this separate reference to close the instance itself once the connection
+// is done. Set alongside connectionPromise in initializeConnection, cleared
+// alongside it in closeConnection.
+let dbInstance: DuckDBInstance | null = null;
+
 /**
  * Wraps `connection` so calls to `run`/`runAndReadAll` — the only two
  * methods any query module in this codebase invokes (see queries/*.ts and
@@ -89,6 +97,38 @@ export function getConnection(): Promise<DuckDBConnection> {
   return connectionPromise;
 }
 
+/**
+ * Flushes and closes the shared DuckDB connection/instance opened by
+ * getConnection(), if one was ever created.
+ *
+ * Why this exists: DuckDB only flushes writes into the main .duckdb file at
+ * a checkpoint; in between, they live in a separate .duckdb.wal file that
+ * gets replayed on the next open. If this process is killed (e.g. by an
+ * unhandled SIGTERM, whose default action is immediate termination) while
+ * that WAL file has any uncheckpointed writes in it, the next startup's WAL
+ * replay can fail outright ("Calling DatabaseManager::GetDefaultDatabase
+ * with no default database set"), leaving every DB-touching request 500ing
+ * until the stale .duckdb.wal file is deleted by hand — losing all data
+ * back to the last checkpoint. Running CHECKPOINT before close flushes the
+ * WAL into the main file so there is nothing left to replay; index.ts's
+ * SIGTERM/SIGINT handlers call this during graceful shutdown specifically
+ * to prevent that corruption.
+ *
+ * Safe to call even if no connection was ever created (e.g. the process
+ * was killed before any request arrived) — a no-op in that case.
+ */
+export async function closeConnection(): Promise<void> {
+  if (!connectionPromise) {
+    return;
+  }
+  const connection = await connectionPromise;
+  await connection.run('CHECKPOINT');
+  connection.disconnectSync();
+  dbInstance?.closeSync();
+  connectionPromise = null;
+  dbInstance = null;
+}
+
 // Creates the data directory if missing, opens (or creates) the DuckDB file,
 // and applies every pending migration before handing back the connection.
 async function initializeConnection(): Promise<DuckDBConnection> {
@@ -99,5 +139,6 @@ async function initializeConnection(): Promise<DuckDBConnection> {
   const instance = await DuckDBInstance.create(DB_PATH);
   const connection = await instance.connect();
   await runMigrations(connection);
+  dbInstance = instance;
   return serializeConnection(connection);
 }

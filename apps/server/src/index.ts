@@ -12,6 +12,7 @@ import { registerSalesRoutes } from './routes/sales.js';
 import { registerProfitRoutes } from './routes/profit.js';
 import { registerScanRoutes } from './routes/scan.js';
 import { startScheduler } from './scan/scheduler.js';
+import { closeConnection } from './db/client.js';
 
 // Backend app shell. Builds the Fastify instance wired to the shared pino
 // logger (see logger.ts for level conventions) and the centralized error
@@ -48,7 +49,10 @@ await registerScanRoutes(server);
 
 // Registers the once-daily scheduled scan job (T8, Req 6, 9) so eligible
 // Sources are re-scanned automatically, not only via T7's manual route.
-startScheduler();
+// Capturing the returned ScheduledTask so the SIGTERM/SIGINT handler below
+// can stop it cleanly during shutdown instead of leaving a dangling cron
+// timer.
+const scheduledTask = startScheduler();
 
 // Port the server listens on; configurable for deployment, defaults to 3001
 // for local development.
@@ -64,3 +68,63 @@ server
     logger.error({ err }, 'Failed to start server');
     process.exit(1);
   });
+
+// Guards gracefulShutdown against running twice: SIGTERM/SIGINT can each
+// fire more than once (e.g. a process manager sending SIGTERM followed by
+// SIGKILL-adjacent SIGTERM retries, or a user hitting Ctrl+C twice), and
+// re-entering the shutdown sequence concurrently (e.g. a second
+// closeConnection() racing the first) is unsafe.
+let shuttingDown = false;
+
+// Exists specifically to prevent DuckDB WAL corruption on shutdown: without
+// a handler, SIGTERM's (or SIGHUP's — see below) default action kills the
+// process immediately, with no chance to flush the DuckDB write-ahead log
+// into the main database file. Any write since the last checkpoint left in
+// that WAL file at that point makes the *next* startup's WAL replay fail
+// outright, 500ing every DB-touching request until the stale .duckdb.wal
+// file is deleted by hand (losing all data back to the last checkpoint —
+// see client.ts's closeConnection for the full mechanism). Stopping the
+// scheduler and closing the Fastify server first, before closing the DB
+// connection, ensures no new work tries to use the connection after it
+// starts closing. SIGHUP is handled here for the same reason as SIGTERM/
+// SIGINT: a PTY-session or process-tree teardown (e.g. a process
+// supervisor stopping the dev server's nested shell chain) can deliver
+// SIGHUP alongside SIGTERM within about a millisecond of each other. With
+// SIGHUP left unhandled, its default action terminates the process
+// synchronously and immediately, racing ahead of SIGTERM's async
+// gracefulShutdown() (`await server.close(); await closeConnection();`)
+// and killing the process before either await completes — reintroducing
+// the exact WAL corruption this fix exists to prevent.
+async function gracefulShutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
+  logger.info({ signal }, 'Shutdown signal received, starting graceful shutdown');
+  scheduledTask.stop();
+  await server.close();
+  await closeConnection();
+  logger.info('Graceful shutdown complete');
+  process.exit(0);
+}
+
+// All three signal handlers (SIGTERM/SIGINT/SIGHUP) route rejected
+// gracefulShutdown() calls (e.g.
+// closeConnection()'s CHECKPOINT failing) through this handler instead of
+// leaving them as an unhandled promise rejection, which would otherwise
+// crash the process with a generic Node trace instead of a clean, logged,
+// structured error exit.
+function handleShutdownFailure(err: unknown): void {
+  logger.error({ err }, 'Graceful shutdown failed');
+  process.exit(1);
+}
+
+process.on('SIGTERM', () => {
+  gracefulShutdown('SIGTERM').catch(handleShutdownFailure);
+});
+process.on('SIGINT', () => {
+  gracefulShutdown('SIGINT').catch(handleShutdownFailure);
+});
+process.on('SIGHUP', () => {
+  gracefulShutdown('SIGHUP').catch(handleShutdownFailure);
+});
