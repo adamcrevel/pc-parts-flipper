@@ -1,0 +1,151 @@
+// DDL for every table in the core workflow (Requirements 1-9). Statements are
+// grouped into three ordered phases — enums, tables, indexes — and every
+// statement uses an IF NOT EXISTS/OR REPLACE guard so migrate.ts (which runs
+// this on every server start) is idempotent. Table order matches FK
+// dependency order: sources -> listings -> expected_parts, purchases ->
+// teardown_results, purchases -> parts -> sale_listings/sales.
+
+// -- Phase 1: enums ------------------------------------------------------
+// DuckDB enums back the fixed vocabularies named in the Requirements so an
+// out-of-range value is rejected by the database itself, not just by the API
+// layer built in later tasks.
+export const ENUM_STATEMENTS: readonly string[] = [
+  `CREATE TYPE IF NOT EXISTS platform_type AS ENUM ('ebay', 'facebook_marketplace', 'other')`,
+  `CREATE TYPE IF NOT EXISTS listing_status AS ENUM ('open', 'accepted', 'rejected')`,
+  `CREATE TYPE IF NOT EXISTS purchase_status AS ENUM ('ordered', 'shipped', 'received', 'torn_down', 'closed')`,
+  `CREATE TYPE IF NOT EXISTS component_category AS ENUM
+    ('CPU', 'GPU', 'Motherboard', 'RAM', 'Storage', 'PSU', 'Case', 'Cooler', 'Other')`,
+  `CREATE TYPE IF NOT EXISTS teardown_result_type AS ENUM
+    ('present_as_expected', 'present_but_different', 'missing', 'additional')`,
+  `CREATE TYPE IF NOT EXISTS part_status AS ENUM ('ready_to_list', 'listed', 'sold', 'unsellable')`,
+];
+
+// -- Phase 2: tables -------------------------------------------------------
+// Every primary key is a UUID generated in application code (see
+// db/id.ts), never a sequence, so concurrent inserts from parallel requests
+// (proven in T14) can never race over the same generated value. Every
+// monetary column carries a `>= 0` CHECK so Req 13's "no negative monetary
+// value" rule holds even if a caller bypasses the API-layer validation.
+export const TABLE_STATEMENTS: readonly string[] = [
+  `CREATE TABLE IF NOT EXISTS sources (
+    id UUID PRIMARY KEY,
+    name VARCHAR NOT NULL,
+    platform_type platform_type NOT NULL,
+    url VARCHAR,
+    notes VARCHAR,
+    active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
+  )`,
+  `CREATE TABLE IF NOT EXISTS listings (
+    id UUID PRIMARY KEY,
+    source_id UUID NOT NULL REFERENCES sources(id),
+    title VARCHAR NOT NULL,
+    description VARCHAR,
+    listing_url VARCHAR,
+    asking_price DECIMAL(10, 2) NOT NULL CHECK (asking_price >= 0),
+    listing_date DATE NOT NULL,
+    status listing_status NOT NULL DEFAULT 'open',
+    acquisition_fees DECIMAL(10, 2) NOT NULL DEFAULT 0 CHECK (acquisition_fees >= 0),
+    -- JSON-encoded array of local-disk photo paths (assumption A4); stored as
+    -- text rather than a native DuckDB LIST to avoid its empty-array type-
+    -- inference ambiguity in the Node client, and parsed in queries/listings.ts.
+    photo_paths VARCHAR NOT NULL DEFAULT '[]',
+    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
+  )`,
+  `CREATE TABLE IF NOT EXISTS expected_parts (
+    id UUID PRIMARY KEY,
+    listing_id UUID NOT NULL REFERENCES listings(id),
+    component_category component_category NOT NULL,
+    description VARCHAR NOT NULL,
+    estimated_resale_value DECIMAL(10, 2) NOT NULL CHECK (estimated_resale_value >= 0),
+    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
+  )`,
+  `CREATE TABLE IF NOT EXISTS purchases (
+    id UUID PRIMARY KEY,
+    listing_id UUID NOT NULL REFERENCES listings(id),
+    status purchase_status NOT NULL DEFAULT 'ordered',
+    price_paid DECIMAL(10, 2) NOT NULL CHECK (price_paid >= 0),
+    purchase_date DATE NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
+  )`,
+  `CREATE TABLE IF NOT EXISTS teardown_results (
+    id UUID PRIMARY KEY,
+    purchase_id UUID NOT NULL REFERENCES purchases(id),
+    -- Null when this row records an Additional Part not on the Listing.
+    expected_part_id UUID REFERENCES expected_parts(id),
+    result teardown_result_type NOT NULL,
+    note VARCHAR,
+    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    -- Guards against a non-atomic read-then-write route handler racing
+    -- itself into two reconciliation rows for the same Expected Part.
+    -- DuckDB (like every ANSI-SQL engine) treats NULL as distinct from
+    -- every other NULL for uniqueness purposes, so this constraint still
+    -- allows any number of expected_part_id IS NULL rows ('additional'
+    -- Parts found during teardown that weren't on the Expected Parts
+    -- list) per purchase_id — verified empirically against a real DuckDB
+    -- connection; DuckDB has no partial/filtered UNIQUE index to fall
+    -- back on if that weren't true.
+    UNIQUE (purchase_id, expected_part_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS parts (
+    id UUID PRIMARY KEY,
+    purchase_id UUID NOT NULL REFERENCES purchases(id),
+    category component_category NOT NULL,
+    description VARCHAR NOT NULL,
+    status part_status NOT NULL DEFAULT 'ready_to_list',
+    unsellable_reason VARCHAR,
+    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
+  )`,
+  `CREATE TABLE IF NOT EXISTS sale_listings (
+    id UUID PRIMARY KEY,
+    part_id UUID NOT NULL REFERENCES parts(id),
+    platform platform_type NOT NULL,
+    title VARCHAR NOT NULL,
+    description VARCHAR,
+    asking_price DECIMAL(10, 2) NOT NULL CHECK (asking_price >= 0),
+    -- Set only when the user confirms they've manually posted it (A5).
+    listed_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
+  )`,
+  `CREATE TABLE IF NOT EXISTS sales (
+    id UUID PRIMARY KEY,
+    -- One Sale per Part: guards the same non-atomic read-then-write race
+    -- (concurrent POSTs past the 'listed' status check) from inserting two
+    -- Sale rows for one Part, which would double-count revenue in the Req
+    -- 10 profit rollup.
+    part_id UUID NOT NULL REFERENCES parts(id) UNIQUE,
+    sold_price DECIMAL(10, 2) NOT NULL CHECK (sold_price >= 0),
+    sold_date DATE NOT NULL,
+    platform_fee DECIMAL(10, 2) NOT NULL DEFAULT 0 CHECK (platform_fee >= 0),
+    shipping_cost DECIMAL(10, 2) NOT NULL DEFAULT 0 CHECK (shipping_cost >= 0),
+    buyer_note VARCHAR,
+    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
+  )`,
+];
+
+// -- Phase 3: indexes ------------------------------------------------------
+// Supports the filtered/paginated queue and dashboard screens (Req 10-12)
+// without a full table scan per request. Deliberately NOT indexed: the
+// `status` columns on listings/purchases/parts. DuckDB rejects an UPDATE of
+// any column that is both indexed and on a table referenced by another
+// table's FOREIGN KEY ("Violates foreign key constraint ... still
+// referenced ... different table") — and status is exactly the column every
+// lifecycle transition (Req 4-7) updates on these three parent tables. The
+// columns below are safe because nothing ever updates them after insert.
+export const INDEX_STATEMENTS: readonly string[] = [
+  `CREATE INDEX IF NOT EXISTS idx_listings_source_id ON listings(source_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_expected_parts_listing_id ON expected_parts(listing_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_purchases_listing_id ON purchases(listing_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_teardown_results_purchase_id ON teardown_results(purchase_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_parts_purchase_id ON parts(purchase_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_sale_listings_part_id ON sale_listings(part_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_sales_part_id ON sales(part_id)`,
+];

@@ -6,4 +6,8 @@ build/
 !.env.example
 data/*.duckdb
 data/*.duckdb.wal
+data/photos/
 .DS_Store
+*.tsbuildinfo
+.eslintcache
+test_output.log

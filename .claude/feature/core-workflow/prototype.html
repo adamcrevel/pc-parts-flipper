@@ -1,0 +1,1277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PC Parts Flipper — Prototype</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  body { font-feature-settings: "tnum"; }
+  [data-route] { display: none; }
+  .nav-active { background-color: #f1f5f9; color: #0f172a; font-weight: 600; }
+  .nav-active svg { color: #0f172a; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900 text-sm antialiased">
+
+<div class="flex h-screen overflow-hidden">
+  <!-- Sidebar -->
+  <aside class="w-60 shrink-0 bg-white border-r border-slate-200 flex flex-col">
+    <div class="h-16 flex items-center gap-2 px-5 border-b border-slate-200">
+      <div class="w-7 h-7 rounded-md bg-slate-900 flex items-center justify-center text-white font-bold text-xs">PF</div>
+      <span class="font-semibold text-slate-900">PC Parts Flipper</span>
+    </div>
+    <nav class="flex-1 px-3 py-4 space-y-1" id="sidebar-nav">
+      <!-- populated by JS -->
+    </nav>
+    <div class="px-3 py-4 border-t border-slate-200 text-xs text-slate-400">Local build &middot; v0.1 prototype</div>
+  </aside>
+
+  <!-- Main -->
+  <div class="flex-1 flex flex-col overflow-hidden">
+    <header class="h-16 shrink-0 bg-white border-b border-slate-200 flex items-center justify-between px-6">
+      <div>
+        <h1 id="page-title" class="text-base font-semibold text-slate-900">Sources</h1>
+        <p id="page-subtitle" class="text-xs text-slate-500"></p>
+      </div>
+      <div id="page-actions" class="flex items-center gap-2"></div>
+    </header>
+    <main id="app" class="flex-1 overflow-y-auto p-6"></main>
+  </div>
+</div>
+
+<div id="modal-root"></div>
+
+<script>
+/* =========================================================================
+   IN-MEMORY DATA MODEL
+   This prototype has no backend; all state lives in the DB object below and
+   is mutated directly by action handlers, then re-rendered. Shapes mirror
+   the DuckDB tables described in the plan (sources, listings,
+   expected_parts, purchases, teardown_results, parts, sale_listings, sales).
+   ========================================================================= */
+let SEQ = 1000;
+const uid = (p) => p + (SEQ++);
+
+const CATEGORIES = ['CPU','GPU','Motherboard','RAM','Storage','PSU','Case','Cooler','Other'];
+const PLATFORMS = [
+  { value: 'ebay', label: 'eBay' },
+  { value: 'facebook_marketplace', label: 'Facebook Marketplace' },
+  { value: 'other', label: 'Other' },
+];
+
+const DB = {
+  sources: [
+    { id: 'src1', name: "Bob's PC Flips", platform: 'ebay', url: 'https://ebay.com/usr/bobspcflips', notes: 'Frequent seller of refurbished office PCs. Usually responsive.', active: true },
+    { id: 'src2', name: 'Local Tech Deals (FB Group)', platform: 'facebook_marketplace', url: 'https://facebook.com/groups/techdeals', notes: '', active: true },
+    { id: 'src3', name: 'Craigslist Austin', platform: 'other', url: 'https://austin.craigslist.org', notes: 'Mostly scams, rarely check anymore.', active: false },
+  ],
+  listings: [],
+  purchases: [],
+  parts: [],
+};
+
+/* ---- Seed Listings ------------------------------------------------- */
+function expPart(category, description, estValue) {
+  return { id: uid('ep'), category, description, estValue };
+}
+
+DB.listings.push({
+  id: 'L1', sourceId: 'src1', status: 'open',
+  title: 'Dell Optiplex 7090 — i7, 16GB, No HDD',
+  description: 'Office pull, powers on, no hard drive included. Some scuffs on the case.',
+  url: 'https://ebay.com/itm/1001', askingPrice: 180, feesShipping: 15, listingDate: '2026-09-18',
+  photos: [],
+  expectedParts: [
+    expPart('CPU', 'Intel Core i7-11700', 120),
+    expPart('RAM', '16GB DDR4 (2x8)', 25),
+    expPart('Motherboard', 'Dell OEM micro-ATX', 20),
+    expPart('Case', 'Dell SFF case', 10),
+  ],
+});
+
+DB.listings.push({
+  id: 'L2', sourceId: 'src2', status: 'open',
+  title: 'Gaming PC — RTX 3060, Ryzen 5',
+  description: 'Built 2021, light gaming use, includes RGB fans. No OS reinstall done.',
+  url: 'https://facebook.com/marketplace/item/2002', askingPrice: 450, feesShipping: 0, listingDate: '2026-09-22',
+  photos: [],
+  expectedParts: [
+    expPart('GPU', 'RTX 3060 12GB', 230),
+    expPart('CPU', 'Ryzen 5 5600', 110),
+    expPart('RAM', '16GB DDR4', 30),
+    expPart('PSU', '650W Bronze', 40),
+    expPart('Case', 'Mid tower ATX', 20),
+  ],
+});
+
+DB.listings.push({
+  id: 'L3', sourceId: 'src1', status: 'accepted',
+  title: 'HP EliteDesk — i3, 8GB, 256GB SSD',
+  description: 'Small form factor, clean condition, includes power cable.',
+  url: 'https://ebay.com/itm/1003', askingPrice: 75, feesShipping: 0, listingDate: '2026-09-02',
+  photos: [],
+  expectedParts: [
+    expPart('CPU', 'Intel Core i3-9100', 50),
+    expPart('RAM', '8GB DDR4', 15),
+    expPart('Storage', '256GB SATA SSD', 20),
+  ],
+});
+
+DB.listings.push({
+  id: 'L4', sourceId: 'src2', status: 'accepted',
+  title: 'Workstation Tower — Xeon, 32GB',
+  description: 'Old render workstation, heavy but solid. Seller says it "mostly works."',
+  url: 'https://facebook.com/marketplace/item/2004', askingPrice: 260, feesShipping: 20, listingDate: '2026-09-05',
+  photos: [],
+  expectedParts: [
+    expPart('CPU', 'Xeon E5-2650', 80),
+    expPart('RAM', '32GB DDR3 ECC (2x16)', 60),
+    expPart('Motherboard', 'Workstation board, unknown model', 50),
+    expPart('PSU', '750W Gold', 45),
+    expPart('Case', 'Full tower', 15),
+  ],
+});
+
+DB.listings.push({
+  id: 'L5', sourceId: 'src3', status: 'rejected',
+  title: 'Mystery Beige Box — untested',
+  description: 'Seller could not confirm it powers on. No photos of internals.',
+  url: 'https://austin.craigslist.org/sys/3005', askingPrice: 40, feesShipping: 0, listingDate: '2026-09-10',
+  photos: [],
+  expectedParts: [ expPart('Other', 'Unknown / untested', 15) ],
+});
+
+DB.listings.push({
+  id: 'L6', sourceId: 'src1', status: 'accepted',
+  title: 'Lenovo ThinkCentre — i5, 8GB, 256 SSD',
+  description: 'Corporate lease return, light wear, includes original PSU brick.',
+  url: 'https://ebay.com/itm/1006', askingPrice: 95, feesShipping: 0, listingDate: '2026-09-25',
+  photos: [],
+  expectedParts: [
+    expPart('CPU', 'Intel Core i5-9500', 60),
+    expPart('RAM', '8GB DDR4', 15),
+    expPart('Storage', '256GB NVMe SSD', 25),
+  ],
+});
+
+DB.listings.push({
+  id: 'L7', sourceId: 'src2', status: 'accepted',
+  title: 'Custom Build — i9, 64GB, no GPU',
+  description: 'Overbuilt workstation, previous owner pulled the GPU before selling.',
+  url: 'https://facebook.com/marketplace/item/2007', askingPrice: 600, feesShipping: 0, listingDate: '2026-09-29',
+  photos: [],
+  expectedParts: [
+    expPart('CPU', 'Intel Core i9-10900K', 300),
+    expPart('RAM', '64GB DDR4 (4x16)', 150),
+    expPart('Motherboard', 'Z490 ATX', 80),
+    expPart('PSU', '850W Platinum', 60),
+    expPart('Case', 'ATX mid tower', 30),
+    expPart('Cooler', '240mm AIO', 40),
+  ],
+});
+
+/* ---- Seed Purchases (one per accepted listing) ---------------------- */
+// P1 — fully torn down, closed, all parts sold (demonstrates "final" profit).
+DB.purchases.push({
+  id: 'P1', listingId: 'L3', status: 'closed',
+  pricePaid: 70, purchaseDate: '2026-09-04',
+  expectedParts: DB.listings.find(l => l.id === 'L3').expectedParts,
+  teardownResults: null, additionalParts: [],
+});
+// P2 — torn down, mixed part outcomes (demonstrates "partial/running").
+DB.purchases.push({
+  id: 'P2', listingId: 'L4', status: 'torn_down',
+  pricePaid: 220, purchaseDate: '2026-09-07',
+  expectedParts: DB.listings.find(l => l.id === 'L4').expectedParts,
+  teardownResults: null, additionalParts: [],
+});
+// P3 — shipped, not yet received/torn down.
+DB.purchases.push({
+  id: 'P3', listingId: 'L6', status: 'shipped',
+  pricePaid: 85, purchaseDate: '2026-09-26',
+  expectedParts: DB.listings.find(l => l.id === 'L6').expectedParts,
+  teardownResults: null, additionalParts: [],
+});
+// P4 — just ordered.
+DB.purchases.push({
+  id: 'P4', listingId: 'L7', status: 'ordered',
+  pricePaid: 580, purchaseDate: '2026-09-30',
+  expectedParts: DB.listings.find(l => l.id === 'L7').expectedParts,
+  teardownResults: null, additionalParts: [],
+});
+
+/* ---- Seed Parts (generated by P1 and P2's already-completed teardowns) */
+function mkPart(purchaseId, category, description, estValue, status) {
+  return { id: uid('pt'), purchaseId, category, description, estValue, status, unsellableReason: null, saleListing: null, sale: null };
+}
+const p1cpu = mkPart('P1', 'CPU', 'Intel Core i3-9100', 50, 'sold');
+p1cpu.saleListing = { platform: 'ebay', title: 'Intel Core i3-9100 CPU — Tested Working', description: 'Pulled from a working EliteDesk SFF, tested boots fine.', askingPrice: 58, listedAt: '2026-09-06' };
+p1cpu.sale = { soldPrice: 60, soldDate: '2026-09-12', fee: 4.20, shipping: 6.00, buyerNote: 'Fast payment, shipped same day.' };
+
+const p1ram = mkPart('P1', 'RAM', '8GB DDR4', 15, 'sold');
+p1ram.saleListing = { platform: 'ebay', title: '8GB DDR4 RAM Stick — Pulled, Tested', description: 'Single 8GB DDR4 stick, tested in two boards.', askingPrice: 19, listedAt: '2026-09-06' };
+p1ram.sale = { soldPrice: 20, soldDate: '2026-09-09', fee: 1.80, shipping: 3.00, buyerNote: '' };
+
+const p1ssd = mkPart('P1', 'Storage', '256GB SATA SSD', 20, 'sold');
+p1ssd.saleListing = { platform: 'facebook_marketplace', title: '256GB SSD — Wiped & Tested', description: 'Securely wiped, tested with CrystalDiskInfo, 100% health.', askingPrice: 27, listedAt: '2026-09-07' };
+p1ssd.sale = { soldPrice: 28, soldDate: '2026-09-10', fee: 3.00, shipping: 4.00, buyerNote: 'Local pickup.' };
+DB.parts.push(p1cpu, p1ram, p1ssd);
+
+const p2cpu = mkPart('P2', 'CPU', 'Xeon E5-2650', 80, 'ready_to_list');
+const p2ram = mkPart('P2', 'RAM', '32GB DDR3 ECC (2x16)', 60, 'listed');
+p2ram.saleListing = { platform: 'ebay', title: '32GB DDR3 ECC Server RAM (2x16GB)', description: 'Pulled from a working Xeon workstation, tested in pairs.', askingPrice: 65, listedAt: '2026-09-15' };
+const p2mobo = mkPart('P2', 'Motherboard', 'Workstation board (Supermicro X9, confirmed on teardown)', 50, 'sold');
+p2mobo.saleListing = { platform: 'ebay', title: 'Supermicro X9 Workstation Motherboard', description: 'Confirmed model on teardown — differs from the original listing. POST tested.', askingPrice: 50, listedAt: '2026-09-16' };
+p2mobo.sale = { soldPrice: 48, soldDate: '2026-09-20', fee: 4.00, shipping: 6.00, buyerNote: '' };
+const p2case = mkPart('P2', 'Case', 'Full tower', 15, 'ready_to_list');
+const p2gpu = mkPart('P2', 'GPU', 'GT 710 (additional part found, not on original listing)', 25, 'unsellable');
+p2gpu.unsellableReason = 'DOA — will not display, no POST on 3 test boards.';
+DB.parts.push(p2cpu, p2ram, p2mobo, p2case, p2gpu);
+
+// Record the completed teardown reconciliation for P1 and P2 so the detail
+// screens can show history even though the checklist itself is read-only now.
+DB.purchases.find(p => p.id === 'P1').teardownResults = {
+  results: DB.purchases.find(p => p.id === 'P1').expectedParts.map(ep => ({ expectedPartId: ep.id, result: 'present_as_expected', note: '' })),
+  additionalParts: [],
+};
+DB.purchases.find(p => p.id === 'P2').teardownResults = {
+  results: [
+    { expectedPartId: DB.listings.find(l => l.id==='L4').expectedParts[0].id, result: 'present_as_expected', note: '' },
+    { expectedPartId: DB.listings.find(l => l.id==='L4').expectedParts[1].id, result: 'present_as_expected', note: '' },
+    { expectedPartId: DB.listings.find(l => l.id==='L4').expectedParts[2].id, result: 'present_but_different', note: 'Different workstation board model than listed (Supermicro X9), still functional.' },
+    { expectedPartId: DB.listings.find(l => l.id==='L4').expectedParts[3].id, result: 'missing', note: '' },
+    { expectedPartId: DB.listings.find(l => l.id==='L4').expectedParts[4].id, result: 'present_as_expected', note: '' },
+  ],
+  additionalParts: [ { category: 'GPU', description: 'GT 710 (additional part found, not on original listing)', estValue: 25 } ],
+};
+
+/* =========================================================================
+   SMALL HELPERS — money formatting, badges, validation
+   ========================================================================= */
+const money = (n) => `$${Number(n || 0).toFixed(2)}`;
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const BADGE = {
+  open: 'bg-slate-100 text-slate-700', accepted: 'bg-emerald-100 text-emerald-700', rejected: 'bg-red-100 text-red-700',
+  ordered: 'bg-blue-100 text-blue-700', shipped: 'bg-indigo-100 text-indigo-700', received: 'bg-purple-100 text-purple-700',
+  torn_down: 'bg-amber-100 text-amber-700', closed: 'bg-slate-200 text-slate-700',
+  ready_to_list: 'bg-slate-100 text-slate-700', listed: 'bg-blue-100 text-blue-700', sold: 'bg-emerald-100 text-emerald-700', unsellable: 'bg-red-100 text-red-700',
+  partial: 'bg-amber-100 text-amber-700', final: 'bg-emerald-100 text-emerald-700', inactive: 'bg-slate-100 text-slate-400',
+};
+function badge(status, label) {
+  const cls = BADGE[status] || 'bg-slate-100 text-slate-700';
+  return `<span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${cls}">${esc(label ?? status)}</span>`;
+}
+
+// Required-field / non-negative-money validation shared by every form.
+// Returns a map of fieldName -> error message; empty object means valid.
+function validateFields(spec) {
+  const errors = {};
+  for (const [field, rule] of Object.entries(spec)) {
+    const { value, required, money: isMoney, label } = rule;
+    if (required && (value === '' || value === null || value === undefined)) {
+      errors[field] = `${label} is required.`;
+      continue;
+    }
+    if (isMoney && value !== '' && value !== null && value !== undefined) {
+      const n = Number(value);
+      if (Number.isNaN(n)) errors[field] = `${label} must be a number.`;
+      else if (n < 0) errors[field] = `${label} cannot be negative.`;
+    }
+  }
+  return errors;
+}
+function fieldError(errors, name) {
+  return errors[name] ? `<p class="mt-1 text-xs text-red-600">${esc(errors[name])}</p>` : '';
+}
+function fieldClass(errors, name) {
+  return errors[name] ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-slate-300 focus:ring-slate-400 focus:border-slate-400';
+}
+
+/* =========================================================================
+   ROUTER
+   ========================================================================= */
+const NAV = [
+  { href: '#/sources', label: 'Sources', icon: 'M3 7l9-4 9 4-9 4-9-4zm0 6l9 4 9-4M3 13l9 4 9-4' },
+  { href: '#/listings', label: 'Listings', icon: 'M4 6h16M4 12h16M4 18h7' },
+  { href: '#/parts', label: 'Parts', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
+  { href: '#/dashboard', label: 'Dashboard', icon: 'M3 3v18h18M7 15l4-6 3 4 5-8' },
+];
+
+function renderNav() {
+  const hash = location.hash || '#/sources';
+  const current = '#/' + hash.slice(2).split('/')[0];
+  document.getElementById('sidebar-nav').innerHTML = NAV.map(item => `
+    <a href="${item.href}" class="flex items-center gap-3 px-3 py-2 rounded-md text-slate-600 hover:bg-slate-50 text-sm ${current === item.href ? 'nav-active' : ''}">
+      <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="${item.icon}"/></svg>
+      ${item.label}
+    </a>`).join('');
+}
+
+function setHeader(title, subtitle, actionsHtml) {
+  document.getElementById('page-title').textContent = title;
+  document.getElementById('page-subtitle').textContent = subtitle || '';
+  document.getElementById('page-actions').innerHTML = actionsHtml || '';
+}
+
+function route() {
+  renderNav();
+  closeModal();
+  const hash = (location.hash || '#/sources').slice(2); // strip "#/"
+  const parts = hash.split('/');
+  const app = document.getElementById('app');
+  if (parts[0] === 'sources') { app.innerHTML = renderSourcesScreen(); bindSourcesScreen(); }
+  else if (parts[0] === 'listings' && parts[1] === 'new') { app.innerHTML = renderListingForm(null); bindListingForm(null); }
+  else if (parts[0] === 'listings' && parts[1] === 'edit') { app.innerHTML = renderListingForm(parts[2]); bindListingForm(parts[2]); }
+  else if (parts[0] === 'listings') { app.innerHTML = renderListingsQueue(); bindListingsQueue(); }
+  else if (parts[0] === 'purchases' && parts[2] === 'teardown') { app.innerHTML = renderTeardown(parts[1]); bindTeardown(parts[1]); }
+  else if (parts[0] === 'purchases') { app.innerHTML = renderPurchaseDetail(parts[1]); bindPurchaseDetail(parts[1]); }
+  else if (parts[0] === 'parts') { app.innerHTML = renderPartsScreen(); bindPartsScreen(); }
+  else if (parts[0] === 'dashboard') { app.innerHTML = renderDashboard(); bindDashboard(); }
+  else { location.hash = '#/sources'; }
+  window.scrollTo(0, 0);
+}
+window.addEventListener('hashchange', route);
+
+/* =========================================================================
+   MODAL HELPER
+   ========================================================================= */
+function openModal(html) {
+  document.getElementById('modal-root').innerHTML = `
+    <div class="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4" id="modal-overlay">
+      <div class="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" id="modal-panel">${html}</div>
+    </div>`;
+  document.getElementById('modal-overlay').addEventListener('click', (e) => { if (e.target.id === 'modal-overlay') closeModal(); });
+}
+function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
+
+/* =========================================================================
+   SOURCES SCREEN  (Req 1)
+   ========================================================================= */
+function renderSourcesScreen() {
+  setHeader('Sources', 'Where candidate listings come from.', `
+    <button id="btn-new-source" class="inline-flex items-center gap-1.5 bg-slate-900 text-white text-sm font-medium rounded-md px-3 py-2 hover:bg-slate-800">
+      + New Source
+    </button>`);
+  const rows = DB.sources.map(s => `
+    <tr class="border-b border-slate-100 hover:bg-slate-50 ${!s.active ? 'opacity-50' : ''}">
+      <td class="py-3 px-4 font-medium text-slate-900">${esc(s.name)}</td>
+      <td class="py-3 px-4">${esc(PLATFORMS.find(p => p.value === s.platform)?.label || s.platform)}</td>
+      <td class="py-3 px-4"><a href="${esc(s.url)}" target="_blank" class="text-blue-600 hover:underline truncate block max-w-[220px]">${esc(s.url)}</a></td>
+      <td class="py-3 px-4 text-slate-500 max-w-[260px] truncate" title="${esc(s.notes)}">${esc(s.notes) || '—'}</td>
+      <td class="py-3 px-4">${badge(s.active ? 'accepted' : 'inactive', s.active ? 'Active' : 'Inactive')}</td>
+      <td class="py-3 px-4 text-right whitespace-nowrap">
+        <button data-edit-source="${s.id}" class="text-slate-600 hover:text-slate-900 text-xs font-medium mr-3">Edit</button>
+        <button data-toggle-source="${s.id}" class="text-xs font-medium ${s.active ? 'text-red-600 hover:text-red-700' : 'text-emerald-600 hover:text-emerald-700'}">${s.active ? 'Deactivate' : 'Reactivate'}</button>
+      </td>
+    </tr>`).join('');
+  return `
+    <div class="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-slate-500 uppercase text-xs">
+          <tr><th class="text-left py-2.5 px-4 font-medium">Name</th><th class="text-left py-2.5 px-4 font-medium">Platform</th><th class="text-left py-2.5 px-4 font-medium">URL</th><th class="text-left py-2.5 px-4 font-medium">Notes</th><th class="text-left py-2.5 px-4 font-medium">Status</th><th></th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function sourceFormHtml(source, errors = {}) {
+  const isEdit = !!source;
+  const s = source || { name: '', platform: 'ebay', url: '', notes: '' };
+  return `
+    <div class="p-6">
+      <h2 class="text-base font-semibold mb-4">${isEdit ? 'Edit Source' : 'New Source'}</h2>
+      <form id="source-form" novalidate>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-700 mb-1">Name</label>
+          <input name="name" value="${esc(s.name)}" class="w-full rounded-md border px-3 py-2 text-sm ${fieldClass(errors,'name')}" />
+          ${fieldError(errors, 'name')}
+        </div>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-700 mb-1">Platform type</label>
+          <select name="platform" class="w-full rounded-md border px-3 py-2 text-sm ${fieldClass(errors,'platform')}">
+            ${PLATFORMS.map(p => `<option value="${p.value}" ${s.platform === p.value ? 'selected' : ''}>${p.label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-700 mb-1">URL</label>
+          <input name="url" value="${esc(s.url)}" class="w-full rounded-md border px-3 py-2 text-sm ${fieldClass(errors,'url')}" />
+          ${fieldError(errors, 'url')}
+        </div>
+        <div class="mb-5">
+          <label class="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+          <textarea name="notes" rows="3" class="w-full rounded-md border px-3 py-2 text-sm border-slate-300">${esc(s.notes)}</textarea>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" id="source-cancel" class="px-3 py-2 text-sm font-medium rounded-md border border-slate-300 hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="px-3 py-2 text-sm font-medium rounded-md bg-slate-900 text-white hover:bg-slate-800">${isEdit ? 'Save Changes' : 'Create Source'}</button>
+        </div>
+      </form>
+    </div>`;
+}
+
+function bindSourcesScreen() {
+  document.getElementById('btn-new-source').onclick = () => openSourceModal(null);
+  document.querySelectorAll('[data-edit-source]').forEach(btn => btn.onclick = () => openSourceModal(btn.dataset.editSource));
+  document.querySelectorAll('[data-toggle-source]').forEach(btn => btn.onclick = () => {
+    const src = DB.sources.find(s => s.id === btn.dataset.toggleSource);
+    src.active = !src.active;
+    route();
+  });
+}
+
+function openSourceModal(id, errors = {}) {
+  const source = id ? DB.sources.find(s => s.id === id) : null;
+  openModal(sourceFormHtml(source, errors));
+  document.getElementById('source-cancel').onclick = closeModal;
+  document.getElementById('source-form').onsubmit = (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const vals = { name: fd.get('name').trim(), platform: fd.get('platform'), url: fd.get('url').trim(), notes: fd.get('notes').trim() };
+    const errs = validateFields({
+      name: { value: vals.name, required: true, label: 'Name' },
+      url: { value: vals.url, required: true, label: 'URL' },
+    });
+    if (Object.keys(errs).length) { openSourceModal(id, errs); return; }
+    if (id) { Object.assign(source, vals); }
+    else { DB.sources.push({ id: uid('src'), active: true, ...vals }); }
+    closeModal();
+    route();
+  };
+}
+
+/* =========================================================================
+   LISTING CREATE / EDIT SCREEN  (Req 2, 3, 13)
+   ========================================================================= */
+let draftExpectedParts = []; // working copy while a listing form is open
+draftExpectedParts.__key = undefined;
+
+function renderListingForm(id) {
+  const listing = id ? DB.listings.find(l => l.id === id) : null;
+  // Re-seed the draft whenever we land on a different listing form (including
+  // re-opening "New Listing" after visiting something else) so state from a
+  // previous visit never leaks into the next one.
+  const draftKey = id || '__new__';
+  if (draftExpectedParts.__key !== draftKey) {
+    draftExpectedParts = listing ? listing.expectedParts.map(p => ({ ...p })) : [];
+    draftExpectedParts.__key = draftKey;
+  }
+  setHeader(listing ? 'Edit Listing' : 'New Listing', 'Candidate listing details, expected parts, and value comparison.', '');
+
+  const sourceOptions = DB.sources.filter(s => s.active || (listing && listing.sourceId === s.id))
+    .map(s => `<option value="${s.id}" ${listing && listing.sourceId === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+
+  return `
+  <form id="listing-form" novalidate class="grid grid-cols-3 gap-6">
+    <div class="col-span-2 space-y-6">
+      <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-6">
+        <h2 class="text-sm font-semibold text-slate-900 mb-4">Listing Details</h2>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-slate-700 mb-1">Source</label>
+            <select name="sourceId" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">${sourceOptions}</select>
+          </div>
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-slate-700 mb-1">Title</label>
+            <input name="title" value="${esc(listing?.title || '')}" class="w-full rounded-md border px-3 py-2 text-sm border-slate-300" id="f-title" />
+            <p class="mt-1 text-xs text-red-600 hidden" id="err-title">Title is required.</p>
+          </div>
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+            <textarea name="description" rows="3" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">${esc(listing?.description || '')}</textarea>
+          </div>
+          <div class="col-span-2">
+            <label class="block text-sm font-medium text-slate-700 mb-1">Listing URL</label>
+            <input name="url" value="${esc(listing?.url || '')}" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Asking price (USD)</label>
+            <input name="askingPrice" type="number" step="0.01" value="${listing?.askingPrice ?? ''}" class="w-full rounded-md border px-3 py-2 text-sm border-slate-300" id="f-askingPrice" />
+            <p class="mt-1 text-xs text-red-600 hidden" id="err-askingPrice"></p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Est. acquisition fees / shipping (USD)</label>
+            <input name="feesShipping" type="number" step="0.01" value="${listing?.feesShipping ?? 0}" class="w-full rounded-md border px-3 py-2 text-sm border-slate-300" id="f-feesShipping" />
+            <p class="mt-1 text-xs text-red-600 hidden" id="err-feesShipping"></p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Listing date</label>
+            <input name="listingDate" type="date" value="${listing?.listingDate || ''}" class="w-full rounded-md border px-3 py-2 text-sm border-slate-300" id="f-listingDate" />
+            <p class="mt-1 text-xs text-red-600 hidden" id="err-listingDate">Listing date is required.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-6">
+        <h2 class="text-sm font-semibold text-slate-900 mb-1">Photos</h2>
+        <p class="text-xs text-slate-500 mb-3">Stored on local disk, referenced in the database.</p>
+        <input type="file" id="photo-input" multiple accept="image/*" class="text-sm" />
+        <div id="photo-preview" class="mt-3 flex flex-wrap gap-2"></div>
+      </div>
+
+      <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-sm font-semibold text-slate-900">Expected Parts</h2>
+          <button type="button" id="btn-add-part" class="text-xs font-medium text-blue-600 hover:text-blue-700">+ Add Part</button>
+        </div>
+        <div id="expected-parts-rows" class="space-y-2"></div>
+        <p class="mt-1 text-xs text-red-600 hidden" id="err-expectedParts"></p>
+      </div>
+    </div>
+
+    <div class="col-span-1 space-y-6">
+      <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-6 sticky top-0">
+        <h2 class="text-sm font-semibold text-slate-900 mb-4">Comparison</h2>
+        <div id="comparison-box"></div>
+      </div>
+      <div class="flex flex-col gap-2">
+        <button type="submit" class="w-full px-3 py-2 text-sm font-medium rounded-md bg-slate-900 text-white hover:bg-slate-800">${listing ? 'Save Changes' : 'Create Listing'}</button>
+        <a href="#/listings" class="w-full text-center px-3 py-2 text-sm font-medium rounded-md border border-slate-300 hover:bg-slate-50">Cancel</a>
+      </div>
+    </div>
+  </form>`;
+}
+
+function expectedPartRowHtml(part, index) {
+  return `
+  <div class="flex items-start gap-2 border border-slate-200 rounded-md p-2.5" data-part-row="${index}">
+    <select data-part-field="category" data-index="${index}" class="rounded-md border border-slate-300 px-2 py-1.5 text-xs w-32">
+      ${CATEGORIES.map(c => `<option value="${c}" ${part.category === c ? 'selected' : ''}>${c}</option>`).join('')}
+    </select>
+    <input data-part-field="description" data-index="${index}" value="${esc(part.description)}" placeholder="Description / model" class="flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-xs" />
+    <div class="w-28">
+      <div class="relative">
+        <span class="absolute left-2 top-1.5 text-xs text-slate-400">$</span>
+        <input data-part-field="estValue" data-index="${index}" type="number" step="0.01" value="${part.estValue}" class="w-full rounded-md border border-slate-300 pl-5 pr-2 py-1.5 text-xs" />
+      </div>
+    </div>
+    <button type="button" data-remove-part="${index}" class="text-slate-400 hover:text-red-600 px-1" title="Remove">✕</button>
+  </div>`;
+}
+
+function renderExpectedPartsRows() {
+  const container = document.getElementById('expected-parts-rows');
+  if (!container) return;
+  container.innerHTML = draftExpectedParts.length
+    ? draftExpectedParts.map((p, i) => expectedPartRowHtml(p, i)).join('')
+    : '<p class="text-xs text-slate-400 italic">No expected parts added yet.</p>';
+  container.querySelectorAll('[data-part-field]').forEach(el => {
+    el.onchange = () => { draftExpectedParts[+el.dataset.index][el.dataset.partField] = el.dataset.partField === 'estValue' ? el.value : el.value; renderComparison(); };
+  });
+  container.querySelectorAll('[data-remove-part]').forEach(btn => {
+    btn.onclick = () => { draftExpectedParts.splice(+btn.dataset.removePart, 1); renderExpectedPartsRows(); renderComparison(); };
+  });
+}
+
+function renderComparison() {
+  const box = document.getElementById('comparison-box');
+  if (!box) return;
+  const asking = Number(document.getElementById('f-askingPrice')?.value || 0);
+  const fees = Number(document.getElementById('f-feesShipping')?.value || 0);
+  const totalCost = asking + fees;
+  const totalExpected = draftExpectedParts.reduce((sum, p) => sum + Number(p.estValue || 0), 0);
+  const delta = totalExpected - totalCost;
+  box.innerHTML = `
+    <dl class="space-y-2 text-sm">
+      <div class="flex justify-between"><dt class="text-slate-500">Expected parts value</dt><dd class="font-medium">${money(totalExpected)}</dd></div>
+      <div class="flex justify-between"><dt class="text-slate-500">Asking price</dt><dd class="font-medium">${money(asking)}</dd></div>
+      <div class="flex justify-between"><dt class="text-slate-500">Est. fees / shipping</dt><dd class="font-medium">${money(fees)}</dd></div>
+      <div class="flex justify-between border-t border-slate-200 pt-2"><dt class="text-slate-500">Total cost</dt><dd class="font-medium">${money(totalCost)}</dd></div>
+    </dl>
+    <div class="mt-4 rounded-md px-3 py-2.5 text-sm font-semibold ${delta >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}">
+      ${delta >= 0 ? 'Potential margin' : 'Potential loss'}: ${money(Math.abs(delta))}
+    </div>`;
+}
+
+function bindListingForm(id) {
+  const listing = id ? DB.listings.find(l => l.id === id) : null;
+  renderExpectedPartsRows();
+  renderComparison();
+  ['f-askingPrice', 'f-feesShipping'].forEach(fid => document.getElementById(fid).addEventListener('input', renderComparison));
+  document.getElementById('btn-add-part').onclick = () => { draftExpectedParts.push({ id: uid('ep'), category: 'CPU', description: '', estValue: 0 }); renderExpectedPartsRows(); renderComparison(); };
+
+  const photoPreview = document.getElementById('photo-preview');
+  let photos = listing ? [...listing.photos] : [];
+  const renderPhotos = () => {
+    photoPreview.innerHTML = photos.map((p, i) => `
+      <div class="relative">
+        <img src="${p.url}" class="w-16 h-16 object-cover rounded-md border border-slate-200" />
+        <button type="button" data-remove-photo="${i}" class="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-slate-900 text-white text-[10px] leading-4">✕</button>
+      </div>`).join('');
+    photoPreview.querySelectorAll('[data-remove-photo]').forEach(btn => btn.onclick = () => { photos.splice(+btn.dataset.removePhoto, 1); renderPhotos(); });
+  };
+  renderPhotos();
+  document.getElementById('photo-input').onchange = (e) => {
+    Array.from(e.target.files).forEach(file => photos.push({ name: file.name, url: URL.createObjectURL(file) }));
+    renderPhotos();
+  };
+
+  document.getElementById('listing-form').onsubmit = (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const vals = {
+      sourceId: fd.get('sourceId'), title: fd.get('title').trim(), description: fd.get('description').trim(),
+      url: fd.get('url').trim(), askingPrice: fd.get('askingPrice'), feesShipping: fd.get('feesShipping') || 0,
+      listingDate: fd.get('listingDate'),
+    };
+    const errs = validateFields({
+      title: { value: vals.title, required: true, label: 'Title' },
+      askingPrice: { value: vals.askingPrice, required: true, money: true, label: 'Asking price' },
+      feesShipping: { value: vals.feesShipping, money: true, label: 'Fees / shipping' },
+      listingDate: { value: vals.listingDate, required: true, label: 'Listing date' },
+    });
+    // Clear and reapply inline errors for the plain (non-modal) fields on this screen.
+    ['title', 'askingPrice', 'feesShipping', 'listingDate'].forEach(f => {
+      const el = document.getElementById('err-' + f);
+      if (!el) return;
+      if (errs[f]) { el.textContent = errs[f]; el.classList.remove('hidden'); document.getElementById('f-' + f).classList.add('border-red-500'); }
+      else { el.classList.add('hidden'); document.getElementById('f-' + f)?.classList.remove('border-red-500'); }
+    });
+    if (draftExpectedParts.some(p => !p.description.trim() || Number(p.estValue) < 0)) {
+      document.getElementById('err-expectedParts').textContent = 'Every expected part needs a description and a non-negative estimated value.';
+      document.getElementById('err-expectedParts').classList.remove('hidden');
+      errs.expectedParts = true;
+    } else {
+      document.getElementById('err-expectedParts').classList.add('hidden');
+    }
+    if (Object.keys(errs).length) return;
+
+    vals.askingPrice = Number(vals.askingPrice);
+    vals.feesShipping = Number(vals.feesShipping);
+    const finalParts = draftExpectedParts.map(p => ({ ...p, estValue: Number(p.estValue) }));
+    if (listing) {
+      Object.assign(listing, vals, { expectedParts: finalParts, photos });
+    } else {
+      DB.listings.push({ id: uid('L'), status: 'open', ...vals, expectedParts: finalParts, photos });
+    }
+    draftExpectedParts = [];
+    location.hash = '#/listings';
+  };
+}
+
+/* =========================================================================
+   LISTINGS QUEUE SCREEN  (Req 4, 12, 13, 15)
+   ========================================================================= */
+const queueState = { status: 'all', sourceId: 'all', page: 1 };
+const PAGE_SIZE = 3;
+
+function renderListingsQueue() {
+  setHeader('Listings Queue', 'Every candidate listing across all sources.', `
+    <a href="#/listings/new" class="inline-flex items-center gap-1.5 bg-slate-900 text-white text-sm font-medium rounded-md px-3 py-2 hover:bg-slate-800">+ New Listing</a>`);
+
+  let filtered = DB.listings.filter(l =>
+    (queueState.status === 'all' || l.status === queueState.status) &&
+    (queueState.sourceId === 'all' || l.sourceId === queueState.sourceId));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  queueState.page = Math.min(queueState.page, totalPages);
+  const pageItems = filtered.slice((queueState.page - 1) * PAGE_SIZE, queueState.page * PAGE_SIZE);
+
+  const rows = pageItems.map(l => {
+    const source = DB.sources.find(s => s.id === l.sourceId);
+    const totalExpected = l.expectedParts.reduce((s, p) => s + p.estValue, 0);
+    const totalCost = l.askingPrice + l.feesShipping;
+    const delta = totalExpected - totalCost;
+    const purchase = DB.purchases.find(p => p.listingId === l.id);
+    return `
+    <tr class="border-b border-slate-100 hover:bg-slate-50">
+      <td class="py-3 px-4">
+        <div class="font-medium text-slate-900">${esc(l.title)}</div>
+        <div class="text-xs text-slate-500">${esc(source?.name || '—')}</div>
+      </td>
+      <td class="py-3 px-4">${money(l.askingPrice)}</td>
+      <td class="py-3 px-4">${money(totalExpected)}</td>
+      <td class="py-3 px-4 font-medium ${delta >= 0 ? 'text-emerald-600' : 'text-red-600'}">${delta >= 0 ? '+' : '−'}${money(Math.abs(delta))}</td>
+      <td class="py-3 px-4">${badge(l.status)}</td>
+      <td class="py-3 px-4 text-right whitespace-nowrap">
+        ${l.status === 'open' ? `
+          <button data-accept="${l.id}" class="text-emerald-600 hover:text-emerald-700 text-xs font-medium mr-3">Accept</button>
+          <button data-reject="${l.id}" class="text-red-600 hover:text-red-700 text-xs font-medium mr-3">Reject</button>
+          <a href="#/listings/edit/${l.id}" class="text-slate-600 hover:text-slate-900 text-xs font-medium">Edit</a>` : ''}
+        ${l.status === 'accepted' && purchase ? `<a href="#/purchases/${purchase.id}" class="text-blue-600 hover:text-blue-700 text-xs font-medium">View Purchase →</a>` : ''}
+        ${l.status === 'rejected' ? `<span class="text-xs text-slate-400">No action</span>` : ''}
+      </td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="6" class="py-10 text-center text-slate-400">No listings match these filters.</td></tr>`;
+
+  return `
+  <div class="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+    <div class="flex items-center gap-3 p-4 border-b border-slate-200">
+      <select id="filter-status" class="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs">
+        ${['all','open','accepted','rejected'].map(s => `<option value="${s}" ${queueState.status===s?'selected':''}>${s==='all'?'All statuses':s[0].toUpperCase()+s.slice(1)}</option>`).join('')}
+      </select>
+      <select id="filter-source" class="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs">
+        <option value="all" ${queueState.sourceId==='all'?'selected':''}>All sources</option>
+        ${DB.sources.map(s => `<option value="${s.id}" ${queueState.sourceId===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}
+      </select>
+      <span class="text-xs text-slate-400 ml-auto">${filtered.length} listing${filtered.length===1?'':'s'}</span>
+    </div>
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-slate-500 uppercase text-xs">
+        <tr><th class="text-left py-2.5 px-4 font-medium">Listing</th><th class="text-left py-2.5 px-4 font-medium">Asking</th><th class="text-left py-2.5 px-4 font-medium">Expected Value</th><th class="text-left py-2.5 px-4 font-medium">Margin (Req. 3)</th><th class="text-left py-2.5 px-4 font-medium">Status</th><th></th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="flex items-center justify-between px-4 py-3 border-t border-slate-200">
+      <button id="page-prev" ${queueState.page<=1?'disabled':''} class="text-xs font-medium px-2 py-1 rounded border border-slate-300 disabled:opacity-40 hover:bg-slate-50">← Prev</button>
+      <span class="text-xs text-slate-500">Page ${queueState.page} of ${totalPages}</span>
+      <button id="page-next" ${queueState.page>=totalPages?'disabled':''} class="text-xs font-medium px-2 py-1 rounded border border-slate-300 disabled:opacity-40 hover:bg-slate-50">Next →</button>
+    </div>
+  </div>`;
+}
+
+function bindListingsQueue() {
+  document.getElementById('filter-status').onchange = (e) => { queueState.status = e.target.value; queueState.page = 1; route(); };
+  document.getElementById('filter-source').onchange = (e) => { queueState.sourceId = e.target.value; queueState.page = 1; route(); };
+  document.getElementById('page-prev').onclick = () => { queueState.page--; route(); };
+  document.getElementById('page-next').onclick = () => { queueState.page++; route(); };
+  document.querySelectorAll('[data-accept]').forEach(btn => btn.onclick = () => acceptListing(btn.dataset.accept));
+  document.querySelectorAll('[data-reject]').forEach(btn => btn.onclick = () => { DB.listings.find(l => l.id === btn.dataset.reject).status = 'rejected'; route(); });
+}
+
+// Accepting a Listing creates a linked Purchase pre-filled with the Listing's
+// price and Expected Parts (Req 4).
+function acceptListing(listingId) {
+  const listing = DB.listings.find(l => l.id === listingId);
+  listing.status = 'accepted';
+  const purchase = {
+    id: uid('P'), listingId: listing.id, status: 'ordered',
+    pricePaid: listing.askingPrice, purchaseDate: new Date().toISOString().slice(0, 10),
+    expectedParts: listing.expectedParts, teardownResults: null, additionalParts: [],
+  };
+  DB.purchases.push(purchase);
+  location.hash = `#/purchases/${purchase.id}`;
+}
+
+/* =========================================================================
+   PURCHASE DETAIL SCREEN  (Req 5)
+   ========================================================================= */
+const LIFECYCLE = ['ordered', 'shipped', 'received', 'torn_down', 'closed'];
+
+function renderPurchaseDetail(id) {
+  const purchase = DB.purchases.find(p => p.id === id);
+  const listing = DB.listings.find(l => l.id === purchase.listingId);
+  setHeader(`Purchase ${purchase.id}`, listing.title, '');
+  const parts = DB.parts.filter(pt => pt.purchaseId === purchase.id);
+
+  const nextAction = {
+    ordered: { label: 'Mark Shipped', to: 'shipped' },
+    shipped: { label: 'Mark Received', to: 'received' },
+    torn_down: { label: 'Close Purchase', to: 'closed' },
+  }[purchase.status];
+
+  return `
+  <div class="grid grid-cols-3 gap-6">
+    <div class="col-span-2 space-y-6">
+      <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-6">
+        <h2 class="text-sm font-semibold text-slate-900 mb-4">Lifecycle</h2>
+        <ol class="flex items-center">
+          ${LIFECYCLE.map((stage, i) => {
+            const reached = LIFECYCLE.indexOf(purchase.status) >= i;
+            return `<li class="flex items-center ${i < LIFECYCLE.length - 1 ? 'flex-1' : ''}">
+              <div class="flex flex-col items-center">
+                <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold ${reached ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-400'}">${i+1}</div>
+                <span class="text-[11px] mt-1 ${reached ? 'text-slate-900 font-medium' : 'text-slate-400'}">${stage.replace('_',' ')}</span>
+              </div>
+              ${i < LIFECYCLE.length - 1 ? `<div class="flex-1 h-0.5 mx-1 ${LIFECYCLE.indexOf(purchase.status) > i ? 'bg-slate-900' : 'bg-slate-200'}"></div>` : ''}
+            </li>`;
+          }).join('')}
+        </ol>
+        <div class="mt-6 flex gap-2">
+          ${nextAction ? `<button id="btn-advance" class="px-3 py-2 text-sm font-medium rounded-md bg-slate-900 text-white hover:bg-slate-800">${nextAction.label}</button>` : ''}
+          ${purchase.status === 'received' ? `<a href="#/purchases/${purchase.id}/teardown" class="px-3 py-2 text-sm font-medium rounded-md bg-amber-600 text-white hover:bg-amber-700">Start Teardown</a>` : ''}
+          ${purchase.status === 'torn_down' || purchase.status === 'closed' ? `<a href="#/purchases/${purchase.id}/teardown" class="px-3 py-2 text-sm font-medium rounded-md border border-slate-300 hover:bg-slate-50">View Teardown Record</a>` : ''}
+        </div>
+      </div>
+
+      <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-6">
+        <h2 class="text-sm font-semibold text-slate-900 mb-4">Expected Parts (from originating listing)</h2>
+        <table class="w-full text-sm">
+          <thead class="text-slate-500 text-xs uppercase"><tr><th class="text-left py-1.5">Category</th><th class="text-left py-1.5">Description</th><th class="text-left py-1.5">Est. Value</th></tr></thead>
+          <tbody>${purchase.expectedParts.map(p => `<tr class="border-t border-slate-100"><td class="py-1.5">${esc(p.category)}</td><td class="py-1.5">${esc(p.description)}</td><td class="py-1.5">${money(p.estValue)}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>
+
+      ${parts.length ? `
+      <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-6">
+        <div class="flex items-center justify-between mb-4"><h2 class="text-sm font-semibold text-slate-900">Generated Parts</h2><a href="#/parts" class="text-xs font-medium text-blue-600 hover:text-blue-700">View in Parts screen →</a></div>
+        <table class="w-full text-sm">
+          <thead class="text-slate-500 text-xs uppercase"><tr><th class="text-left py-1.5">Category</th><th class="text-left py-1.5">Description</th><th class="text-left py-1.5">Status</th></tr></thead>
+          <tbody>${parts.map(p => `<tr class="border-t border-slate-100"><td class="py-1.5">${esc(p.category)}</td><td class="py-1.5">${esc(p.description)}</td><td class="py-1.5">${badge(p.status, p.status.replace(/_/g,' '))}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>` : ''}
+    </div>
+
+    <div class="col-span-1">
+      <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-6">
+        <h2 class="text-sm font-semibold text-slate-900 mb-4">Purchase Info</h2>
+        <form id="purchase-info-form">
+          <div class="mb-3">
+            <label class="block text-xs font-medium text-slate-700 mb-1">Price paid (USD)</label>
+            <input name="pricePaid" type="number" step="0.01" value="${purchase.pricePaid}" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" id="f-pricePaid" />
+            <p class="mt-1 text-xs text-red-600 hidden" id="err-pricePaid"></p>
+          </div>
+          <div class="mb-4">
+            <label class="block text-xs font-medium text-slate-700 mb-1">Purchase date</label>
+            <input name="purchaseDate" type="date" value="${purchase.purchaseDate}" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" id="f-purchaseDate" />
+            <p class="mt-1 text-xs text-red-600 hidden" id="err-purchaseDate">Purchase date is required.</p>
+          </div>
+          <button type="submit" class="w-full px-3 py-2 text-sm font-medium rounded-md border border-slate-300 hover:bg-slate-50">Save Purchase Info</button>
+        </form>
+        <div class="mt-4 pt-4 border-t border-slate-200 text-xs text-slate-500">
+          Asking price on listing was <span class="font-medium text-slate-700">${money(listing.askingPrice)}</span> — price paid is tracked independently since negotiated price may differ (Req 5).
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function bindPurchaseDetail(id) {
+  const purchase = DB.purchases.find(p => p.id === id);
+  const advanceBtn = document.getElementById('btn-advance');
+  if (advanceBtn) advanceBtn.onclick = () => {
+    const next = { ordered: 'shipped', shipped: 'received', torn_down: 'closed' }[purchase.status];
+    purchase.status = next;
+    route();
+  };
+  document.getElementById('purchase-info-form').onsubmit = (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const vals = { pricePaid: fd.get('pricePaid'), purchaseDate: fd.get('purchaseDate') };
+    const errs = validateFields({
+      pricePaid: { value: vals.pricePaid, required: true, money: true, label: 'Price paid' },
+      purchaseDate: { value: vals.purchaseDate, required: true, label: 'Purchase date' },
+    });
+    ['pricePaid', 'purchaseDate'].forEach(f => {
+      const el = document.getElementById('err-' + f);
+      if (errs[f]) { el.textContent = errs[f]; el.classList.remove('hidden'); document.getElementById('f-'+f).classList.add('border-red-500'); }
+      else { el.classList.add('hidden'); document.getElementById('f-'+f).classList.remove('border-red-500'); }
+    });
+    if (Object.keys(errs).length) return;
+    purchase.pricePaid = Number(vals.pricePaid);
+    purchase.purchaseDate = vals.purchaseDate;
+    route();
+  };
+}
+
+/* =========================================================================
+   TEARDOWN CHECKLIST SCREEN  (Req 6, 13)
+   ========================================================================= */
+let draftAdditionalParts = [];
+
+function renderTeardown(purchaseId) {
+  const purchase = DB.purchases.find(p => p.id === purchaseId);
+  const listing = DB.listings.find(l => l.id === purchase.listingId);
+  const isLocked = purchase.status === 'torn_down' || purchase.status === 'closed';
+  setHeader('Teardown Checklist', `${listing.title} — Purchase ${purchase.id}`, '');
+
+  if (isLocked && purchase.teardownResults) {
+    const tr = purchase.teardownResults;
+    const resultBadge = { present_as_expected: 'sold', present_but_different: 'listed', missing: 'unsellable' };
+    return `
+    <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-6 max-w-3xl">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold text-slate-900">Completed Teardown Record</h2>
+        <a href="#/purchases/${purchase.id}" class="text-xs font-medium text-blue-600 hover:text-blue-700">← Back to Purchase</a>
+      </div>
+      <table class="w-full text-sm mb-6">
+        <thead class="text-slate-500 text-xs uppercase"><tr><th class="text-left py-1.5">Expected Part</th><th class="text-left py-1.5">Result</th><th class="text-left py-1.5">Note</th></tr></thead>
+        <tbody>
+          ${purchase.expectedParts.map(ep => {
+            const r = tr.results.find(x => x.expectedPartId === ep.id);
+            return `<tr class="border-t border-slate-100"><td class="py-1.5">${esc(ep.category)} — ${esc(ep.description)}</td><td class="py-1.5">${badge(resultBadge[r.result], r.result.replace(/_/g,' '))}</td><td class="py-1.5 text-slate-500">${esc(r.note) || '—'}</td></tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      ${tr.additionalParts.length ? `
+      <h3 class="text-xs font-semibold text-slate-900 uppercase mb-2">Additional Parts Found</h3>
+      <table class="w-full text-sm">
+        <thead class="text-slate-500 text-xs uppercase"><tr><th class="text-left py-1.5">Category</th><th class="text-left py-1.5">Description</th><th class="text-left py-1.5">Est. Value</th></tr></thead>
+        <tbody>${tr.additionalParts.map(p => `<tr class="border-t border-slate-100"><td class="py-1.5">${esc(p.category)}</td><td class="py-1.5">${esc(p.description)}</td><td class="py-1.5">${money(p.estValue)}</td></tr>`).join('')}</tbody>
+      </table>` : ''}
+    </div>`;
+  }
+
+  if (!draftAdditionalParts.__for || draftAdditionalParts.__for !== purchaseId) { draftAdditionalParts = []; draftAdditionalParts.__for = purchaseId; }
+
+  return `
+  <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-6 max-w-3xl">
+    <h2 class="text-sm font-semibold text-slate-900 mb-1">Reconcile Expected Parts</h2>
+    <p class="text-xs text-slate-500 mb-4">For each expected part, mark what you actually found.</p>
+    <form id="teardown-form">
+      <div class="space-y-3" id="teardown-rows">
+        ${purchase.expectedParts.map(ep => `
+        <div class="border border-slate-200 rounded-md p-3" data-ep-row="${ep.id}">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-sm font-medium text-slate-900">${esc(ep.category)} — ${esc(ep.description)}</div>
+            <div class="text-xs text-slate-400">${money(ep.estValue)}</div>
+          </div>
+          <div class="flex gap-4 text-xs mb-2">
+            <label class="flex items-center gap-1.5"><input type="radio" name="result-${ep.id}" value="present_as_expected" checked /> Present as expected</label>
+            <label class="flex items-center gap-1.5"><input type="radio" name="result-${ep.id}" value="present_but_different" /> Present, different</label>
+            <label class="flex items-center gap-1.5"><input type="radio" name="result-${ep.id}" value="missing" /> Missing</label>
+          </div>
+          <input type="text" name="note-${ep.id}" placeholder="Note (required if 'Present, different')" class="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-xs hidden" data-note-for="${ep.id}" />
+          <p class="mt-1 text-xs text-red-600 hidden" data-note-error="${ep.id}">A note is required when a part is present but different.</p>
+        </div>`).join('')}
+      </div>
+
+      <div class="mt-6 flex items-center justify-between mb-2">
+        <h2 class="text-sm font-semibold text-slate-900">Additional Parts Found</h2>
+        <button type="button" id="btn-add-additional" class="text-xs font-medium text-blue-600 hover:text-blue-700">+ Add Part</button>
+      </div>
+      <div id="additional-rows" class="space-y-2"></div>
+
+      <div class="mt-6 flex gap-2">
+        <button type="submit" class="px-3 py-2 text-sm font-medium rounded-md bg-slate-900 text-white hover:bg-slate-800">Submit Teardown</button>
+        <a href="#/purchases/${purchase.id}" class="px-3 py-2 text-sm font-medium rounded-md border border-slate-300 hover:bg-slate-50">Cancel</a>
+      </div>
+    </form>
+  </div>`;
+}
+
+function renderAdditionalRows() {
+  const container = document.getElementById('additional-rows');
+  if (!container) return;
+  container.innerHTML = draftAdditionalParts.length ? draftAdditionalParts.map((p, i) => expectedPartRowHtml(p, i)).join('') : '<p class="text-xs text-slate-400 italic">None found.</p>';
+  container.querySelectorAll('[data-part-field]').forEach(el => el.onchange = () => { draftAdditionalParts[+el.dataset.index][el.dataset.partField] = el.value; });
+  container.querySelectorAll('[data-remove-part]').forEach(btn => btn.onclick = () => { draftAdditionalParts.splice(+btn.dataset.removePart, 1); renderAdditionalRows(); });
+}
+
+function bindTeardown(purchaseId) {
+  const purchase = DB.purchases.find(p => p.id === purchaseId);
+  if (purchase.status === 'torn_down' || purchase.status === 'closed') return; // read-only record, nothing to bind
+
+  renderAdditionalRows();
+  document.getElementById('btn-add-additional').onclick = () => { draftAdditionalParts.push({ id: uid('ap'), category: 'Other', description: '', estValue: 0 }); renderAdditionalRows(); };
+
+  purchase.expectedParts.forEach(ep => {
+    document.querySelectorAll(`input[name="result-${ep.id}"]`).forEach(radio => {
+      radio.onchange = () => {
+        const noteInput = document.querySelector(`[data-note-for="${ep.id}"]`);
+        noteInput.classList.toggle('hidden', radio.value !== 'present_but_different' || !radio.checked);
+      };
+    });
+  });
+
+  document.getElementById('teardown-form').onsubmit = (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const results = [];
+    let hasError = false;
+    purchase.expectedParts.forEach(ep => {
+      const result = fd.get(`result-${ep.id}`);
+      const note = (fd.get(`note-${ep.id}`) || '').trim();
+      const errEl = document.querySelector(`[data-note-error="${ep.id}"]`);
+      if (result === 'present_but_different' && !note) {
+        errEl.classList.remove('hidden');
+        document.querySelector(`[data-note-for="${ep.id}"]`).classList.add('border-red-500');
+        hasError = true;
+      } else {
+        errEl.classList.add('hidden');
+      }
+      results.push({ expectedPartId: ep.id, result, note });
+    });
+    if (hasError) return;
+
+    const additionalParts = draftAdditionalParts.map(p => ({ category: p.category, description: p.description, estValue: Number(p.estValue) }));
+    purchase.teardownResults = { results, additionalParts };
+    purchase.additionalParts = additionalParts;
+    purchase.status = 'torn_down';
+
+    // Generate a Part record for every part marked present_as_expected,
+    // present_but_different, or additional (Req 6). Missing parts generate nothing.
+    results.forEach(r => {
+      if (r.result === 'missing') return;
+      const ep = purchase.expectedParts.find(x => x.id === r.expectedPartId);
+      DB.parts.push({ id: uid('pt'), purchaseId: purchase.id, category: ep.category, description: ep.description, estValue: ep.estValue, status: 'ready_to_list', unsellableReason: null, saleListing: null, sale: null });
+    });
+    additionalParts.forEach(p => {
+      DB.parts.push({ id: uid('pt'), purchaseId: purchase.id, category: p.category, description: p.description, estValue: p.estValue, status: 'ready_to_list', unsellableReason: null, saleListing: null, sale: null });
+    });
+
+    draftAdditionalParts = [];
+    location.hash = `#/purchases/${purchase.id}`;
+  };
+}
+
+/* =========================================================================
+   PARTS SCREEN  (Req 7, 8, 9, 13)
+   ========================================================================= */
+const partsState = { status: 'all' };
+
+function renderPartsScreen() {
+  setHeader('Parts', 'Every part generated from a teardown, tracked to sale.', '');
+  const filtered = DB.parts.filter(p => partsState.status === 'all' || p.status === partsState.status);
+  const rows = filtered.map(p => {
+    const purchase = DB.purchases.find(pu => pu.id === p.purchaseId);
+    return `
+    <tr class="border-b border-slate-100 hover:bg-slate-50">
+      <td class="py-3 px-4"><div class="font-medium text-slate-900">${esc(p.category)}</div><div class="text-xs text-slate-500 max-w-[280px] truncate" title="${esc(p.description)}">${esc(p.description)}</div></td>
+      <td class="py-3 px-4"><a href="#/purchases/${purchase.id}" class="text-blue-600 hover:underline text-xs">${purchase.id}</a></td>
+      <td class="py-3 px-4">${money(p.estValue)}</td>
+      <td class="py-3 px-4">${badge(p.status, p.status.replace(/_/g,' '))}</td>
+      <td class="py-3 px-4 text-right whitespace-nowrap">
+        ${p.status === 'ready_to_list' ? `<button data-prep-sale="${p.id}" class="text-blue-600 hover:text-blue-700 text-xs font-medium mr-3">Prep Sale Listing</button><button data-mark-unsellable="${p.id}" class="text-red-600 hover:text-red-700 text-xs font-medium">Mark Unsellable</button>` : ''}
+        ${p.status === 'listed' ? `<button data-record-sale="${p.id}" class="text-emerald-600 hover:text-emerald-700 text-xs font-medium">Record Sale</button>` : ''}
+        ${p.status === 'sold' ? `<span class="text-xs text-slate-400">Sold ${esc(p.sale.soldDate)}</span>` : ''}
+        ${p.status === 'unsellable' ? `<span class="text-xs text-slate-400" title="${esc(p.unsellableReason)}">${esc(p.unsellableReason)}</span>` : ''}
+      </td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="5" class="py-10 text-center text-slate-400">No parts with this status.</td></tr>`;
+
+  return `
+  <div class="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+    <div class="flex items-center gap-2 p-4 border-b border-slate-200">
+      ${['all','ready_to_list','listed','sold','unsellable'].map(s => `
+        <button data-status-filter="${s}" class="text-xs font-medium px-3 py-1.5 rounded-full border ${partsState.status===s ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}">${s==='all'?'All':s.replace(/_/g,' ')}</button>`).join('')}
+    </div>
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-slate-500 uppercase text-xs">
+        <tr><th class="text-left py-2.5 px-4 font-medium">Part</th><th class="text-left py-2.5 px-4 font-medium">Purchase</th><th class="text-left py-2.5 px-4 font-medium">Est. Value</th><th class="text-left py-2.5 px-4 font-medium">Status</th><th></th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+function bindPartsScreen() {
+  document.querySelectorAll('[data-status-filter]').forEach(btn => btn.onclick = () => { partsState.status = btn.dataset.statusFilter; route(); });
+  document.querySelectorAll('[data-prep-sale]').forEach(btn => btn.onclick = () => openSaleListingModal(btn.dataset.prepSale));
+  document.querySelectorAll('[data-record-sale]').forEach(btn => btn.onclick = () => openRecordSaleModal(btn.dataset.recordSale));
+  document.querySelectorAll('[data-mark-unsellable]').forEach(btn => btn.onclick = () => openUnsellableModal(btn.dataset.markUnsellable));
+}
+
+function openUnsellableModal(partId, errors = {}) {
+  const part = DB.parts.find(p => p.id === partId);
+  openModal(`
+    <div class="p-6">
+      <h2 class="text-base font-semibold mb-1">Mark Unsellable</h2>
+      <p class="text-xs text-slate-500 mb-4">${esc(part.category)} — ${esc(part.description)}</p>
+      <form id="unsellable-form">
+        <label class="block text-sm font-medium text-slate-700 mb-1">Reason (required)</label>
+        <textarea name="reason" rows="3" class="w-full rounded-md border px-3 py-2 text-sm ${fieldClass(errors,'reason')}"></textarea>
+        ${fieldError(errors, 'reason')}
+        <div class="flex justify-end gap-2 mt-5">
+          <button type="button" id="cancel-unsellable" class="px-3 py-2 text-sm font-medium rounded-md border border-slate-300 hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="px-3 py-2 text-sm font-medium rounded-md bg-red-600 text-white hover:bg-red-700">Mark Unsellable</button>
+        </div>
+      </form>
+    </div>`);
+  document.getElementById('cancel-unsellable').onclick = closeModal;
+  document.getElementById('unsellable-form').onsubmit = (e) => {
+    e.preventDefault();
+    const reason = new FormData(e.target).get('reason').trim();
+    const errs = validateFields({ reason: { value: reason, required: true, label: 'Reason' } });
+    if (Object.keys(errs).length) { openUnsellableModal(partId, errs); return; }
+    part.status = 'unsellable';
+    part.unsellableReason = reason;
+    closeModal();
+    route();
+  };
+}
+
+/* =========================================================================
+   SALE LISTING DRAFT / PREP MODAL  (Req 8, 13)
+   ========================================================================= */
+function openSaleListingModal(partId, errors = {}, draft = null) {
+  const part = DB.parts.find(p => p.id === partId);
+  const d = draft || { platform: 'ebay', title: `${part.category} — ${part.description}`, description: `Pulled from a teardown. ${part.category}: ${part.description}.`, askingPrice: part.estValue };
+  openModal(`
+    <div class="p-6">
+      <h2 class="text-base font-semibold mb-1">Prep Sale Listing</h2>
+      <p class="text-xs text-slate-500 mb-4">${esc(part.category)} — ${esc(part.description)} (est. ${money(part.estValue)})</p>
+      <form id="sale-listing-form">
+        <div class="mb-3">
+          <label class="block text-sm font-medium text-slate-700 mb-1">Target platform</label>
+          <select name="platform" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+            ${PLATFORMS.map(p => `<option value="${p.value}" ${d.platform===p.value?'selected':''}>${p.label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="block text-sm font-medium text-slate-700 mb-1">Title</label>
+          <input name="title" value="${esc(d.title)}" class="w-full rounded-md border px-3 py-2 text-sm ${fieldClass(errors,'title')}" />
+          ${fieldError(errors,'title')}
+        </div>
+        <div class="mb-3">
+          <label class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+          <textarea name="description" rows="3" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">${esc(d.description)}</textarea>
+        </div>
+        <div class="mb-5">
+          <label class="block text-sm font-medium text-slate-700 mb-1">Asking price (USD)</label>
+          <input name="askingPrice" type="number" step="0.01" value="${d.askingPrice}" class="w-full rounded-md border px-3 py-2 text-sm ${fieldClass(errors,'askingPrice')}" />
+          ${fieldError(errors,'askingPrice')}
+        </div>
+        <p class="text-xs text-slate-400 mb-4">No live submission to any marketplace API — "listed" just records your own manual posting (A5).</p>
+        <div class="flex justify-end gap-2">
+          <button type="button" id="cancel-sale-listing" class="px-3 py-2 text-sm font-medium rounded-md border border-slate-300 hover:bg-slate-50">Save as Draft</button>
+          <button type="submit" class="px-3 py-2 text-sm font-medium rounded-md bg-slate-900 text-white hover:bg-slate-800">Mark Listed</button>
+        </div>
+      </form>
+    </div>`);
+  document.getElementById('cancel-sale-listing').onclick = closeModal;
+  document.getElementById('sale-listing-form').onsubmit = (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const vals = { platform: fd.get('platform'), title: fd.get('title').trim(), description: fd.get('description').trim(), askingPrice: fd.get('askingPrice') };
+    const errs = validateFields({
+      title: { value: vals.title, required: true, label: 'Title' },
+      askingPrice: { value: vals.askingPrice, required: true, money: true, label: 'Asking price' },
+    });
+    if (Object.keys(errs).length) { openSaleListingModal(partId, errs, vals); return; }
+    part.saleListing = { ...vals, askingPrice: Number(vals.askingPrice), listedAt: new Date().toISOString().slice(0,10) };
+    part.status = 'listed';
+    closeModal();
+    route();
+  };
+}
+
+/* =========================================================================
+   RECORD SALE MODAL  (Req 9, 13)
+   ========================================================================= */
+function openRecordSaleModal(partId, errors = {}, draft = null) {
+  const part = DB.parts.find(p => p.id === partId);
+  const d = draft || { soldPrice: part.saleListing.askingPrice, soldDate: new Date().toISOString().slice(0,10), fee: '', shipping: '', buyerNote: '' };
+  openModal(`
+    <div class="p-6">
+      <h2 class="text-base font-semibold mb-1">Record Sale</h2>
+      <p class="text-xs text-slate-500 mb-4">${esc(part.category)} — ${esc(part.description)}, listed on ${PLATFORMS.find(p=>p.value===part.saleListing.platform).label} at ${money(part.saleListing.askingPrice)}</p>
+      <form id="record-sale-form">
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Sold price (USD)</label>
+            <input name="soldPrice" type="number" step="0.01" value="${d.soldPrice}" class="w-full rounded-md border px-3 py-2 text-sm ${fieldClass(errors,'soldPrice')}" />
+            ${fieldError(errors,'soldPrice')}
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Sold date</label>
+            <input name="soldDate" type="date" value="${d.soldDate}" class="w-full rounded-md border px-3 py-2 text-sm ${fieldClass(errors,'soldDate')}" />
+            ${fieldError(errors,'soldDate')}
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Platform fee (USD)</label>
+            <input name="fee" type="number" step="0.01" value="${d.fee}" class="w-full rounded-md border px-3 py-2 text-sm ${fieldClass(errors,'fee')}" />
+            ${fieldError(errors,'fee')}
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Shipping cost paid (USD)</label>
+            <input name="shipping" type="number" step="0.01" value="${d.shipping}" class="w-full rounded-md border px-3 py-2 text-sm ${fieldClass(errors,'shipping')}" />
+            ${fieldError(errors,'shipping')}
+          </div>
+        </div>
+        <div class="mb-5">
+          <label class="block text-sm font-medium text-slate-700 mb-1">Buyer note (optional)</label>
+          <textarea name="buyerNote" rows="2" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">${esc(d.buyerNote)}</textarea>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" id="cancel-record-sale" class="px-3 py-2 text-sm font-medium rounded-md border border-slate-300 hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="px-3 py-2 text-sm font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700">Record Sale</button>
+        </div>
+      </form>
+    </div>`);
+  document.getElementById('cancel-record-sale').onclick = closeModal;
+  document.getElementById('record-sale-form').onsubmit = (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const vals = { soldPrice: fd.get('soldPrice'), soldDate: fd.get('soldDate'), fee: fd.get('fee'), shipping: fd.get('shipping'), buyerNote: fd.get('buyerNote').trim() };
+    const errs = validateFields({
+      soldPrice: { value: vals.soldPrice, required: true, money: true, label: 'Sold price' },
+      soldDate: { value: vals.soldDate, required: true, label: 'Sold date' },
+      fee: { value: vals.fee, required: true, money: true, label: 'Platform fee' },
+      shipping: { value: vals.shipping, required: true, money: true, label: 'Shipping cost' },
+    });
+    if (Object.keys(errs).length) { openRecordSaleModal(partId, errs, vals); return; }
+    part.sale = { soldPrice: Number(vals.soldPrice), soldDate: vals.soldDate, fee: Number(vals.fee), shipping: Number(vals.shipping), buyerNote: vals.buyerNote };
+    part.status = 'sold';
+    closeModal();
+    route();
+  };
+}
+
+/* =========================================================================
+   PROFIT DASHBOARD  (Req 10, 11, 15)
+   ========================================================================= */
+const dashState = { status: 'all', sort: 'net_desc', page: 1 };
+const DASH_PAGE_SIZE = 3;
+
+function purchaseFinancials(purchase) {
+  const parts = DB.parts.filter(p => p.purchaseId === purchase.id);
+  const soldParts = parts.filter(p => p.status === 'sold');
+  const revenue = soldParts.reduce((s, p) => s + p.sale.soldPrice, 0);
+  const feesShipping = soldParts.reduce((s, p) => s + p.sale.fee + p.sale.shipping, 0);
+  const net = revenue - feesShipping - purchase.pricePaid;
+  const isFinal = parts.length > 0 && parts.every(p => p.status === 'sold');
+  return { parts, soldParts, revenue, feesShipping, net, isFinal };
+}
+
+function renderDashboard() {
+  setHeader('Profit Dashboard', 'Net profit per purchase (lot) — cost is never allocated per part (A1).', '');
+  let rows = DB.purchases.map(p => ({ purchase: p, ...purchaseFinancials(p) }));
+  if (dashState.status !== 'all') rows = rows.filter(r => dashState.status === 'partial' ? !r.isFinal : r.isFinal);
+  rows.sort((a, b) => dashState.sort === 'net_desc' ? b.net - a.net : dashState.sort === 'net_asc' ? a.net - b.net : b.purchase.pricePaid - a.purchase.pricePaid);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / DASH_PAGE_SIZE));
+  dashState.page = Math.min(dashState.page, totalPages);
+  const pageRows = rows.slice((dashState.page - 1) * DASH_PAGE_SIZE, dashState.page * DASH_PAGE_SIZE);
+
+  const body = pageRows.map(({ purchase, parts, soldParts, revenue, feesShipping, net, isFinal }) => {
+    const listing = DB.listings.find(l => l.id === purchase.listingId);
+    return `
+    <tr class="border-b border-slate-100 hover:bg-slate-50">
+      <td class="py-3 px-4"><a href="#/purchases/${purchase.id}" class="font-medium text-blue-600 hover:underline">${purchase.id}</a><div class="text-xs text-slate-500">${esc(listing.title)}</div></td>
+      <td class="py-3 px-4">${badge(purchase.status, purchase.status.replace(/_/g,' '))}</td>
+      <td class="py-3 px-4">${money(purchase.pricePaid)}</td>
+      <td class="py-3 px-4">${soldParts.length} / ${parts.length || 0}</td>
+      <td class="py-3 px-4">${money(revenue)}</td>
+      <td class="py-3 px-4">${money(feesShipping)}</td>
+      <td class="py-3 px-4 font-semibold ${net >= 0 ? 'text-emerald-600' : 'text-red-600'}">${net >= 0 ? '+' : '−'}${money(Math.abs(net))}</td>
+      <td class="py-3 px-4">${badge(isFinal ? 'final' : 'partial', isFinal ? 'Final' : 'Partial / Running')}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="8" class="py-10 text-center text-slate-400">No purchases match these filters.</td></tr>`;
+
+  return `
+  <div class="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+    <div class="flex items-center gap-3 p-4 border-b border-slate-200">
+      <select id="dash-filter-status" class="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs">
+        <option value="all" ${dashState.status==='all'?'selected':''}>All purchases</option>
+        <option value="partial" ${dashState.status==='partial'?'selected':''}>Partial / Running</option>
+        <option value="final" ${dashState.status==='final'?'selected':''}>Final</option>
+      </select>
+      <select id="dash-sort" class="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs">
+        <option value="net_desc" ${dashState.sort==='net_desc'?'selected':''}>Sort: Net profit (high → low)</option>
+        <option value="net_asc" ${dashState.sort==='net_asc'?'selected':''}>Sort: Net profit (low → high)</option>
+        <option value="price_desc" ${dashState.sort==='price_desc'?'selected':''}>Sort: Price paid (high → low)</option>
+      </select>
+      <span class="text-xs text-slate-400 ml-auto">${rows.length} purchase${rows.length===1?'':'s'}</span>
+    </div>
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-slate-500 uppercase text-xs">
+        <tr><th class="text-left py-2.5 px-4 font-medium">Purchase</th><th class="text-left py-2.5 px-4 font-medium">Status</th><th class="text-left py-2.5 px-4 font-medium">Price Paid</th><th class="text-left py-2.5 px-4 font-medium">Parts Sold</th><th class="text-left py-2.5 px-4 font-medium">Revenue</th><th class="text-left py-2.5 px-4 font-medium">Fees + Shipping</th><th class="text-left py-2.5 px-4 font-medium">Net Profit</th><th class="text-left py-2.5 px-4 font-medium">Flag</th></tr>
+      </thead>
+      <tbody>${body}</tbody>
+    </table>
+    <div class="flex items-center justify-between px-4 py-3 border-t border-slate-200">
+      <button id="dash-prev" ${dashState.page<=1?'disabled':''} class="text-xs font-medium px-2 py-1 rounded border border-slate-300 disabled:opacity-40 hover:bg-slate-50">← Prev</button>
+      <span class="text-xs text-slate-500">Page ${dashState.page} of ${totalPages}</span>
+      <button id="dash-next" ${dashState.page>=totalPages?'disabled':''} class="text-xs font-medium px-2 py-1 rounded border border-slate-300 disabled:opacity-40 hover:bg-slate-50">Next →</button>
+    </div>
+  </div>`;
+}
+
+function bindDashboard() {
+  document.getElementById('dash-filter-status').onchange = (e) => { dashState.status = e.target.value; dashState.page = 1; route(); };
+  document.getElementById('dash-sort').onchange = (e) => { dashState.sort = e.target.value; route(); };
+  document.getElementById('dash-prev').onclick = () => { dashState.page--; route(); };
+  document.getElementById('dash-next').onclick = () => { dashState.page++; route(); };
+}
+
+/* =========================================================================
+   BOOT
+   ========================================================================= */
+route();
+</script>
+</body>
+</html>
