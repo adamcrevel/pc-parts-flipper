@@ -1,0 +1,17 @@
+{
+  "name": "@pc-parts-flipper/shared",
+  "private": true,
+  "version": "0.0.0",
+  "description": "TypeScript types shared between apps/web and apps/server.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "echo \"no tests yet in packages/shared\" && exit 0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
