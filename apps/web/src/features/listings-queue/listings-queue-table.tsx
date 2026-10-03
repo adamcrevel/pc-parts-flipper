@@ -1,6 +1,7 @@
 import type { ListingSummary, Source } from '@pc-parts-flipper/shared';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { EbayScanBadge } from '@/features/listings/ebay-scan-badge';
 
 interface ListingsQueueTableProps {
   listings: ListingSummary[];
@@ -42,7 +43,12 @@ export function ListingsQueueTable({ listings, sourcesById, onAccept, onReject, 
         <tbody>
           {listings.map((listing) => (
             <tr key={listing.id} className="border-b border-border last:border-0">
-              <td className="px-4 py-3 font-medium">{listing.title}</td>
+              <td className="px-4 py-3 font-medium">
+                <div className="flex items-center gap-2">
+                  <span>{listing.title}</span>
+                  {listing.externalItemId !== null && <EbayScanBadge />}
+                </div>
+              </td>
               <td className="px-4 py-3">{sourcesById.get(listing.sourceId)?.name ?? 'Unknown source'}</td>
               <td className="px-4 py-3 capitalize">{listing.status}</td>
               <td className="px-4 py-3">${listing.askingPrice.toFixed(2)}</td>

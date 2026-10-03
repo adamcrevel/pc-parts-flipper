@@ -48,6 +48,12 @@ export interface Source {
   url: string | null;
   notes: string | null;
   active: boolean;
+  /** JSON-encoded EbayConnectorConfig (packages/shared/src/connectors.ts), null when no automated scan is configured. */
+  connectorConfig: string | null;
+  /** Timestamp of the most recent automated scan run against this Source, null if never scanned. */
+  lastScannedAt: string | null;
+  /** Count of Listings the most recent automated scan found, null if never scanned. */
+  lastScanFoundCount: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -65,6 +71,10 @@ export interface Listing {
   acquisitionFees: number;
   /** Local-disk paths to uploaded photos (assumption A4); JSON-encoded on disk. */
   photoPaths: string[];
+  /** Marketplace this Listing was auto-imported from by an eBay scan (Req 3), or null for manually-entered Listings. */
+  externalSource: string | null;
+  /** The marketplace's own item id for this Listing (Req 3), used to detect duplicates on re-scan; null for manually-entered Listings. */
+  externalItemId: string | null;
   createdAt: string;
   updatedAt: string;
 }

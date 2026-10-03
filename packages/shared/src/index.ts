@@ -10,3 +10,4 @@ export * from './listings.js';
 export * from './sales.js';
 export * from './saleListings.js';
 export * from './profit.js';
+export * from './connectors.js';

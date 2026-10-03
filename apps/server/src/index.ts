@@ -10,6 +10,8 @@ import { registerPartsRoutes } from './routes/parts.js';
 import { registerSaleListingsRoutes } from './routes/saleListings.js';
 import { registerSalesRoutes } from './routes/sales.js';
 import { registerProfitRoutes } from './routes/profit.js';
+import { registerScanRoutes } from './routes/scan.js';
+import { startScheduler } from './scan/scheduler.js';
 
 // Backend app shell. Builds the Fastify instance wired to the shared pino
 // logger (see logger.ts for level conventions) and the centralized error
@@ -42,6 +44,11 @@ await registerPartsRoutes(server);
 await registerSaleListingsRoutes(server);
 await registerSalesRoutes(server);
 await registerProfitRoutes(server);
+await registerScanRoutes(server);
+
+// Registers the once-daily scheduled scan job (T8, Req 6, 9) so eligible
+// Sources are re-scanned automatically, not only via T7's manual route.
+startScheduler();
 
 // Port the server listens on; configurable for deployment, defaults to 3001
 // for local development.

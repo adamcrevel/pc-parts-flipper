@@ -10,6 +10,15 @@ export interface CreateSourceInput {
   platformType: PlatformType;
   url: string | null;
   notes: string | null;
+  /**
+   * JSON-encoded EbayConnectorConfig (packages/shared/src/connectors.ts), or
+   * null/omitted for no automated scan. Optional (rather than required)
+   * so every pre-existing manual-Source-creation caller that predates this
+   * field keeps working unchanged — createSource defaults a missing value
+   * to null itself, the same defensive pattern createListing already uses
+   * for externalSource/externalItemId.
+   */
+  connectorConfig?: string | null;
 }
 
 /** Fields that may be edited on an existing Source; omitted keys are left unchanged. */
@@ -19,6 +28,7 @@ export interface UpdateSourceInput {
   url?: string | null;
   notes?: string | null;
   active?: boolean;
+  connectorConfig?: string | null;
 }
 
 // Converts one raw JSON row (snake_case columns, DECIMAL/UUID as strings) into
@@ -31,6 +41,9 @@ function mapRow(row: Record<string, unknown>): Source {
     url: row.url as string | null,
     notes: row.notes as string | null,
     active: row.active as boolean,
+    connectorConfig: row.connector_config as string | null,
+    lastScannedAt: row.last_scanned_at as string | null,
+    lastScanFoundCount: row.last_scan_found_count as number | null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -41,8 +54,8 @@ export async function createSource(input: CreateSourceInput): Promise<Source> {
   const connection = await getConnection();
   const id = newId();
   const reader = await connection.runAndReadAll(
-    `INSERT INTO sources (id, name, platform_type, url, notes)
-     VALUES ($id, $name, $platform_type, $url, $notes)
+    `INSERT INTO sources (id, name, platform_type, url, notes, connector_config)
+     VALUES ($id, $name, $platform_type, $url, $notes, $connector_config)
      RETURNING *`,
     {
       id,
@@ -50,6 +63,11 @@ export async function createSource(input: CreateSourceInput): Promise<Source> {
       platform_type: input.platformType,
       url: input.url,
       notes: input.notes,
+      // `?? null`: DuckDB's node-api driver can't infer a bind type for a
+      // bare JS `undefined` ("Cannot create values of type ANY"), so a
+      // caller that omits connectorConfig entirely must still bind an
+      // explicit SQL NULL here, not undefined.
+      connector_config: input.connectorConfig ?? null,
     },
   );
   return mapRow(reader.getRowObjectsJson()[0]);
@@ -88,6 +106,28 @@ export async function updateSource(id: string, patch: UpdateSourceInput): Promis
     url: patch.url,
     notes: patch.notes,
     active: patch.active,
+    connector_config: patch.connectorConfig,
+  });
+  await connection.run(`UPDATE sources SET ${setSql} WHERE id = $id`, { ...params, id });
+  return getSourceById(id);
+}
+
+/**
+ * Updates a Source's scan-recency fields after an automated scan run
+ * (lastScannedAt/lastScanFoundCount). Kept separate from updateSource rather
+ * than folded into UpdateSourceInput's general edit path because these two
+ * fields are system-managed — written only by the scan service (T6/T9),
+ * never by the Source edit form — so giving them their own narrow function
+ * signature keeps that ownership boundary explicit at the call site.
+ */
+export async function updateSourceScanStats(
+  id: string,
+  stats: { lastScannedAt: string; lastScanFoundCount: number },
+): Promise<Source | null> {
+  const connection = await getConnection();
+  const { setSql, params } = buildSetClause({
+    last_scanned_at: stats.lastScannedAt,
+    last_scan_found_count: stats.lastScanFoundCount,
   });
   await connection.run(`UPDATE sources SET ${setSql} WHERE id = $id`, { ...params, id });
   return getSourceById(id);

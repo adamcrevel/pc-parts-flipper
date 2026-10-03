@@ -26,3 +26,8 @@ export function updateSource(id: string, input: UpdateSourceInput): Promise<Sour
 export function deactivateSource(id: string): Promise<Source> {
   return apiClient.patch<Source>(`/api/sources/${id}/deactivate`);
 }
+
+/** Triggers an automated scan for one Source (T9, matching POST /api/sources/:id/scan's response shape). */
+export function scanSource(id: string): Promise<{ foundCount: number; newCount: number }> {
+  return apiClient.post<{ foundCount: number; newCount: number }>(`/api/sources/${id}/scan`);
+}

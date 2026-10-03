@@ -15,6 +15,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type * as DbModule from '../src/db/index.js';
 import type * as ClientModule from '../src/db/client.js';
+import { runMigrations } from '../src/db/migrate.js';
 
 let dataDir: string;
 let db: typeof DbModule;
@@ -42,7 +43,24 @@ afterAll(async () => {
 // TABLE_STATEMENTS independently of that file (not generated from it) so
 // this test actually catches a column being dropped, renamed, or added.
 const EXPECTED_COLUMNS: Record<string, string[]> = {
-  sources: ['id', 'name', 'platform_type', 'url', 'notes', 'active', 'created_at', 'updated_at'],
+  // connector_config/last_scanned_at/last_scan_found_count (ebay-scanning
+  // feature, T1) were added via a later ALTER_STATEMENTS phase, so DuckDB
+  // reports them after the original CREATE TABLE's columns, not interleaved.
+  sources: [
+    'id',
+    'name',
+    'platform_type',
+    'url',
+    'notes',
+    'active',
+    'created_at',
+    'updated_at',
+    'connector_config',
+    'last_scanned_at',
+    'last_scan_found_count',
+  ],
+  // external_source/external_item_id (ebay-scanning feature, T1) were
+  // likewise added via ALTER_STATEMENTS, appended after the original columns.
   listings: [
     'id',
     'source_id',
@@ -56,6 +74,8 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'photo_paths',
     'created_at',
     'updated_at',
+    'external_source',
+    'external_item_id',
   ],
   expected_parts: [
     'id',
@@ -147,8 +167,160 @@ describe('migrations create every table with the correct columns', () => {
       ),
     ).rejects.toThrow();
   });
+
+  it('adds the 5 ebay-scanning columns with the correct type and nullability (ALTER_STATEMENTS)', async () => {
+    const connection = await getConnection();
+    // Transcribed independently of schema.ts (VARCHAR/TIMESTAMP/INTEGER, all
+    // nullable — none of the ALTER_STATEMENTS columns carry NOT NULL) so
+    // this catches a type or nullability regression that the column-name-only
+    // test above cannot: that test only reads column_name, never data_type
+    // or is_nullable.
+    const reader = await connection.runAndReadAll(
+      `SELECT table_name, column_name, data_type, is_nullable
+       FROM information_schema.columns
+       WHERE (table_name = 'sources' AND column_name IN ('connector_config', 'last_scanned_at', 'last_scan_found_count'))
+          OR (table_name = 'listings' AND column_name IN ('external_source', 'external_item_id'))
+       ORDER BY table_name, column_name`,
+    );
+    expect(reader.getRowObjectsJson()).toEqual([
+      { table_name: 'listings', column_name: 'external_item_id', data_type: 'VARCHAR', is_nullable: 'YES' },
+      { table_name: 'listings', column_name: 'external_source', data_type: 'VARCHAR', is_nullable: 'YES' },
+      { table_name: 'sources', column_name: 'connector_config', data_type: 'VARCHAR', is_nullable: 'YES' },
+      { table_name: 'sources', column_name: 'last_scan_found_count', data_type: 'INTEGER', is_nullable: 'YES' },
+      { table_name: 'sources', column_name: 'last_scanned_at', data_type: 'TIMESTAMP', is_nullable: 'YES' },
+    ]);
+  });
 });
 
+// T1 proof: migrate.ts documents that running every DDL statement again on
+// every server boot is safe. Nothing before this exercised a second run —
+// the suite's single getConnection() call in beforeAll only ever runs
+// migrations once per process.
+describe('migrations are idempotent', () => {
+  it('running every DDL statement a second time on the same connection does not throw and preserves existing data', async () => {
+    const connection = await getConnection();
+    // Row inserted before the second run: a destructive re-run (e.g. a
+    // stray CREATE TABLE without IF NOT EXISTS dropping and recreating the
+    // table) would lose this row even if no statement actually threw.
+    const source = await db.createSource({
+      name: 'idempotency check',
+      platformType: 'other',
+      url: null,
+      notes: null,
+    });
+
+    await expect(runMigrations(connection)).resolves.not.toThrow();
+
+    const reader = await connection.runAndReadAll(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'sources' ORDER BY ordinal_position`,
+    );
+    expect(reader.getRowObjectsJson().map((row) => row.column_name)).toEqual(EXPECTED_COLUMNS.sources);
+
+    const stillThere = await db.getSourceById(source.id);
+    expect(stillThere?.id).toBe(source.id);
+  });
+});
+
+// T1 proof (Req 3): the UNIQUE index on listings(source_id, external_item_id)
+// is what makes "re-running the same scan never creates a second Listing
+// for the same eBay item" true at the database layer, independent of
+// whatever de-dup check the scan service (T6) performs first.
+describe('UNIQUE index on listings(source_id, external_item_id) de-dupes eBay-scanned listings', () => {
+  it('allows multiple NULL external_item_id rows for the same Source (manually-entered listings)', async () => {
+    const source = await db.createSource({
+      name: 'Local FB group',
+      platformType: 'facebook_marketplace',
+      url: null,
+      notes: null,
+    });
+    const first = await db.createListing({
+      sourceId: source.id,
+      title: 'Manual listing 1',
+      description: null,
+      listingUrl: null,
+      askingPrice: 10,
+      listingDate: '2024-05-01',
+      acquisitionFees: 0,
+      photoPaths: [],
+    });
+    const second = await db.createListing({
+      sourceId: source.id,
+      title: 'Manual listing 2',
+      description: null,
+      listingUrl: null,
+      askingPrice: 20,
+      listingDate: '2024-05-02',
+      acquisitionFees: 0,
+      photoPaths: [],
+    });
+    expect(first.externalItemId).toBeNull();
+    expect(second.externalItemId).toBeNull();
+    expect(first.id).not.toBe(second.id);
+  });
+
+  it('rejects a second Listing with the same (source_id, external_item_id) — re-running a scan never double-creates (Req 3)', async () => {
+    const source = await db.createSource({ name: 'eBay search', platformType: 'ebay', url: null, notes: null });
+    await db.createListing({
+      sourceId: source.id,
+      title: 'eBay item v123',
+      description: null,
+      listingUrl: null,
+      askingPrice: 30,
+      listingDate: '2024-05-03',
+      acquisitionFees: 0,
+      photoPaths: [],
+      externalSource: 'ebay',
+      externalItemId: 'v1|123456789012',
+    });
+
+    // Second insert, same Source + same eBay item id — only the UNIQUE
+    // index stands between this and a duplicate scan-created Listing.
+    await expect(
+      db.createListing({
+        sourceId: source.id,
+        title: 'eBay item v123 (duplicate scan insert)',
+        description: null,
+        listingUrl: null,
+        askingPrice: 30,
+        listingDate: '2024-05-03',
+        acquisitionFees: 0,
+        photoPaths: [],
+        externalSource: 'ebay',
+        externalItemId: 'v1|123456789012',
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('allows the same external_item_id across two different Sources (the index is composite, not external_item_id alone)', async () => {
+    const sourceA = await db.createSource({ name: 'eBay search A', platformType: 'ebay', url: null, notes: null });
+    const sourceB = await db.createSource({ name: 'eBay search B', platformType: 'ebay', url: null, notes: null });
+    const listingA = await db.createListing({
+      sourceId: sourceA.id,
+      title: 'item from search A',
+      description: null,
+      listingUrl: null,
+      askingPrice: 30,
+      listingDate: '2024-05-04',
+      acquisitionFees: 0,
+      photoPaths: [],
+      externalSource: 'ebay',
+      externalItemId: 'v1|shared-item',
+    });
+    const listingB = await db.createListing({
+      sourceId: sourceB.id,
+      title: 'item from search B',
+      description: null,
+      listingUrl: null,
+      askingPrice: 30,
+      listingDate: '2024-05-04',
+      acquisitionFees: 0,
+      photoPaths: [],
+      externalSource: 'ebay',
+      externalItemId: 'v1|shared-item',
+    });
+    expect(listingA.id).not.toBe(listingB.id);
+  });
+});
 describe('query functions round-trip data through the full lifecycle', () => {
   it('createSource/getSourceById/listSources/updateSource round-trip', async () => {
     const source = await db.createSource({

@@ -44,6 +44,10 @@ export interface Listing {
   acquisitionFees: number;
   /** Local-disk paths to uploaded photos (assumption A4), relative to data/. */
   photoPaths: string[];
+  /** Connector that created this Listing via automated scan (e.g. 'ebay'), null for manually-entered Listings. */
+  externalSource: string | null;
+  /** Marketplace-native item id, used with externalSource to dedupe re-scans against already-ingested Listings. */
+  externalItemId: string | null;
   createdAt: string;
   updatedAt: string;
 }

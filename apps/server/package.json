@@ -6,9 +6,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
+    "start": "node --env-file-if-exists=.env dist/index.js",
     "lint": "eslint .",
     "test": "vitest run"
   },
@@ -18,10 +18,12 @@
     "@fastify/multipart": "^9.0.3",
     "@pc-parts-flipper/shared": "*",
     "fastify": "^5.2.0",
+    "node-cron": "^4.6.0",
     "pino": "^10.4.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "@types/node-cron": "^3.0.11",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^3.2.7"

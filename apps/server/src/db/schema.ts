@@ -131,7 +131,25 @@ export const TABLE_STATEMENTS: readonly string[] = [
   )`,
 ];
 
-// -- Phase 3: indexes ------------------------------------------------------
+// -- Phase 3: alters ---------------------------------------------------
+// Columns the ebay-scanning feature adds on top of the original schema:
+// a per-source connector_config (JSON-encoded EbayConnectorConfig, see
+// packages/shared/src/connectors.ts) driving what each source's scheduled
+// eBay scan searches for, last_scanned_at/last_scan_found_count so the UI
+// can show scan recency and yield, and external_source/external_item_id on
+// listings so an eBay-sourced listing can be deduped against a listing a
+// user already entered manually from the same eBay item. Uses
+// ADD COLUMN IF NOT EXISTS so this phase is safe to re-run on every boot,
+// same as the table/index phases above.
+export const ALTER_STATEMENTS: readonly string[] = [
+  `ALTER TABLE sources ADD COLUMN IF NOT EXISTS connector_config VARCHAR`,
+  `ALTER TABLE sources ADD COLUMN IF NOT EXISTS last_scanned_at TIMESTAMP`,
+  `ALTER TABLE sources ADD COLUMN IF NOT EXISTS last_scan_found_count INTEGER`,
+  `ALTER TABLE listings ADD COLUMN IF NOT EXISTS external_source VARCHAR`,
+  `ALTER TABLE listings ADD COLUMN IF NOT EXISTS external_item_id VARCHAR`,
+];
+
+// -- Phase 4: indexes ------------------------------------------------------
 // Supports the filtered/paginated queue and dashboard screens (Req 10-12)
 // without a full table scan per request. Deliberately NOT indexed: the
 // `status` columns on listings/purchases/parts. DuckDB rejects an UPDATE of
@@ -140,6 +158,10 @@ export const TABLE_STATEMENTS: readonly string[] = [
 // referenced ... different table") — and status is exactly the column every
 // lifecycle transition (Req 4-7) updates on these three parent tables. The
 // columns below are safe because nothing ever updates them after insert.
+// The unique index on listings(source_id, external_item_id) de-dupes
+// eBay-scanned listings per source; DuckDB treats multiple NULLs as
+// distinct (standard SQL semantics), so manually-entered listings, which
+// always have a NULL external_item_id, are unaffected by this constraint.
 export const INDEX_STATEMENTS: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS idx_listings_source_id ON listings(source_id)`,
   `CREATE INDEX IF NOT EXISTS idx_expected_parts_listing_id ON expected_parts(listing_id)`,
@@ -148,4 +170,5 @@ export const INDEX_STATEMENTS: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS idx_parts_purchase_id ON parts(purchase_id)`,
   `CREATE INDEX IF NOT EXISTS idx_sale_listings_part_id ON sale_listings(part_id)`,
   `CREATE INDEX IF NOT EXISTS idx_sales_part_id ON sales(part_id)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_listings_source_external_item ON listings(source_id, external_item_id)`,
 ];

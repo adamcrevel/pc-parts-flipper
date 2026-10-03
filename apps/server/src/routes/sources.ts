@@ -12,53 +12,10 @@ import type {
   RawServerBase,
   RawServerDefault,
 } from 'fastify';
-import type { CreateSourceInput, PlatformType } from '@pc-parts-flipper/shared';
 import { createSource, getSourceById, listSources, updateSource } from '../db/index.js';
 import { AppError } from '../error-handler.js';
 import { logger } from '../logger.js';
-
-// The only values DuckDB's platform_type ENUM column accepts; mirrors
-// apps/server/src/db/types.ts's PlatformType union.
-const VALID_PLATFORM_TYPES: readonly PlatformType[] = ['ebay', 'facebook_marketplace', 'other'];
-
-// Loosely-typed shape of an incoming create/update request body — fields are
-// `unknown` until validateSourceInput below confirms their type, since the
-// body is untrusted request input.
-interface SourceRequestBody {
-  name?: unknown;
-  platformType?: unknown;
-  url?: unknown;
-  notes?: unknown;
-}
-
-/**
- * Validates and normalizes a create/update request body, throwing an
- * AppError(400) with a field-level message on the first blank required
- * field (Requirement 13: "reject save on blank required fields ... with
- * inline error"). Returns the normalized input ready to pass to the db layer.
- */
-function validateSourceInput(body: SourceRequestBody): CreateSourceInput {
-  const name = typeof body.name === 'string' ? body.name.trim() : '';
-  if (name.length === 0) {
-    throw new AppError('name is required', 400);
-  }
-
-  // Guard against non-string/garbage values before the union-membership check below.
-  const platformTypeRaw = typeof body.platformType === 'string' ? body.platformType : '';
-  if (!VALID_PLATFORM_TYPES.includes(platformTypeRaw as PlatformType)) {
-    throw new AppError('platformType is required and must be one of: ebay, facebook_marketplace, other', 400);
-  }
-
-  const url = typeof body.url === 'string' ? body.url.trim() : '';
-  if (url.length === 0) {
-    throw new AppError('url is required', 400);
-  }
-
-  // notes is optional — blank/missing normalizes to null rather than an empty string.
-  const notes = typeof body.notes === 'string' && body.notes.trim().length > 0 ? body.notes.trim() : null;
-
-  return { name, platformType: platformTypeRaw as PlatformType, url, notes };
-}
+import { validateSourceInput, type SourceRequestBody } from './sourceValidation.js';
 
 /**
  * Registers all `/api/sources` routes on the given Fastify instance. Called

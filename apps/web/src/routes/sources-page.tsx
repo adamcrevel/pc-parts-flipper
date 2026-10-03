@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { ErrorBanner } from '@/components/error-banner';
 import { ApiError } from '@/lib/api-client';
-import { createSource, deactivateSource, fetchSources, updateSource } from '@/features/sources/sources-api';
+import { createSource, deactivateSource, fetchSources, scanSource, updateSource } from '@/features/sources/sources-api';
 import { SourceForm } from '@/features/sources/source-form';
 import { SourceList } from '@/features/sources/source-list';
 
@@ -22,6 +22,11 @@ export function SourcesPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(true);
   const [panel, setPanel] = useState<PanelState>({ mode: 'list' });
+  // Tracks the Source mid-scan (Req 7/T9) and any error from that scan,
+  // the same way listings-queue-page.tsx tracks pendingListingId/actionError
+  // for its own accept/reject mutations.
+  const [scanningSourceId, setScanningSourceId] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const loadSources = useCallback(async (includeInactive: boolean) => {
     setLoadError(null);
@@ -60,6 +65,19 @@ export function SourcesPage() {
     await loadSources(showInactive);
   }
 
+  async function handleScan(source: Source) {
+    setScanError(null);
+    setScanningSourceId(source.id);
+    try {
+      await scanSource(source.id);
+      await loadSources(showInactive);
+    } catch (err) {
+      setScanError(err instanceof ApiError ? err.message : 'Failed to scan source.');
+    } finally {
+      setScanningSourceId(null);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -86,9 +104,16 @@ export function SourcesPage() {
         </CardHeader>
         <CardContent>
           {loadError && <ErrorBanner message={loadError} />}
+          {scanError && <ErrorBanner message={scanError} />}
           {!loadError && sources === null && <LoadingSpinner />}
           {!loadError && sources !== null && (
-            <SourceList sources={sources} onEdit={(source) => setPanel({ mode: 'edit', source })} onDeactivate={handleDeactivate} />
+            <SourceList
+              sources={sources}
+              onEdit={(source) => setPanel({ mode: 'edit', source })}
+              onDeactivate={handleDeactivate}
+              onScan={handleScan}
+              scanningSourceId={scanningSourceId}
+            />
           )}
         </CardContent>
       </Card>

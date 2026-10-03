@@ -3,6 +3,14 @@ import type { CreateSourceInput, PlatformType, Source } from '@pc-parts-flipper/
 import { Button } from '@/components/ui/button';
 import { ErrorBanner } from '@/components/error-banner';
 import { ApiError } from '@/lib/api-client';
+import {
+  buildEbayConnectorConfig,
+  ConnectorConfigEditor,
+  initialConnectorConfigDraft,
+  validateConnectorConfig,
+  type ConnectorConfigDraft,
+  type ConnectorConfigFieldErrors,
+} from '@/features/sources/connector-config-editor';
 
 // Platform options the <select> below renders, paired with the labels
 // source-row.tsx uses for display — kept in sync by hand since there are
@@ -16,11 +24,13 @@ const PLATFORM_OPTIONS: Array<{ value: PlatformType; label: string }> = [
 // Field-level validation messages, keyed by the field they apply to. Mirrors
 // the backend's own blank-field checks (apps/server/src/routes/sources.ts)
 // so the inline error appears without waiting on a round trip whenever
-// possible, while the backend remains the source of truth.
+// possible, while the backend remains the source of truth. `connectorConfig`
+// is only populated when platformType is 'ebay' (Requirement 1).
 interface FieldErrors {
   name?: string;
   platformType?: string;
   url?: string;
+  connectorConfig?: ConnectorConfigFieldErrors;
 }
 
 interface SourceFormProps {
@@ -31,8 +41,10 @@ interface SourceFormProps {
 
 // Validates the three required fields client-side, returning per-field
 // messages for any left blank (Requirement 13: reject save on blank
-// required fields with inline error).
-function validate(name: string, platformType: string, url: string): FieldErrors {
+// required fields with inline error). For platformType 'ebay', also runs
+// the connector-config draft through validateConnectorConfig, since this
+// form treats "eBay source" as requiring at least one search query to save.
+function validate(name: string, platformType: string, url: string, connectorDraft: ConnectorConfigDraft): FieldErrors {
   const errors: FieldErrors = {};
   if (name.trim().length === 0) {
     errors.name = 'Name is required.';
@@ -42,6 +54,12 @@ function validate(name: string, platformType: string, url: string): FieldErrors 
   }
   if (url.trim().length === 0) {
     errors.url = 'URL is required.';
+  }
+  if (platformType === 'ebay') {
+    const connectorErrors = validateConnectorConfig(connectorDraft.queries, connectorDraft.maxPrice);
+    if (Object.keys(connectorErrors).length > 0) {
+      errors.connectorConfig = connectorErrors;
+    }
   }
   return errors;
 }
@@ -55,22 +73,35 @@ export function SourceForm({ initialValue, onSubmit, onCancel }: SourceFormProps
   const [platformType, setPlatformType] = useState<PlatformType | ''>(initialValue?.platformType ?? '');
   const [url, setUrl] = useState(initialValue?.url ?? '');
   const [notes, setNotes] = useState(initialValue?.notes ?? '');
+  const [connectorDraft, setConnectorDraft] = useState<ConnectorConfigDraft>(() => initialConnectorConfigDraft(initialValue));
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const errors = validate(name, platformType, url);
+    const errors = validate(name, platformType, url, connectorDraft);
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) {
       return;
     }
 
+    // Only an eBay Source carries a connectorConfig — every other
+    // platformType omits the field entirely (the server treats "no
+    // automated scan configured" as the field being absent/null).
+    const connectorConfig =
+      platformType === 'ebay' ? buildEbayConnectorConfig(connectorDraft.queries, connectorDraft.maxPrice) : undefined;
+
     setSubmitError(null);
     setIsSubmitting(true);
     try {
-      await onSubmit({ name: name.trim(), platformType: platformType as PlatformType, url: url.trim(), notes: notes.trim() || null });
+      await onSubmit({
+        name: name.trim(),
+        platformType: platformType as PlatformType,
+        url: url.trim(),
+        notes: notes.trim() || null,
+        connectorConfig,
+      });
     } catch (err) {
       setSubmitError(err instanceof ApiError ? err.message : 'Failed to save source.');
     } finally {
@@ -112,6 +143,10 @@ export function SourceForm({ initialValue, onSubmit, onCancel }: SourceFormProps
         </select>
         {fieldErrors.platformType && <p className="text-sm text-destructive">{fieldErrors.platformType}</p>}
       </div>
+
+      {platformType === 'ebay' && (
+        <ConnectorConfigEditor draft={connectorDraft} errors={fieldErrors.connectorConfig ?? {}} onChange={setConnectorDraft} />
+      )}
 
       <div className="space-y-1">
         <label htmlFor="source-url" className="text-sm font-medium">

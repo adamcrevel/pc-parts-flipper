@@ -2,6 +2,13 @@ interface ListingComparisonSummaryProps {
   totalExpectedResaleValue: number;
   totalCost: number;
   difference: number;
+  // Req 10: count of Expected Parts currently on the Listing (editable
+  // rows pre-save, or the saved ListingDetail's array once loaded). Zero
+  // means the $ comparison below is comparing a sum of nothing against
+  // the asking price, which is misleading rather than informative, so a
+  // warning replaces it instead — applies to every Listing with no
+  // Expected Parts yet, not only scan-created ones.
+  expectedPartsCount: number;
 }
 
 /**
@@ -11,7 +18,20 @@ interface ListingComparisonSummaryProps {
  * component's own cyclomatic complexity (one of the things feature-reviewer
  * checks) low — the two ternaries below live here instead.
  */
-export function ListingComparisonSummary({ totalExpectedResaleValue, totalCost, difference }: ListingComparisonSummaryProps) {
+export function ListingComparisonSummary({
+  totalExpectedResaleValue,
+  totalCost,
+  difference,
+  expectedPartsCount,
+}: ListingComparisonSummaryProps) {
+  if (expectedPartsCount === 0) {
+    return (
+      <div role="alert" className="rounded-md border border-amber-600/50 bg-amber-600/10 p-3 text-sm text-amber-800">
+        No Expected Parts recorded yet — add them before accepting
+      </div>
+    );
+  }
+
   const isProfit = difference >= 0;
   return (
     <div className="rounded-md border border-border bg-muted/50 p-3 text-sm">

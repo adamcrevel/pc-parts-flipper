@@ -3,6 +3,7 @@ import type { CreateListingInput, ExpectedPartInput, ListingDetail, Source } fro
 import { Button } from '@/components/ui/button';
 import { ErrorBanner } from '@/components/error-banner';
 import { ApiError } from '@/lib/api-client';
+import { EbayScanBadge } from '@/features/listings/ebay-scan-badge';
 import { ExpectedPartsEditor, type ExpectedPartRow, type ExpectedPartRowErrors } from '@/features/listings/expected-parts-editor';
 import { ListingComparisonSummary } from '@/features/listings/listing-comparison-summary';
 import { ListingFields } from '@/features/listings/listing-fields';
@@ -51,6 +52,11 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
   const totalExpectedResaleValue = rows.reduce((sum, row) => sum + (Number(row.estimatedResaleValue) || 0), 0);
   const totalCost = (Number(fields.askingPrice) || 0) + (Number(fields.acquisitionFees) || 0);
   const difference = totalExpectedResaleValue - totalCost;
+  // Req 10: rows.length is never 0 — the editor always seeds one blank draft
+  // row (emptyExpectedPartRow) so there's something to type into — so the
+  // comparison summary's "no Expected Parts" warning counts only rows with
+  // actual data entered, not the blank placeholder row itself.
+  const filledExpectedPartsCount = rows.filter((row) => row.description.trim() !== '' || row.estimatedResaleValue.trim() !== '').length;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -97,6 +103,10 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-border p-4">
+      {initialValue?.externalItemId !== null && initialValue?.externalItemId !== undefined && (
+        <EbayScanBadge listingUrl={initialValue.listingUrl} />
+      )}
+
       <ListingFields
         sources={sources}
         title={fields.title}
@@ -118,7 +128,12 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
 
       <ExpectedPartsEditor rows={rows} rowErrors={rowErrors} onChange={setRows} />
 
-      <ListingComparisonSummary totalExpectedResaleValue={totalExpectedResaleValue} totalCost={totalCost} difference={difference} />
+      <ListingComparisonSummary
+        totalExpectedResaleValue={totalExpectedResaleValue}
+        totalCost={totalCost}
+        difference={difference}
+        expectedPartsCount={filledExpectedPartsCount}
+      />
 
       {saved ? (
         <PhotoUpload listingId={saved.id} photoPaths={saved.photoPaths} onUploaded={handlePhotosUploaded} />

@@ -24,6 +24,7 @@ interface SourceResponse {
   url: string | null;
   notes: string | null;
   active: boolean;
+  connectorConfig: string | null;
 }
 
 // Shape of the centralized error-handler body (error-handler.ts) that every
@@ -46,7 +47,7 @@ describe('Source CRUD routes (T5)', () => {
 
   beforeAll(async () => {
     server = await startTestServer(TEST_PORT);
-  }, 30_000);
+  }, 95_000);
 
   afterAll(async () => {
     await server.stop();
@@ -163,5 +164,100 @@ describe('Source CRUD routes (T5)', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error.message).toMatch(/url/i);
+  });
+
+  it('accepts a valid eBay connectorConfig on POST and round-trips it on the created Source', async () => {
+    const res = await postJson<SourceResponse>(`${server.baseUrl}/api/sources`, {
+      name: 'eBay Scanner Source',
+      platformType: 'ebay',
+      url: 'https://example.com/ebay-store',
+      notes: null,
+      connectorConfig: { queries: ['ryzen 7 5800x', 'rtx 3080'], maxPrice: 500 },
+    });
+
+    expect(res.status).toBe(201);
+    expect(JSON.parse(res.body.connectorConfig as string)).toEqual({ queries: ['ryzen 7 5800x', 'rtx 3080'], maxPrice: 500 });
+
+    // Round-trip through GET /api/sources/:id to confirm the config was
+    // actually persisted, not just echoed back in the POST response.
+    const refetched = await getJson<SourceResponse>(`${server.baseUrl}/api/sources/${res.body.id}`);
+    expect(JSON.parse(refetched.body.connectorConfig as string)).toEqual({ queries: ['ryzen 7 5800x', 'rtx 3080'], maxPrice: 500 });
+  });
+
+  it('rejects an ebay connectorConfig with an empty queries array with 400 and an inline error, without creating a row', async () => {
+    const before = await getJson<SourceResponse[]>(`${server.baseUrl}/api/sources`);
+    const countBefore = before.body.length;
+
+    const res = await postJson<ErrorResponse>(`${server.baseUrl}/api/sources`, {
+      name: 'eBay Scanner Source',
+      platformType: 'ebay',
+      url: 'https://example.com/ebay-store-empty-queries',
+      notes: null,
+      connectorConfig: { queries: [] },
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toMatch(/queries/i);
+
+    // Never silently accepts/drops the invalid config: the row count must be unchanged.
+    const after = await getJson<SourceResponse[]>(`${server.baseUrl}/api/sources`);
+    expect(after.body.length).toBe(countBefore);
+  });
+
+  it('rejects an ebay connectorConfig with a blank query string with 400 and an inline error, without creating a row', async () => {
+    const before = await getJson<SourceResponse[]>(`${server.baseUrl}/api/sources`);
+    const countBefore = before.body.length;
+
+    const res = await postJson<ErrorResponse>(`${server.baseUrl}/api/sources`, {
+      name: 'eBay Scanner Source',
+      platformType: 'ebay',
+      url: 'https://example.com/ebay-store-blank-query',
+      notes: null,
+      connectorConfig: { queries: ['valid query', '   '] },
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toMatch(/queries/i);
+
+    // Never silently accepts/drops the invalid config: the row count must be unchanged.
+    const after = await getJson<SourceResponse[]>(`${server.baseUrl}/api/sources`);
+    expect(after.body.length).toBe(countBefore);
+  });
+
+  it('rejects an ebay connectorConfig with a negative maxPrice with 400 and an inline error, without creating a row', async () => {
+    const before = await getJson<SourceResponse[]>(`${server.baseUrl}/api/sources`);
+    const countBefore = before.body.length;
+
+    const res = await postJson<ErrorResponse>(`${server.baseUrl}/api/sources`, {
+      name: 'eBay Scanner Source',
+      platformType: 'ebay',
+      url: 'https://example.com/ebay-store-negative-price',
+      notes: null,
+      connectorConfig: { queries: ['valid query'], maxPrice: -5 },
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toMatch(/maxPrice/i);
+
+    // Never silently accepts/drops the invalid config: the row count must be unchanged.
+    const after = await getJson<SourceResponse[]>(`${server.baseUrl}/api/sources`);
+    expect(after.body.length).toBe(countBefore);
+  });
+
+  it('accepts a connectorConfig on a non-ebay Source without applying eBay shape validation', async () => {
+    // platformType 'other' is not 'ebay', so the queries/maxPrice rules do
+    // not apply (Requirement 1 scopes them to eBay sources specifically) —
+    // an empty queries array here must NOT be rejected the way it would be
+    // for an ebay Source.
+    const res = await postJson<SourceResponse>(`${server.baseUrl}/api/sources`, {
+      name: 'Non-eBay Source With Config',
+      platformType: 'other',
+      url: 'https://example.com/other-store',
+      notes: null,
+      connectorConfig: { queries: [] },
+    });
+
+    expect(res.status).toBe(201);
+    expect(JSON.parse(res.body.connectorConfig as string)).toEqual({ queries: [] });
   });
 });

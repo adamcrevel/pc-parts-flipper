@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>pc-parts-flipper — eBay scanning prototype</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23111827'/%3E%3Ctext x='50' y='64' font-size='54' text-anchor='middle' fill='%23ffffff' font-family='Arial, sans-serif'%3E%E2%9A%99%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // Tailwind config mirrors apps/web/tailwind.config.js exactly, so every
+  // utility class below (border-border, bg-card, text-destructive, etc.)
+  // resolves to the same colors the real app renders.
+  tailwind.config = {
+    darkMode: ['class'],
+    theme: {
+      extend: {
+        colors: {
+          border: 'hsl(var(--border))',
+          input: 'hsl(var(--input))',
+          ring: 'hsl(var(--ring))',
+          background: 'hsl(var(--background))',
+          foreground: 'hsl(var(--foreground))',
+          primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
+          secondary: { DEFAULT: 'hsl(var(--secondary))', foreground: 'hsl(var(--secondary-foreground))' },
+          destructive: { DEFAULT: 'hsl(var(--destructive))', foreground: 'hsl(var(--destructive-foreground))' },
+          muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
+          accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
+          card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
+        },
+        borderRadius: { lg: 'var(--radius)', md: 'calc(var(--radius) - 2px)', sm: 'calc(var(--radius) - 4px)' },
+      },
+    },
+  };
+</script>
+<style>
+  /* Copied verbatim from apps/web/src/index.css's :root block (shadcn
+     "slate" theme) so every CSS variable Tailwind's config references above
+     resolves to the exact same colors the real app renders. */
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+  }
+  * { border-color: hsl(var(--border)); }
+  body { background: hsl(var(--background)); color: hsl(var(--foreground)); font-family: ui-sans-serif, system-ui, sans-serif; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; border-radius:0.375rem; font-size:0.875rem; font-weight:500; transition:colors 0.15s; height:2.25rem; padding:0 1rem; }
+  .btn:disabled { pointer-events:none; opacity:0.5; }
+  .btn-default { background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  .btn-default:hover { background:hsl(var(--primary)/0.9); }
+  .btn-outline { border:1px solid hsl(var(--input)); background:hsl(var(--background)); box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  .btn-outline:hover { background:hsl(var(--accent)); color:hsl(var(--accent-foreground)); }
+  .btn-ghost:hover { background:hsl(var(--accent)); color:hsl(var(--accent-foreground)); }
+  .btn-destructive { background:hsl(var(--destructive)); color:hsl(var(--destructive-foreground)); box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  .btn-destructive:hover { background:hsl(var(--destructive)/0.9); }
+  .btn-sm { height:2rem; border-radius:0.375rem; padding:0 0.75rem; font-size:0.75rem; }
+  .card { border-radius:0.75rem; border:1px solid hsl(var(--border)); background:hsl(var(--card)); color:hsl(var(--card-foreground)); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .field-input { width:100%; border-radius:0.375rem; border:1px solid hsl(var(--input)); background:hsl(var(--background)); padding:0.375rem 0.75rem; font-size:0.875rem; }
+  .badge-secondary { border-radius:9999px; padding:0.125rem 0.5rem; font-size:0.75rem; font-weight:500; background:hsl(var(--secondary)); color:hsl(var(--secondary-foreground)); }
+  .badge-muted { border-radius:9999px; padding:0.125rem 0.5rem; font-size:0.75rem; font-weight:500; background:hsl(var(--muted)); color:hsl(var(--muted-foreground)); }
+  /* New-this-round badge: amber, distinct from the app's existing
+     secondary/muted/destructive palette, so "found via scan" reads as its
+     own signal rather than reusing the Active/Inactive status colors. */
+  .badge-ebay { border-radius:9999px; padding:0.125rem 0.5rem; font-size:0.75rem; font-weight:600; background:#fef3c7; color:#92400e; border:1px solid #fde68a; display:inline-flex; align-items:center; gap:0.25rem; }
+  .banner-destructive { border-radius:0.375rem; border:1px solid hsl(var(--destructive)/0.5); background:hsl(var(--destructive)/0.1); padding:0.75rem 1rem; font-size:0.875rem; color:hsl(var(--destructive)); }
+  .hidden { display:none !important; }
+  [data-tab-panel] { display:none; }
+  [data-tab-panel].active { display:block; }
+</style>
+</head>
+<body>
+<div class="flex min-h-screen">
+  <!-- Sidebar nav copied from root-layout.tsx: same items, same order,
+       same highlight treatment (bg-accent on the active entry). This
+       prototype only wires the two screens the plan touches. -->
+  <nav class="w-56 shrink-0 border-r p-4">
+    <h2 class="mb-4 text-lg font-bold">PC Parts Flipper</h2>
+    <ul class="space-y-1 text-sm">
+      <li><a href="#" data-nav="sources" class="nav-link block rounded-md px-3 py-2 font-medium bg-accent text-accent-foreground">Sources</a></li>
+      <li><a href="#" data-nav="listings" class="nav-link block rounded-md px-3 py-2 font-medium hover:bg-accent hover:text-accent-foreground">Listings</a></li>
+      <li><a href="#" data-nav="queue" class="nav-link block rounded-md px-3 py-2 font-medium hover:bg-accent hover:text-accent-foreground">Listings Queue</a></li>
+      <li><a href="#" class="block rounded-md px-3 py-2 font-medium text-muted-foreground opacity-60 cursor-not-allowed">Purchases</a></li>
+      <li><a href="#" class="block rounded-md px-3 py-2 font-medium text-muted-foreground opacity-60 cursor-not-allowed">Parts</a></li>
+      <li><a href="#" class="block rounded-md px-3 py-2 font-medium text-muted-foreground opacity-60 cursor-not-allowed">Sale Listings</a></li>
+      <li><a href="#" class="block rounded-md px-3 py-2 font-medium text-muted-foreground opacity-60 cursor-not-allowed">Profit Dashboard</a></li>
+    </ul>
+    <p class="mt-6 text-xs text-muted-foreground leading-relaxed">Prototype — only Sources, Listings and Listings Queue are wired. Other entries are shown for layout context only.</p>
+  </nav>
+
+  <main class="flex-1 overflow-y-auto p-6">
+
+    <!-- ================= SOURCES SCREEN (T9) ================= -->
+    <section id="screen-sources" class="space-y-4">
+      <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-semibold">Sources</h1>
+        <div class="flex items-center gap-4">
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked />
+            Show inactive
+          </label>
+          <button class="btn btn-default" id="btn-add-source">Add Source</button>
+        </div>
+      </div>
+
+      <!-- Create/edit form panel, hidden until "Add Source" / row "Edit" is clicked -->
+      <form id="source-form" class="hidden space-y-4 rounded-lg border p-4" onsubmit="return false">
+        <div class="space-y-1">
+          <label class="text-sm font-medium">Name</label>
+          <input id="sf-name" class="field-input" value="West Coast Liquidation" />
+        </div>
+        <div class="space-y-1">
+          <label class="text-sm font-medium">Platform</label>
+          <select id="sf-platform" class="field-input">
+            <option value="ebay" selected>eBay</option>
+            <option value="facebook_marketplace">Facebook Marketplace</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="space-y-1">
+          <label class="text-sm font-medium">URL</label>
+          <input id="sf-url" class="field-input" value="https://www.ebay.com/" />
+        </div>
+        <div class="space-y-1">
+          <label class="text-sm font-medium">Notes</label>
+          <textarea rows="2" class="field-input">Primary eBay sweep for GPU/CPU lots.</textarea>
+        </div>
+
+        <!-- T9: connector-config editor — shown only when platformType is ebay.
+             Mirrors expected-parts-editor.tsx's repeatable-row convention
+             (header + "Add" button, border-wrapped rows, ghost-destructive
+             Remove button) and source-form.tsx's input/label markup. -->
+        <div id="connector-config" class="space-y-3 rounded-md border border-dashed p-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-medium">eBay Connector Config</h3>
+            <button type="button" class="btn btn-outline btn-sm" id="btn-add-query">Add Query</button>
+          </div>
+          <p class="text-xs text-muted-foreground">One or more search queries run against eBay's Browse API every scan. At least one non-blank query is required.</p>
+          <div id="query-rows" class="space-y-2"></div>
+          <div class="space-y-1 pt-1">
+            <label class="text-sm font-medium" for="sf-max-price">Max Price ($) <span class="font-normal text-muted-foreground">— optional</span></label>
+            <input id="sf-max-price" type="number" step="0.01" min="0" placeholder="No limit" class="field-input max-w-[12rem]" />
+            <p id="sf-max-price-error" class="text-sm text-destructive hidden">Max price cannot be negative.</p>
+          </div>
+        </div>
+
+        <p id="source-form-error" class="text-sm text-destructive hidden"></p>
+
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-default" id="btn-save-source">Save</button>
+          <button type="button" class="btn btn-outline" id="btn-cancel-source">Cancel</button>
+        </div>
+      </form>
+
+      <div class="card">
+        <div class="flex flex-col space-y-1.5 p-6"><div class="font-semibold leading-none tracking-tight">Purchase Sources</div></div>
+        <div class="p-6 pt-0 overflow-x-auto">
+          <table class="w-full border-collapse text-left text-sm">
+            <thead>
+              <tr class="border-b text-muted-foreground">
+                <th class="px-4 py-2 font-medium">Name</th>
+                <th class="px-4 py-2 font-medium">Platform</th>
+                <th class="px-4 py-2 font-medium">Last Scanned</th>
+                <th class="px-4 py-2 font-medium">Status</th>
+                <th class="px-4 py-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody id="sources-tbody">
+              <!-- rows injected by JS below -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= LISTINGS QUEUE SCREEN (T10) ================= -->
+    <section id="screen-queue" class="space-y-4 hidden">
+      <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-semibold">Listings Queue</h1>
+      </div>
+      <div class="flex items-center gap-4">
+        <label class="flex items-center gap-2 text-sm">Status
+          <select class="rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm">
+            <option>All statuses</option>
+            <option>Open</option>
+          </select>
+        </label>
+        <label class="flex items-center gap-2 text-sm">Source
+          <select class="rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm">
+            <option>All sources</option>
+          </select>
+        </label>
+      </div>
+      <div class="card">
+        <div class="p-6 overflow-x-auto">
+          <table class="w-full border-collapse text-left text-sm">
+            <thead>
+              <tr class="border-b text-muted-foreground">
+                <th class="px-4 py-2 font-medium">Title</th>
+                <th class="px-4 py-2 font-medium">Source</th>
+                <th class="px-4 py-2 font-medium">Status</th>
+                <th class="px-4 py-2 font-medium">Asking Price</th>
+                <th class="px-4 py-2 font-medium">Expected Resale</th>
+                <th class="px-4 py-2 font-medium">Difference</th>
+                <th class="px-4 py-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody id="queue-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= LISTING DETAIL SCREEN (T10) ================= -->
+    <!-- This app has no separate detail route — editing a Listing opens the
+         same ListingForm used to create one (listings-page.tsx), which is
+         this feature's "detail view". Reached via a queue row's "Open"
+         link, matching listing-list.tsx's Edit-button-opens-form pattern. -->
+    <section id="screen-detail" class="space-y-4 hidden">
+      <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-semibold">Listing Detail</h1>
+        <button class="btn btn-outline btn-sm" id="btn-back-to-queue">&larr; Back to Queue</button>
+      </div>
+
+      <form class="space-y-4 rounded-lg border p-4" onsubmit="return false">
+        <div class="flex items-center gap-2" id="detail-badge-row">
+          <!-- "Found via eBay scan" badge injected here when applicable -->
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div class="space-y-1">
+            <label class="text-sm font-medium">Title</label>
+            <input id="detail-title" class="field-input" readonly />
+          </div>
+          <div class="space-y-1">
+            <label class="text-sm font-medium">Source</label>
+            <input id="detail-source" class="field-input" readonly />
+          </div>
+        </div>
+
+        <div class="space-y-1">
+          <label class="text-sm font-medium">Listing URL</label>
+          <input id="detail-url" class="field-input" readonly />
+        </div>
+
+        <div class="grid grid-cols-3 gap-4">
+          <div class="space-y-1">
+            <label class="text-sm font-medium">Asking Price ($)</label>
+            <input id="detail-price" type="number" class="field-input" readonly />
+          </div>
+          <div class="space-y-1">
+            <label class="text-sm font-medium">Listing Date</label>
+            <input id="detail-date" type="date" class="field-input" readonly />
+          </div>
+          <div class="space-y-1">
+            <label class="text-sm font-medium">Acquisition Fees / Shipping ($)</label>
+            <input id="detail-fees" type="number" class="field-input" readonly />
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-medium">Expected Parts</h3>
+          </div>
+          <div id="detail-parts-list"></div>
+        </div>
+
+        <!-- T10: warning banner when expectedParts.length === 0, replacing
+             the $0-comparison that would otherwise render (Req 10). -->
+        <div id="detail-no-parts-warning" class="banner-destructive hidden" role="alert">
+          No Expected Parts recorded yet — add them before accepting.
+        </div>
+
+        <!-- Existing comparison summary (listing-comparison-summary.tsx),
+             only shown once there's at least one Expected Part. -->
+        <div id="detail-comparison" class="rounded-md border bg-muted/50 p-3 text-sm hidden">
+          <p>Expected resale total: <span class="font-medium" id="detail-resale-total"></span> vs. cost (asking + fees): <span class="font-medium" id="detail-cost-total"></span></p>
+          <p class="font-medium" id="detail-diff-line"></p>
+        </div>
+      </form>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  // ---------- Seed data: mirrors the real Source/Listing shapes from
+  // packages/shared, just enough to drive this prototype's interactions. ----------
+  const sources = [
+    { id: 's1', name: 'West Coast Liquidation', platformType: 'ebay', active: true,
+      connectorConfig: { queries: ['rtx 3080 lot', 'ddr4 32gb kit'], maxPrice: 250 },
+      lastScannedAt: Date.now() - 2 * 60 * 60 * 1000, lastScanFoundCount: 3 },
+    { id: 's2', name: 'Estate Sale Finds (eBay)', platformType: 'ebay', active: true,
+      connectorConfig: null, lastScannedAt: null, lastScanFoundCount: null },
+    { id: 's3', name: 'Local Facebook Group', platformType: 'facebook_marketplace', active: true,
+      connectorConfig: null, lastScannedAt: null, lastScanFoundCount: null },
+  ];
+
+  const listings = [
+    { id: 'l1', sourceId: 's1', title: 'RTX 3080 10GB lot of 4 — as-is', status: 'open', askingPrice: 420,
+      listingUrl: 'https://www.ebay.com/itm/987654321', listingDate: '2026-10-02', acquisitionFees: 15,
+      externalItemId: '987654321', expectedParts: [] },
+    { id: 'l2', sourceId: 's1', title: 'DDR4 32GB kit bundle (6)', status: 'open', askingPrice: 180,
+      listingUrl: 'https://www.ebay.com/itm/112233445', listingDate: '2026-10-02', acquisitionFees: 8,
+      externalItemId: '112233445', expectedParts: [{ componentCategory: 'RAM', description: 'Corsair Vengeance 32GB', estimatedResaleValue: 70 }] },
+    { id: 'l3', sourceId: 's2', title: 'Dell OptiPlex teardown unit', status: 'open', askingPrice: 60,
+      listingUrl: 'https://example-estate-sale.local/listing/44', listingDate: '2026-09-29', acquisitionFees: 0,
+      externalItemId: null, expectedParts: [{ componentCategory: 'Motherboard', description: 'Dell proprietary ATX', estimatedResaleValue: 40 }] },
+  ];
+
+  const sourcesById = new Map(sources.map((s) => [s.id, s]));
+
+  function timeAgo(ms) {
+    const mins = Math.round((Date.now() - ms) / 60000);
+    if (mins < 60) return mins + 'm ago';
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return hrs + 'h ago';
+    return Math.round(hrs / 24) + 'd ago';
+  }
+
+  function comparison(listing) {
+    const totalExpectedResaleValue = listing.expectedParts.reduce((sum, p) => sum + p.estimatedResaleValue, 0);
+    const totalCost = listing.askingPrice + listing.acquisitionFees;
+    return { totalExpectedResaleValue, totalCost, difference: totalExpectedResaleValue - totalCost };
+  }
+
+  // ---------- Nav ----------
+  const screens = { sources: 'screen-sources', listings: 'screen-queue', queue: 'screen-queue' };
+  document.querySelectorAll('.nav-link').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.querySelectorAll('.nav-link').forEach((l) => l.classList.remove('bg-accent', 'text-accent-foreground'));
+      link.classList.add('bg-accent', 'text-accent-foreground');
+      const target = link.dataset.nav;
+      document.getElementById('screen-sources').classList.toggle('hidden', target !== 'sources');
+      document.getElementById('screen-queue').classList.toggle('hidden', target !== 'queue');
+      document.getElementById('screen-detail').classList.add('hidden');
+    });
+  });
+
+  // ---------- Sources table (T9: Scan now button + last-scanned display) ----------
+  function renderSources() {
+    const tbody = document.getElementById('sources-tbody');
+    tbody.innerHTML = '';
+    const platformLabels = { ebay: 'eBay', facebook_marketplace: 'Facebook Marketplace', other: 'Other' };
+    sources.forEach((source) => {
+      const tr = document.createElement('tr');
+      tr.className = 'border-b last:border-0';
+      const canScan = source.platformType === 'ebay' && source.connectorConfig !== null;
+      const lastScannedCell = source.platformType !== 'ebay'
+        ? '<span class="text-muted-foreground">—</span>'
+        : source.lastScannedAt === null
+          ? '<span class="text-muted-foreground">Never scanned</span>'
+          : `<span>Last scanned ${timeAgo(source.lastScannedAt)} — ${source.lastScanFoundCount} new</span>`;
+      tr.innerHTML = `
+        <td class="px-4 py-3 font-medium">${source.name}</td>
+        <td class="px-4 py-3">${platformLabels[source.platformType]}</td>
+        <td class="px-4 py-3 text-sm">${lastScannedCell}</td>
+        <td class="px-4 py-3"><span class="badge-secondary">${source.active ? 'Active' : 'Inactive'}</span></td>
+        <td class="px-4 py-3 text-right whitespace-nowrap">
+          ${canScan ? `<button class="btn btn-outline btn-sm scan-btn" data-id="${source.id}">Scan now</button>` : ''}
+          <button class="btn btn-ghost btn-sm edit-btn" data-id="${source.id}">Edit</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+    tbody.querySelectorAll('.scan-btn').forEach((btn) => btn.addEventListener('click', () => handleScan(btn.dataset.id, btn)));
+    tbody.querySelectorAll('.edit-btn').forEach((btn) => btn.addEventListener('click', () => openSourceForm(sourcesById.get(btn.dataset.id))));
+  }
+
+  // Simulates POST /api/sources/:id/scan (T7): disables the button, "finds"
+  // a plausible count of new listings, then updates lastScannedAt/Count —
+  // exactly the fields Requirement 5 says must always update, even on a
+  // zero-result scan.
+  function handleScan(id, btn) {
+    const source = sourcesById.get(id);
+    btn.disabled = true;
+    btn.textContent = 'Scanning…';
+    setTimeout(() => {
+      const found = Math.floor(Math.random() * 3);
+      source.lastScannedAt = Date.now();
+      source.lastScanFoundCount = found;
+      renderSources();
+    }, 700);
+  }
+
+  // ---------- Source form (T9: connector-config editor, ebay-only) ----------
+  const form = document.getElementById('source-form');
+  const connectorConfigBlock = document.getElementById('connector-config');
+  const queryRowsEl = document.getElementById('query-rows');
+  let editingSource = null;
+
+  function queryRowHtml(value) {
+    return `<div class="flex gap-2 query-row">
+      <input class="field-input query-input" value="${value.replace(/"/g, '&quot;')}" placeholder="Search query, e.g. 'rtx 3080 lot'" />
+      <button type="button" class="btn btn-ghost btn-sm text-destructive remove-query-btn">Remove</button>
+    </div>`;
+  }
+
+  function renderQueryRows(queries) {
+    queryRowsEl.innerHTML = queries.map(queryRowHtml).join('');
+    wireQueryRowRemoves();
+  }
+
+  function wireQueryRowRemoves() {
+    queryRowsEl.querySelectorAll('.remove-query-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        // Requirement 1: query list must stay non-empty — removing the last
+        // row would silently produce an invalid config, so it's blocked
+        // the same way "no silent accept" governs every other form here.
+        if (queryRowsEl.querySelectorAll('.query-row').length <= 1) return;
+        btn.closest('.query-row').remove();
+      });
+    });
+  }
+
+  document.getElementById('btn-add-query').addEventListener('click', () => {
+    queryRowsEl.insertAdjacentHTML('beforeend', queryRowHtml(''));
+    wireQueryRowRemoves();
+  });
+
+  function togglePlatformFields() {
+    const isEbay = document.getElementById('sf-platform').value === 'ebay';
+    connectorConfigBlock.classList.toggle('hidden', !isEbay);
+  }
+  document.getElementById('sf-platform').addEventListener('change', togglePlatformFields);
+
+  function openSourceForm(source) {
+    editingSource = source ?? null;
+    document.getElementById('source-form-error').classList.add('hidden');
+    document.getElementById('sf-max-price-error').classList.add('hidden');
+    document.getElementById('sf-name').value = source ? source.name : '';
+    document.getElementById('sf-platform').value = source ? source.platformType : 'ebay';
+    document.getElementById('sf-url').value = source ? (source.url ?? '') : 'https://www.ebay.com/';
+    const cfg = source && source.connectorConfig;
+    renderQueryRows(cfg ? cfg.queries : ['']);
+    document.getElementById('sf-max-price').value = cfg && cfg.maxPrice != null ? cfg.maxPrice : '';
+    togglePlatformFields();
+    form.classList.remove('hidden');
+  }
+
+  document.getElementById('btn-add-source').addEventListener('click', () => openSourceForm(null));
+  document.getElementById('btn-cancel-source').addEventListener('click', () => form.classList.add('hidden'));
+
+  document.getElementById('btn-save-source').addEventListener('click', () => {
+    const errorEl = document.getElementById('source-form-error');
+    const maxPriceErrorEl = document.getElementById('sf-max-price-error');
+    errorEl.classList.add('hidden');
+    maxPriceErrorEl.classList.add('hidden');
+
+    const platformType = document.getElementById('sf-platform').value;
+    const name = document.getElementById('sf-name').value.trim();
+    if (name.length === 0) {
+      errorEl.textContent = 'Name is required.';
+      errorEl.classList.remove('hidden');
+      return;
+    }
+
+    let connectorConfig = null;
+    if (platformType === 'ebay') {
+      const queries = Array.from(queryRowsEl.querySelectorAll('.query-input')).map((i) => i.value.trim());
+      // Requirement 1: reject inline — never silently accept or drop — an
+      // empty query list or any blank query.
+      if (queries.length === 0 || queries.some((q) => q.length === 0)) {
+        errorEl.textContent = 'Every search query must be filled in, and at least one query is required.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      const maxPriceRaw = document.getElementById('sf-max-price').value;
+      let maxPrice;
+      if (maxPriceRaw.trim().length > 0) {
+        maxPrice = Number(maxPriceRaw);
+        if (maxPrice < 0) {
+          maxPriceErrorEl.classList.remove('hidden');
+          return;
+        }
+      }
+      connectorConfig = { queries, ...(maxPrice !== undefined ? { maxPrice } : {}) };
+    }
+
+    if (editingSource) {
+      editingSource.name = name;
+      editingSource.platformType = platformType;
+      editingSource.connectorConfig = connectorConfig;
+    } else {
+      const id = 's' + (sources.length + 1);
+      const newSource = { id, name, platformType, active: true, connectorConfig, lastScannedAt: null, lastScanFoundCount: null };
+      sources.push(newSource);
+      sourcesById.set(id, newSource);
+    }
+    form.classList.add('hidden');
+    renderSources();
+  });
+
+  // ---------- Listings queue (T10: "Found via eBay scan" badge) ----------
+  function renderQueue() {
+    const tbody = document.getElementById('queue-tbody');
+    tbody.innerHTML = '';
+    listings.forEach((listing) => {
+      const cmp = comparison(listing);
+      const sourceName = sourcesById.get(listing.sourceId)?.name ?? 'Unknown source';
+      const tr = document.createElement('tr');
+      tr.className = 'border-b last:border-0';
+      const scanBadge = listing.externalItemId
+        ? `<a href="${listing.listingUrl}" target="_blank" rel="noreferrer" class="badge-ebay" title="Opens the eBay listing">⚡ Found via eBay scan</a>`
+        : '';
+      tr.innerHTML = `
+        <td class="px-4 py-3 font-medium"><div class="flex items-center gap-2 flex-wrap"><span>${listing.title}</span>${scanBadge}</div></td>
+        <td class="px-4 py-3">${sourceName}</td>
+        <td class="px-4 py-3 capitalize">${listing.status}</td>
+        <td class="px-4 py-3">$${listing.askingPrice.toFixed(2)}</td>
+        <td class="px-4 py-3">$${cmp.totalExpectedResaleValue.toFixed(2)}</td>
+        <td class="px-4 py-3 font-medium ${cmp.difference >= 0 ? 'text-emerald-600' : 'text-destructive'}">$${cmp.difference.toFixed(2)}</td>
+        <td class="px-4 py-3 text-right whitespace-nowrap">
+          <button class="btn btn-outline btn-sm open-detail-btn" data-id="${listing.id}">Open</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+    tbody.querySelectorAll('.open-detail-btn').forEach((btn) => btn.addEventListener('click', () => openDetail(btn.dataset.id)));
+  }
+
+  // ---------- Listing detail (T10: badge + zero-Expected-Parts warning) ----------
+  function openDetail(id) {
+    const listing = listings.find((l) => l.id === id);
+    document.getElementById('screen-sources').classList.add('hidden');
+    document.getElementById('screen-queue').classList.add('hidden');
+    document.getElementById('screen-detail').classList.remove('hidden');
+
+    const badgeRow = document.getElementById('detail-badge-row');
+    badgeRow.innerHTML = listing.externalItemId
+      ? `<a href="${listing.listingUrl}" target="_blank" rel="noreferrer" class="badge-ebay" title="Opens the eBay listing">⚡ Found via eBay scan — item ${listing.externalItemId}</a>`
+      : '';
+
+    document.getElementById('detail-title').value = listing.title;
+    document.getElementById('detail-source').value = sourcesById.get(listing.sourceId)?.name ?? 'Unknown source';
+    document.getElementById('detail-url').value = listing.listingUrl;
+    document.getElementById('detail-price').value = listing.askingPrice;
+    document.getElementById('detail-date').value = listing.listingDate;
+    document.getElementById('detail-fees').value = listing.acquisitionFees;
+
+    const partsList = document.getElementById('detail-parts-list');
+    if (listing.expectedParts.length === 0) {
+      partsList.innerHTML = '<p class="text-sm text-muted-foreground">No expected parts yet.</p>';
+    } else {
+      partsList.innerHTML = '<div class="space-y-2">' + listing.expectedParts.map((p) =>
+        `<div class="grid grid-cols-[1fr_2fr_1fr] gap-2 rounded-md border p-2 text-sm">
+           <span>${p.componentCategory}</span><span>${p.description}</span><span>$${p.estimatedResaleValue.toFixed(2)}</span>
+         </div>`).join('') + '</div>';
+    }
+
+    const warning = document.getElementById('detail-no-parts-warning');
+    const cmpBlock = document.getElementById('detail-comparison');
+    if (listing.expectedParts.length === 0) {
+      warning.classList.remove('hidden');
+      cmpBlock.classList.add('hidden');
+    } else {
+      warning.classList.add('hidden');
+      cmpBlock.classList.remove('hidden');
+      const cmp = comparison(listing);
+      document.getElementById('detail-resale-total').textContent = '$' + cmp.totalExpectedResaleValue.toFixed(2);
+      document.getElementById('detail-cost-total').textContent = '$' + cmp.totalCost.toFixed(2);
+      const diffLine = document.getElementById('detail-diff-line');
+      const isProfit = cmp.difference >= 0;
+      diffLine.textContent = (isProfit ? 'Projected profit' : 'Projected loss') + ': $' + Math.abs(cmp.difference).toFixed(2);
+      diffLine.className = 'font-medium ' + (isProfit ? 'text-emerald-600' : 'text-destructive');
+    }
+  }
+
+  document.getElementById('btn-back-to-queue').addEventListener('click', () => {
+    document.getElementById('screen-detail').classList.add('hidden');
+    document.getElementById('screen-queue').classList.remove('hidden');
+  });
+
+  renderSources();
+  renderQueue();
+</script>
+</body>
+</html>

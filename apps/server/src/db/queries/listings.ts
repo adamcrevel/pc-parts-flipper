@@ -15,6 +15,10 @@ export interface CreateListingInput {
   listingDate: string;
   acquisitionFees: number;
   photoPaths: string[];
+  /** Marketplace this Listing was auto-imported from by an eBay scan (Req 3); omitted/undefined defaults to null for manually-entered Listings. */
+  externalSource?: string | null;
+  /** The marketplace's own item id for this Listing (Req 3); omitted/undefined defaults to null for manually-entered Listings. */
+  externalItemId?: string | null;
 }
 
 /** Fields that may be edited on an existing Listing; omitted keys are left unchanged. */
@@ -52,6 +56,8 @@ function mapRow(row: Record<string, unknown>): Listing {
     status: row.status as ListingStatus,
     acquisitionFees: toNumber(row.acquisition_fees as string),
     photoPaths: JSON.parse(row.photo_paths as string) as string[],
+    externalSource: row.external_source as string | null,
+    externalItemId: row.external_item_id as string | null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -63,10 +69,10 @@ export async function createListing(input: CreateListingInput): Promise<Listing>
   const reader = await connection.runAndReadAll(
     `INSERT INTO listings
        (id, source_id, title, description, listing_url, asking_price, listing_date,
-        acquisition_fees, photo_paths)
+        acquisition_fees, photo_paths, external_source, external_item_id)
      VALUES
        ($id, $source_id, $title, $description, $listing_url, $asking_price, $listing_date,
-        $acquisition_fees, $photo_paths)
+        $acquisition_fees, $photo_paths, $external_source, $external_item_id)
      RETURNING *`,
     {
       id: newId(),
@@ -78,6 +84,8 @@ export async function createListing(input: CreateListingInput): Promise<Listing>
       listing_date: input.listingDate,
       acquisition_fees: input.acquisitionFees,
       photo_paths: JSON.stringify(input.photoPaths),
+      external_source: input.externalSource ?? null,
+      external_item_id: input.externalItemId ?? null,
     },
   );
   return mapRow(reader.getRowObjectsJson()[0]);
@@ -87,6 +95,23 @@ export async function createListing(input: CreateListingInput): Promise<Listing>
 export async function getListingById(id: string): Promise<Listing | null> {
   const connection = await getConnection();
   const reader = await connection.runAndReadAll(`SELECT * FROM listings WHERE id = $id`, { id });
+  const rows = reader.getRowObjectsJson();
+  return rows.length > 0 ? mapRow(rows[0]) : null;
+}
+
+/**
+ * Fetches the Listing already imported from a given Source for a given
+ * external marketplace item id, or null if none exists yet. Used by the
+ * eBay scan service (Req 3) to skip candidates it has already imported as
+ * Listings on a prior scan of the same Source, so re-running a scan never
+ * creates duplicate Listings for the same eBay item.
+ */
+export async function findListingByExternalId(sourceId: string, externalItemId: string): Promise<Listing | null> {
+  const connection = await getConnection();
+  const reader = await connection.runAndReadAll(
+    `SELECT * FROM listings WHERE source_id = $source_id AND external_item_id = $external_item_id`,
+    { source_id: sourceId, external_item_id: externalItemId },
+  );
   const rows = reader.getRowObjectsJson();
   return rows.length > 0 ? mapRow(rows[0]) : null;
 }
