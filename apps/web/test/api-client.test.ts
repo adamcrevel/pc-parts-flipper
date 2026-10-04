@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiClient, ApiError } from '../src/lib/api-client';
+import { apiClient, ApiError, buildPhotoUrl } from '../src/lib/api-client';
 
 // Proves api-client.ts's error path (T4): a non-2xx response from the
 // backend must reject with an ApiError carrying the HTTP status and a
@@ -64,5 +64,20 @@ describe('apiClient error path', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(apiClient.get('/api/sources/1')).resolves.toEqual({ id: '1', name: 'eBay' });
+  });
+});
+
+// Proves buildPhotoUrl itself produces a correct, loadable URL — not just
+// that some caller invokes it. A test that derives its "expected" value by
+// calling buildPhotoUrl() a second time (as photo-upload.test.tsx's
+// component-level assertions do) would stay green even if the `/` join
+// were dropped (e.g. producing `http://localhost:3001photos/x.jpg`), since
+// both sides of such an assertion are equally broken. This test instead
+// compares against a literal string, independent of the function under
+// test, built from this project's documented default VITE_API_BASE_URL
+// (see .env.example) which test/vite config leaves unset.
+describe('buildPhotoUrl', () => {
+  it('joins the default API base URL and a photoPaths entry with exactly one slash', () => {
+    expect(buildPhotoUrl('photos/listing-1-aaaa.jpg')).toBe('http://localhost:3001/photos/listing-1-aaaa.jpg');
   });
 });

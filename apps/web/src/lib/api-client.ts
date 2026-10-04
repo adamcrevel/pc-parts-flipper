@@ -110,3 +110,15 @@ export const apiClient = {
   postForm: <TResponse>(path: string, formData: FormData, signal?: AbortSignal): Promise<TResponse> =>
     apiRequestForm<TResponse>(path, formData, signal),
 };
+
+// Builds a fetchable, full URL for a stored Listing photo from its
+// photoPaths entry (e.g. `photos/<id>-<uuid>.jpg`, see photoStorage.ts on
+// the server), so photo-upload.tsx can render a real `<img src>` and link
+// to the full-size file instead of just listing filenames. The backend
+// serves these from `/photos/` (apps/server/src/index.ts's @fastify/static
+// registration, scoped to PHOTOS_DIR); `photoPath` already starts with that
+// same `photos/` segment, so it is appended to API_BASE_URL as-is rather
+// than re-prefixed.
+export function buildPhotoUrl(photoPath: string): string {
+  return `${API_BASE_URL}/${photoPath}`;
+}

@@ -17,6 +17,7 @@
     "@duckdb/node-api": "^1.4.4-r.4",
     "@fastify/cors": "^11.3.0",
     "@fastify/multipart": "^9.0.3",
+    "@fastify/static": "^10.1.5",
     "@pc-parts-flipper/shared": "*",
     "fastify": "^5.2.0",
     "node-cron": "^4.6.0",

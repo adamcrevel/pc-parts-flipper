@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import fastifyStatic from '@fastify/static';
 import { logger } from './logger.js';
 import { registerErrorHandler } from './error-handler.js';
 import { registerSourcesRoutes } from './routes/sources.js';
@@ -13,6 +14,7 @@ import { registerProfitRoutes } from './routes/profit.js';
 import { registerScanRoutes } from './routes/scan.js';
 import { startScheduler } from './scan/scheduler.js';
 import { closeConnection } from './db/client.js';
+import { PHOTOS_DIR } from './photos/photoStorage.js';
 
 // Backend app shell. Builds the Fastify instance wired to the shared pino
 // logger (see logger.ts for level conventions) and the centralized error
@@ -33,6 +35,20 @@ registerErrorHandler(server);
 // registers before any route modules (T5+ add PUT/PATCH/DELETE routes),
 // so there would otherwise be nothing yet to reflect methods from.
 await server.register(cors, { origin: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] });
+
+// Serves every stored listing photo over HTTP so the frontend can render
+// real thumbnails and link to full-size images (photo-upload.tsx), instead
+// of the raw filename list it showed before a serving route existed.
+// `root` is scoped EXACTLY to PHOTOS_DIR (not DATA_DIR, its parent) because
+// DATA_DIR also holds pc-parts-flipper.duckdb — the entire application
+// database. Pointing this plugin at DATA_DIR (or any ancestor) would make
+// that file downloadable over plain HTTP; scoping to PHOTOS_DIR means
+// @fastify/static's root-jail only ever resolves inside the photos/
+// subdirectory, regardless of path-traversal attempts in the URL. Its
+// default dotfile/path-traversal protections are left on (no `allowedPath`
+// override) deliberately, as a second layer behind the directory scoping
+// itself.
+await server.register(fastifyStatic, { root: PHOTOS_DIR, prefix: '/photos/' });
 
 // Health-check route — confirms the server process is alive and reachable.
 server.get('/health', async () => ({ status: 'ok' }));

@@ -1,7 +1,7 @@
 import { useRef, useState, type ChangeEvent } from 'react';
 import type { ListingDetail } from '@pc-parts-flipper/shared';
 import { ErrorBanner } from '@/components/error-banner';
-import { ApiError } from '@/lib/api-client';
+import { ApiError, buildPhotoUrl } from '@/lib/api-client';
 import { uploadListingPhotos } from '@/features/listings/listings-api';
 
 interface PhotoUploadProps {
@@ -15,8 +15,9 @@ interface PhotoUploadProps {
  * a file input that posts straight to `POST /api/listings/:id/photos`
  * (uploads require a Listing id, so this only renders once one exists —
  * ListingForm shows a disabled hint instead while still in create mode),
- * plus a list of already-uploaded filenames. Split out of listing-form.tsx
- * to keep that file under the ~200-line standing check.
+ * plus a grid of clickable thumbnails for already-uploaded photos (each
+ * opens the full-size original in a new tab). Split out of
+ * listing-form.tsx to keep that file under the ~200-line standing check.
  */
 export function PhotoUpload({ listingId, photoPaths, onUploaded }: PhotoUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
@@ -47,13 +48,20 @@ export function PhotoUpload({ listingId, photoPaths, onUploaded }: PhotoUploadPr
 
       {photoPaths.length === 0 && <p className="text-sm text-muted-foreground">No photos uploaded yet.</p>}
       {photoPaths.length > 0 && (
-        <ul className="list-inside list-disc text-sm text-muted-foreground">
-          {photoPaths.map((path) => (
-            // path's basename is the UUID-prefixed stored filename — the
-            // closest thing to a display label without a thumbnail endpoint.
-            <li key={path}>{path.split('/').pop()}</li>
-          ))}
-        </ul>
+        // Each thumbnail links out to the full-size original in a new tab —
+        // same `<a target="_blank" rel="noreferrer">` idiom as
+        // ebay-scan-badge.tsx's outbound link, rather than a custom
+        // lightbox/modal (none exists elsewhere in this app).
+        <div className="flex flex-wrap gap-2">
+          {photoPaths.map((path) => {
+            const url = buildPhotoUrl(path);
+            return (
+              <a key={path} href={url} target="_blank" rel="noreferrer">
+                <img src={url} alt="Listing photo" className="h-20 w-20 rounded-md border border-border object-cover" />
+              </a>
+            );
+          })}
+        </div>
       )}
 
       <input
