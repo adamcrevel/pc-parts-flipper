@@ -1,6 +1,7 @@
 import type {
   AcceptListingResponse,
   CreateListingInput,
+  IdentifyPartsResponse,
   ListingDetail,
   ListingStatus,
   ListListingsResponse,
@@ -64,4 +65,9 @@ export function acceptListing(id: string): Promise<AcceptListingResponse> {
 /** Rejects an open Listing, transitioning it to 'rejected'. */
 export function rejectListing(id: string): Promise<ListingDetail> {
   return apiClient.post<ListingDetail>(`/api/listings/${id}/reject`);
+}
+
+/** Asks the AI vision model to suggest Expected Parts from an existing Listing's text and photos (on-demand only; can take 30s+). */
+export function identifyListingParts(id: string): Promise<IdentifyPartsResponse> {
+  return apiClient.post<IdentifyPartsResponse>(`/api/listings/${id}/identify-parts`);
 }

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiClient, ApiError, buildPhotoUrl } from '../src/lib/api-client';
+import { identifyListingParts } from '../src/features/listings/listings-api';
 
 // Proves api-client.ts's error path (T4): a non-2xx response from the
 // backend must reject with an ApiError carrying the HTTP status and a
@@ -79,5 +80,29 @@ describe('apiClient error path', () => {
 describe('buildPhotoUrl', () => {
   it('joins the default API base URL and a photoPaths entry with exactly one slash', () => {
     expect(buildPhotoUrl('photos/listing-1-aaaa.jpg')).toBe('http://localhost:3001/photos/listing-1-aaaa.jpg');
+  });
+});
+
+// Pins the one piece of identifyListingParts() that every other test in this
+// workspace mocks away: the exact route it posts to. The component tests stub
+// the whole listings-api module, so a wrong path or verb there would go
+// unnoticed by all of them while breaking against the real backend, whose
+// route (`POST /api/listings/:id/identify-parts`) is a contract agreed with
+// apps/server.
+describe('identifyListingParts request shape', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('POSTs to /api/listings/:id/identify-parts and resolves with the parsed body', async () => {
+    const body = { parts: [{ category: 'GPU', description: 'RTX 3070', confidence: 'high', source: 'image' }], notes: '' };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(identifyListingParts('listing-1')).resolves.toEqual(body);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://localhost:3001/api/listings/listing-1/identify-parts');
+    expect(init.method).toBe('POST');
   });
 });

@@ -1,0 +1,47 @@
+// Response types for AI-assisted Expected Part identification: the shapes
+// `POST /api/listings/:id/identify-parts` returns, consumed by apps/server's
+// route handler and apps/web's Expected Parts editor (which renders them as
+// clearly-marked, freely-editable draft rows that are never auto-saved).
+// Lives here (not apps/server) because apps/web may never import apps/server
+// directly (standing check).
+import type { ComponentCategory } from './listings.js';
+
+/**
+ * How sure the model is about one suggested part. Deliberately a coarse
+ * three-way scale rather than a numeric score: the model is instructed to be
+ * honest and conservative when a part cannot be fully narrowed down, and a
+ * word is a more faithful rendering of that than a false-precision number.
+ */
+export type AiPartConfidence = 'high' | 'medium' | 'low';
+
+/**
+ * What the model based a suggestion on — the listing's title/description
+ * ('text'), one of its photos ('image'), or agreement between the two
+ * ('both') — so the user can tell a part read off a spec list apart from one
+ * recognized in a photo when deciding whether to keep the suggested row.
+ */
+export type AiPartSource = 'text' | 'image' | 'both';
+
+/**
+ * One AI-suggested Expected Part. `category` is always one of the project's
+ * fixed ComponentCategory values (the server coerces anything else to
+ * 'Other'), so a suggestion can drop straight into the Expected Parts editor's
+ * category select without a second mapping step.
+ */
+export interface AiIdentifiedPart {
+  category: ComponentCategory;
+  description: string;
+  confidence: AiPartConfidence;
+  source: AiPartSource;
+}
+
+/**
+ * `POST /api/listings/:id/identify-parts` response. `notes` is free text
+ * (possibly empty) for caveats that belong to the identification as a whole
+ * rather than to one part — e.g. "these look like stock/marketing photos,
+ * not the actual item", which the model volunteers when it is true.
+ */
+export interface IdentifyPartsResponse {
+  parts: AiIdentifiedPart[];
+  notes: string;
+}

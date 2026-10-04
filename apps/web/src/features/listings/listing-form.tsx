@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import type { CreateListingInput, ExpectedPartInput, ListingDetail, Source } from '@pc-parts-flipper/shared';
+import type { AiIdentifiedPart, CreateListingInput, ExpectedPartInput, ListingDetail, Source } from '@pc-parts-flipper/shared';
 import { Button } from '@/components/ui/button';
 import { ErrorBanner } from '@/components/error-banner';
 import { ApiError } from '@/lib/api-client';
@@ -7,7 +7,8 @@ import { EbayScanBadge } from '@/features/listings/ebay-scan-badge';
 import { ExpectedPartsEditor, type ExpectedPartRow, type ExpectedPartRowErrors } from '@/features/listings/expected-parts-editor';
 import { ListingComparisonSummary } from '@/features/listings/listing-comparison-summary';
 import { ListingFields } from '@/features/listings/listing-fields';
-import { initialExpectedPartRows, initialListingFormFields } from '@/features/listings/listing-form-state';
+import { IdentifyPartsButton } from '@/features/listings/identify-parts-button';
+import { aiPartToExpectedPartRow, initialExpectedPartRows, initialListingFormFields } from '@/features/listings/listing-form-state';
 import { PhotoUpload } from '@/features/listings/photo-upload';
 import { validateExpectedPartRows, validateListingFields, type ListingFieldErrors } from '@/features/listings/validate-listing';
 
@@ -101,6 +102,14 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
     onSaved(updated);
   }
 
+  // Appends the AI's suggestions as extra draft rows. Existing rows are
+  // never removed or overwritten — identification only ever adds to what the
+  // user already has, and every added row stays editable/removable and
+  // unsaved until they submit the form themselves.
+  function handlePartsIdentified(parts: AiIdentifiedPart[]) {
+    setRows((prev) => [...prev, ...parts.map(aiPartToExpectedPartRow)]);
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-border p-4">
       {initialValue?.externalItemId !== null && initialValue?.externalItemId !== undefined && (
@@ -127,6 +136,9 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
       />
 
       <ExpectedPartsEditor rows={rows} rowErrors={rowErrors} onChange={setRows} />
+
+      {/* Takes `saved` as-is and renders its own save-first hint while it's undefined, so there's no create/edit branch to carry here. */}
+      <IdentifyPartsButton listing={saved} onIdentified={handlePartsIdentified} />
 
       <ListingComparisonSummary
         totalExpectedResaleValue={totalExpectedResaleValue}

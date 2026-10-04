@@ -1,4 +1,4 @@
-import type { ListingDetail } from '@pc-parts-flipper/shared';
+import type { AiIdentifiedPart, ListingDetail } from '@pc-parts-flipper/shared';
 import { emptyExpectedPartRow, type ExpectedPartRow } from '@/features/listings/expected-parts-editor';
 
 /** The listing-level field values ListingForm's useState calls seed from. */
@@ -49,4 +49,21 @@ export function initialExpectedPartRows(initialValue?: ListingDetail): ExpectedP
     description: part.description,
     estimatedResaleValue: String(part.estimatedResaleValue),
   }));
+}
+
+/**
+ * Converts one AI-identified part into a draft Expected Parts row. The
+ * estimated resale value is deliberately left blank: the model is only asked
+ * to identify parts, never to price them, so that field stays the user's to
+ * fill in (and validateExpectedPartRows keeps insisting on it before save).
+ */
+export function aiPartToExpectedPartRow(part: AiIdentifiedPart): ExpectedPartRow {
+  return {
+    componentCategory: part.category,
+    description: part.description,
+    estimatedResaleValue: '',
+    aiSuggested: true,
+    aiConfidence: part.confidence,
+    aiSource: part.source,
+  };
 }

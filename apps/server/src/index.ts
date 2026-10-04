@@ -12,6 +12,7 @@ import { registerSaleListingsRoutes } from './routes/saleListings.js';
 import { registerSalesRoutes } from './routes/sales.js';
 import { registerProfitRoutes } from './routes/profit.js';
 import { registerScanRoutes } from './routes/scan.js';
+import { registerIdentifyPartsRoutes } from './routes/identifyParts.js';
 import { startScheduler } from './scan/scheduler.js';
 import { closeConnection } from './db/client.js';
 import { PHOTOS_DIR } from './photos/photoStorage.js';
@@ -62,6 +63,7 @@ await registerSaleListingsRoutes(server);
 await registerSalesRoutes(server);
 await registerProfitRoutes(server);
 await registerScanRoutes(server);
+await registerIdentifyPartsRoutes(server);
 
 // Registers the once-daily scheduled scan job (T8, Req 6, 9) so eligible
 // Sources are re-scanned automatically, not only via T7's manual route.

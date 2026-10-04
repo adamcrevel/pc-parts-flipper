@@ -1,5 +1,6 @@
-import type { ComponentCategory } from '@pc-parts-flipper/shared';
+import type { AiPartConfidence, AiPartSource, ComponentCategory } from '@pc-parts-flipper/shared';
 import { Button } from '@/components/ui/button';
+import { AiSuggestedBadge } from '@/features/listings/ai-suggested-badge';
 
 // The fixed category list (assumption A8) the <select> below renders.
 const CATEGORY_OPTIONS: readonly ComponentCategory[] = ['CPU', 'GPU', 'Motherboard', 'RAM', 'Storage', 'PSU', 'Case', 'Cooler', 'Other'];
@@ -14,6 +15,19 @@ export interface ExpectedPartRow {
   componentCategory: ComponentCategory | '';
   description: string;
   estimatedResaleValue: string;
+  // Client-only draft state, never part of CreateListingInput/
+  // UpdateListingInput: true while this row is an unreviewed AI suggestion
+  // from `POST /api/listings/:id/identify-parts`. Cleared by updateRow on
+  // the user's first edit of the row — editing a suggestion is reviewing
+  // it. listing-form.tsx builds its ExpectedPartInput payload field by
+  // field, so this and the two below never reach the backend.
+  aiSuggested?: boolean;
+  // How sure the model was, and whether it read the listing text, the
+  // photos, or both. Shown as a caption beside the badge so that
+  // provenance doesn't have to pollute `description`, which is the value
+  // actually saved.
+  aiConfidence?: AiPartConfidence;
+  aiSource?: AiPartSource;
 }
 
 /** Per-row field errors, keyed the same way ListingForm's other field errors are. */
@@ -26,6 +40,19 @@ export interface ExpectedPartRowErrors {
 /** An empty draft row, used both for the initial row and "Add Part". */
 export function emptyExpectedPartRow(): ExpectedPartRow {
   return { componentCategory: '', description: '', estimatedResaleValue: '' };
+}
+
+/** Human-readable wording for which evidence the model drew a suggestion from. */
+const AI_SOURCE_LABELS: Record<AiPartSource, string> = {
+  text: 'the listing text',
+  image: 'the photos',
+  both: 'the listing text and photos',
+};
+
+/** The provenance caption shown beside the "AI suggested" badge, or '' for a row carrying no provenance. */
+function aiProvenanceCaption(row: ExpectedPartRow): string {
+  if (!row.aiConfidence || !row.aiSource) return '';
+  return `${row.aiConfidence} confidence · from ${AI_SOURCE_LABELS[row.aiSource]}`;
 }
 
 interface ExpectedPartsEditorProps {
@@ -41,8 +68,12 @@ interface ExpectedPartsEditorProps {
  * standing check and because this row-editing logic is self-contained.
  */
 export function ExpectedPartsEditor({ rows, rowErrors, onChange }: ExpectedPartsEditorProps) {
+  // Any edit to a row also clears its AI-suggested draft marking: reviewing
+  // the model's guess is exactly what the badge asks the user to do, so
+  // touching the row is that confirmation (product decision, confirmed with
+  // the user). A no-op on rows that were never AI-suggested.
   function updateRow(index: number, patch: Partial<ExpectedPartRow>) {
-    onChange(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+    onChange(rows.map((row, i) => (i === index ? { ...row, ...patch, aiSuggested: false } : row)));
   }
 
   function removeRow(index: number) {
@@ -64,6 +95,13 @@ export function ExpectedPartsEditor({ rows, rowErrors, onChange }: ExpectedParts
         const errors = rowErrors[index] ?? {};
         return (
           <div key={index} className="grid grid-cols-[1fr_2fr_1fr_auto] items-start gap-2 rounded-md border border-border p-2">
+            {/* Full-width first grid item (col-span-4) so the badge sits above the row's fields rather than stealing a column from them. */}
+            {row.aiSuggested === true && (
+              <div className="col-span-4 flex items-center gap-2">
+                <AiSuggestedBadge />
+                <span className="text-xs text-muted-foreground">{aiProvenanceCaption(row)}</span>
+              </div>
+            )}
             <div className="space-y-1">
               <select
                 value={row.componentCategory}

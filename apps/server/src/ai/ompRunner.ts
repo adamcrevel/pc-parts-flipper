@@ -1,0 +1,193 @@
+// Runs one AI identification call by shelling out to the `omp` CLI, which is
+// already installed and authenticated on the host. Split out of
+// partIdentification.ts so the child-process machinery (argument assembly,
+// timeout, kill, exit-code handling) is isolated behind one small async
+// function the rest of the feature — and the test suite — can replace.
+//
+// Invocation shape was verified live against the real binary:
+//   omp -p --no-tools "<prompt text>" @/abs/photo1.jpg @/abs/photo2.jpg
+// With `--no-tools` and no `--mode=json`, stdout carries ONLY the model's
+// final text response; the progress indicator goes to stderr, which is why
+// stderr is discarded outright below rather than captured and parsed.
+import { spawn } from 'node:child_process';
+import type { ChildProcess, SpawnOptions } from 'node:child_process';
+import { AppError } from '../error-handler.js';
+import { logger } from '../logger.js';
+
+// The CLI is expected on PATH (verified at ~/.local/bin/omp on this host). A
+// missing binary surfaces as an ENOENT spawn error, handled explicitly below.
+const OMP_BINARY = 'omp';
+
+/**
+ * Hard ceiling on one identification call. Real observed round-trips were ~9s
+ * for one image and ~34s for eight, so 120s is roughly 3.5x the worst measured
+ * case — generous enough that a slow-but-working call is never cut off, short
+ * enough that a wedged child process cannot pin a request open indefinitely.
+ */
+export const DEFAULT_OMP_TIMEOUT_MS = 120_000;
+
+/** Narrow slice of node:child_process.spawn this module actually uses, so tests can substitute a fake. */
+export type SpawnFn = (command: string, args: readonly string[], options: SpawnOptions) => ChildProcess;
+
+/** Knobs the orchestrator never sets but tests do: a short timeout, and a fake spawn. */
+export interface OmpRunOptions {
+  timeoutMs?: number;
+  spawnFn?: SpawnFn;
+}
+
+/** Contract of "run the model and give me its raw stdout", the seam identifyListingParts depends on. */
+export type OmpRunner = (promptText: string, imagePaths: readonly string[], options?: OmpRunOptions) => Promise<string>;
+
+/**
+ * Assembles the full argv. Built as an array (never a shell string) so prompt
+ * text containing quotes, newlines or backticks needs no escaping and can
+ * never be reinterpreted as shell syntax.
+ *
+ * AI_IDENTIFY_MODEL / AI_IDENTIFY_API_KEY are read lazily, at call time — the
+ * same convention ebayConnector.ts uses for EBAY_CLIENT_ID/EBAY_ENV — so the
+ * automated test suite never needs either variable set, and a production
+ * deployment can switch from the host's logged-in session to a real API key
+ * with no code change. Unset means "let omp use its own default", which during
+ * development is the host's logged-in subscription session.
+ */
+export function buildOmpArgs(promptText: string, imagePaths: readonly string[]): string[] {
+  const args: string[] = [];
+
+  const model = process.env.AI_IDENTIFY_MODEL ?? '';
+  if (model) {
+    args.push(`--model=${model}`);
+  }
+
+  const apiKey = process.env.AI_IDENTIFY_API_KEY ?? '';
+  if (apiKey) {
+    args.push(`--api-key=${apiKey}`);
+  }
+
+  // `-p` = non-interactive print mode, `--no-tools` = final text answer only.
+  // Each photo is attached as a separate `@<absolute path>` argument.
+  args.push('-p', '--no-tools', promptText);
+  for (const imagePath of imagePaths) {
+    args.push(`@${imagePath}`);
+  }
+
+  return args;
+}
+
+// SIGKILLs the timed-out child *and* anything it spawned. The child is started
+// `detached`, which makes it the leader of a new process group whose id equals
+// its pid, so a kill aimed at the negated pid reaches every descendant still in
+// that group. Killing the child alone would leave a grandchild running,
+// reparented to init (confirmed by experiment). `omp --no-tools` spawns no
+// descendants today, so this is defence against a future change in the CLI
+// rather than a live leak.
+function killProcessGroup(child: ChildProcess): void {
+  // No pid means the spawn itself failed; there is no group to signal.
+  if (child.pid === undefined) {
+    return;
+  }
+  try {
+    process.kill(-child.pid, 'SIGKILL');
+  } catch (err) {
+    // The group can legitimately be gone already (the child exited between the
+    // timer firing and this call). Recoverable: fall back to the direct kill so
+    // a surviving child is still stopped, and warn rather than error.
+    logger.warn({ pid: child.pid, err }, 'Could not signal the omp process group; falling back to killing the child directly');
+    child.kill('SIGKILL');
+  }
+}
+
+/**
+ * Spawns `omp`, collects its stdout, and resolves with it. Rejects with an
+ * AppError carrying a real, user-facing message for every failure mode:
+ * binary missing / not on PATH (ENOENT), non-zero exit (typically not logged
+ * in), or exceeding the timeout — in which case the child is killed rather
+ * than left running after the request has already failed.
+ */
+export async function runOmpIdentification(
+  promptText: string,
+  imagePaths: readonly string[],
+  options: OmpRunOptions = {},
+): Promise<string> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_OMP_TIMEOUT_MS;
+  const spawnFn = options.spawnFn ?? spawn;
+  const args = buildOmpArgs(promptText, imagePaths);
+  logger.debug({ imageCount: imagePaths.length, timeoutMs, argCount: args.length }, 'Spawning omp for part identification');
+
+  return new Promise<string>((resolve, reject) => {
+    // stdin is not used; stderr is discarded at the OS level (it carries only
+    // a progress indicator) so it can never fill a pipe buffer and stall the
+    // child when output is long. `detached` puts the child in its own process
+    // group so a timeout can take down any descendants with it (see
+    // killProcessGroup); argv stays an array and `shell` is never set, so a
+    // prompt built from attacker-controlled listing text can never be parsed
+    // as a shell command.
+    const child = spawnFn(OMP_BINARY, args, { stdio: ['ignore', 'pipe', 'ignore'], detached: true });
+
+    let stdout = '';
+    // Guards against double-settling: a timeout kill fires 'close' right
+    // after the timeout rejection, and a spawn 'error' is also followed by
+    // 'close' on some platforms.
+    let settled = false;
+
+    const finish = (settle: () => void): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      settle();
+    };
+
+    const timer = setTimeout(() => {
+      finish(() => {
+        // SIGKILL rather than SIGTERM: a wedged model call is exactly the
+        // case where a polite signal may be ignored, and nothing downstream
+        // needs the child to shut down cleanly. Group-wide, so a descendant
+        // cannot outlive the call that started it.
+        killProcessGroup(child);
+        reject(new AppError(`AI part identification timed out after ${timeoutMs}ms`, 504));
+      });
+    }, timeoutMs);
+
+    child.stdout?.on('data', (chunk: Buffer | string) => {
+      stdout += String(chunk);
+    });
+
+    child.on('error', (err: NodeJS.ErrnoException) => {
+      finish(() => {
+        const message =
+          err.code === 'ENOENT'
+            ? `AI part identification requires the '${OMP_BINARY}' CLI on PATH, but it was not found`
+            : `Failed to run '${OMP_BINARY}' for AI part identification: ${err.message}`;
+        reject(new AppError(message, 502));
+      });
+    });
+
+    child.on('close', (code: number | null) => {
+      finish(() => {
+        if (code === 0) {
+          resolve(stdout);
+          return;
+        }
+        reject(new AppError(`'${OMP_BINARY}' exited with code ${String(code)} during AI part identification (is it installed and logged in?)`, 502));
+      });
+    });
+  });
+}
+
+// Test seam. The automated suite must never invoke the real omp binary (it
+// would need a live model session, breaking this project's standing rule that
+// the suite stays network/credential-independent), so it installs a fake
+// runner here instead; the real integration is verified out of band, the same
+// way the eBay connector's real-network behavior is.
+let runnerOverride: OmpRunner | null = null;
+
+/** Installs a fake runner (or clears it, with null). Test-only. */
+export function setOmpRunnerOverride(override: OmpRunner | null): void {
+  runnerOverride = override;
+}
+
+/** The runner identifyListingParts actually calls: the override when one is installed, otherwise the real one. */
+export function getOmpRunner(): OmpRunner {
+  return runnerOverride ?? runOmpIdentification;
+}
