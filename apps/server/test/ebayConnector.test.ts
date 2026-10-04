@@ -8,6 +8,7 @@
 // ever made, and no real eBay credentials are required.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppError } from '../src/error-handler.js';
+import { createEbayItemDetailClient } from '../src/connectors/ebayConnector.js';
 import { getConnectorForPlatform } from '../src/connectors/registry.js';
 
 // Fixture token response, shaped like eBay's real OAuth2 client-credentials
@@ -170,7 +171,186 @@ describe('ebayConnector.search (T5, Req 6)', () => {
       listingUrl: 'https://www.ebay.com/itm/123456789',
       askingPrice: 249.99,
       listingDate: '2026-09-15',
+      // The base fixture carries no image fields at all — an item eBay
+      // returns without photos must still map to an empty array, never
+      // undefined, so callers never branch on its presence.
+      imageUrls: [],
     });
+  });
+
+  // Photo capture (Req 2): the search response already carries every image
+  // URL, so these prove the connector extracts and upsizes them without
+  // issuing any additional eBay call.
+  it('builds imageUrls from the primary image plus every additionalImages entry, upsized to full resolution', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
+      }
+      const item = itemFixture({
+        image: { imageUrl: 'https://i.ebayimg.com/images/g/ROUAAeSwDJpqwcxR/s-l225.jpg' },
+        additionalImages: [
+          { imageUrl: 'https://i.ebayimg.com/images/g/AAAAAeSwDJpqwcxR/s-l500.jpg' },
+          { imageUrl: 'https://i.ebayimg.com/images/g/BBBAAeSwDJpqwcxR/s-l140.jpg' },
+        ],
+      });
+      return new Response(JSON.stringify({ itemSummaries: [item] }), { status: 200 });
+    });
+
+    const connector = getConnectorForPlatform('ebay');
+    const results = await connector.search({ queries: ['gaming pc'] });
+
+    // Primary first, then additionalImages in order, every one rewritten to
+    // the 1600px variant of its own image id — the size segment is the only
+    // part of the URL that may change.
+    expect(results[0].imageUrls).toEqual([
+      'https://i.ebayimg.com/images/g/ROUAAeSwDJpqwcxR/s-l1600.jpg',
+      'https://i.ebayimg.com/images/g/AAAAAeSwDJpqwcxR/s-l1600.jpg',
+      'https://i.ebayimg.com/images/g/BBBAAeSwDJpqwcxR/s-l1600.jpg',
+    ]);
+
+    // Upsizing must stay free: exactly one token call and one search call,
+    // no per-item lookup smuggled in to fetch bigger images.
+    expect(fetchMock.mock.calls).toHaveLength(2);
+  });
+
+  it('keeps an image URL that does not match eBay\'s size-segment pattern exactly as received', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
+      }
+      const item = itemFixture({
+        image: { imageUrl: 'https://i.ebayimg.com/thumbs/images/g/ROUAAeSwDJpqwcxR/s-l225.jpg?set_id=8800005007' },
+        additionalImages: [{ imageUrl: 'https://cdn.example.com/legacy-photo-format' }],
+      });
+      return new Response(JSON.stringify({ itemSummaries: [item] }), { status: 200 });
+    });
+
+    const connector = getConnectorForPlatform('ebay');
+    const results = await connector.search({ queries: ['gaming pc'] });
+
+    // Neither URL ends in the `/s-l<digits>.jpg` segment the swap is proven
+    // safe for (the first has a querystring after it), so both are used
+    // as-is: a smaller photo beats a dropped one, and a blind rewrite could
+    // produce a URL that 404s.
+    expect(results[0].imageUrls).toEqual([
+      'https://i.ebayimg.com/thumbs/images/g/ROUAAeSwDJpqwcxR/s-l225.jpg?set_id=8800005007',
+      'https://cdn.example.com/legacy-photo-format',
+    ]);
+  });
+
+  it('de-duplicates repeated image URLs and caps the total at 8', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
+      }
+      const item = itemFixture({
+        image: { imageUrl: 'https://i.ebayimg.com/images/g/primary/s-l225.jpg' },
+        additionalImages: [
+          // Same image as the primary at a different advertised size: after
+          // upsizing both collapse onto one URL and must not be stored twice.
+          { imageUrl: 'https://i.ebayimg.com/images/g/primary/s-l500.jpg' },
+          // 11 further distinct images — more than eBay ever returns — so the
+          // defensive cap is what limits the result, not the input length.
+          ...Array.from({ length: 11 }, (_unused, i) => ({
+            imageUrl: `https://i.ebayimg.com/images/g/extra${i}/s-l225.jpg`,
+          })),
+        ],
+      });
+      return new Response(JSON.stringify({ itemSummaries: [item] }), { status: 200 });
+    });
+
+    const connector = getConnectorForPlatform('ebay');
+    const results = await connector.search({ queries: ['gaming pc'] });
+
+    expect(results[0].imageUrls).toHaveLength(8);
+    // The duplicate appears once, as the first entry.
+    expect(results[0].imageUrls.filter((u) => u === 'https://i.ebayimg.com/images/g/primary/s-l1600.jpg')).toHaveLength(1);
+    expect(results[0].imageUrls[0]).toBe('https://i.ebayimg.com/images/g/primary/s-l1600.jpg');
+    // The cap keeps the first 8 distinct images: extra0..extra6 fill the
+    // remaining 7 slots, and extra7 onwards is dropped.
+    expect(results[0].imageUrls[7]).toBe('https://i.ebayimg.com/images/g/extra6/s-l1600.jpg');
+    expect(results[0].imageUrls).not.toContain('https://i.ebayimg.com/images/g/extra7/s-l1600.jpg');
+  });
+});
+
+// Photo backfill support (Req 2): the single-item detail endpoint is the
+// only way to reach a specific already-imported item, since search cannot be
+// queried by item id and its ranking shifts between runs.
+describe('createEbayItemDetailClient', () => {
+  let fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('fetches one item\'s images by url-encoded item id over a single shared token', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          image: { imageUrl: 'https://i.ebayimg.com/images/g/ROUAAeSwDJpqwcxR/s-l1600.jpg' },
+          additionalImages: [{ imageUrl: 'https://i.ebayimg.com/images/g/AAAAAeSwDJpqwcxR/s-l1600.jpg' }],
+        }),
+        { status: 200 },
+      );
+    });
+
+    const client = await createEbayItemDetailClient();
+    const first = await client.fetchItemImageUrls('v1|227551136880|0');
+    const second = await client.fetchItemImageUrls('v1|227551136881|0');
+
+    expect(first).toEqual([
+      'https://i.ebayimg.com/images/g/ROUAAeSwDJpqwcxR/s-l1600.jpg',
+      'https://i.ebayimg.com/images/g/AAAAAeSwDJpqwcxR/s-l1600.jpg',
+    ]);
+    expect(second).toEqual(first);
+
+    // The `|` separators in an eBay item id must be percent-encoded to
+    // survive the URL path, or eBay rejects the request.
+    const detailCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/buy/browse/v1/item/'));
+    expect(String(detailCalls[0][0])).toContain('/buy/browse/v1/item/v1%7C227551136880%7C0');
+
+    // One token for the whole client, not one per item: a backfill visiting
+    // hundreds of listings must not make hundreds of OAuth round-trips.
+    const tokenCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/oauth2/token'));
+    expect(tokenCalls).toHaveLength(1);
+  });
+
+  it('throws an AppError carrying eBay\'s own error message when the item is gone', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
+      }
+      return new Response(JSON.stringify({ errors: [{ message: 'The specified item ID was not found.' }] }), { status: 404 });
+    });
+
+    const client = await createEbayItemDetailClient();
+
+    // Asserted on the message, not just the AppError type: several guards in
+    // this module throw AppError, so a type-only assertion would still pass
+    // if the detail call's own error branch were deleted and some other
+    // failure surfaced instead.
+    await expect(client.fetchItemImageUrls('v1|000000000000|0')).rejects.toThrow('The specified item ID was not found.');
+    await expect(client.fetchItemImageUrls('v1|000000000000|0')).rejects.toBeInstanceOf(AppError);
+  });
+
+  it('returns an empty array for an item eBay holds no images for', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
+      }
+      return new Response(JSON.stringify({ itemId: 'v1|1|0' }), { status: 200 });
+    });
+
+    const client = await createEbayItemDetailClient();
+    await expect(client.fetchItemImageUrls('v1|1|0')).resolves.toEqual([]);
   });
 });
 

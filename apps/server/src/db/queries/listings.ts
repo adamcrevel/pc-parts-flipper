@@ -116,6 +116,31 @@ export async function findListingByExternalId(sourceId: string, externalItemId: 
   return rows.length > 0 ? mapRow(rows[0]) : null;
 }
 
+/**
+ * Lists every Listing auto-imported from `externalSource` that still has no
+ * photos stored locally, oldest first. Backs the one-time photo backfill
+ * (apps/server/src/photos/photoBackfill.ts) for Listings imported before
+ * scans downloaded marketplace images.
+ *
+ * Compares photo_paths against the literal `'[]'` rather than using a JSON
+ * function: the column is a VARCHAR holding a JSON array (see schema.ts),
+ * and both writers — createListing and updateListing — produce it with
+ * JSON.stringify, whose output for an empty array is exactly `[]`, the same
+ * value as the column's own DEFAULT.
+ */
+export async function listListingsMissingPhotos(externalSource: string): Promise<Listing[]> {
+  const connection = await getConnection();
+  const reader = await connection.runAndReadAll(
+    `SELECT * FROM listings
+     WHERE external_source = $external_source
+       AND external_item_id IS NOT NULL
+       AND photo_paths = '[]'
+     ORDER BY created_at ASC, id ASC`,
+    { external_source: externalSource },
+  );
+  return reader.getRowObjectsJson().map(mapRow);
+}
+
 // Shared WHERE-clause builder for listListings/countListings, so the
 // pagination total always reflects the same status/Source filters as the
 // page of rows it corresponds to (Req 12, 15).

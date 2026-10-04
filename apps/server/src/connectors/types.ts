@@ -18,6 +18,16 @@ export interface CandidateListing {
   listingUrl: string;
   askingPrice: number;
   listingDate: string;
+  /**
+   * Marketplace-hosted photo URLs for this listing, highest resolution the
+   * platform offers, in display order (primary image first). The scan
+   * service downloads these to local disk on import so the AI
+   * part-identification pass has the real photos, not just a link out.
+   * Always present — an empty array means the platform returned no images
+   * for this item, which callers must handle without branching on
+   * undefined.
+   */
+  imageUrls: string[];
 }
 
 /**

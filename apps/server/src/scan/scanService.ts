@@ -8,16 +8,48 @@
 import type { EbayConnectorConfig } from '@pc-parts-flipper/shared';
 import { getConnectorForPlatform } from '../connectors/registry.js';
 import type { CandidateListing, MarketplaceConnector } from '../connectors/types.js';
-import { createListing, findListingByExternalId, getSourceById, listSources, updateSourceScanStats } from '../db/index.js';
+import { createListing, findListingByExternalId, getSourceById, listSources, updateListing, updateSourceScanStats } from '../db/index.js';
 import type { Source } from '../db/index.js';
 import { AppError } from '../error-handler.js';
 import { logger } from '../logger.js';
+import { downloadImagesToFiles } from '../photos/photoStorage.js';
 import { isUniqueConstraintViolation } from './duplicateDetection.js';
 
 /** Outcome of one scan pass: how many candidates the connector returned and how many became new Listings. */
 export interface ScanResult {
   foundCount: number;
   newCount: number;
+}
+
+/**
+ * Downloads a freshly-imported candidate's marketplace photos to local disk
+ * and attaches whichever succeeded to the Listing. The Listing is inserted
+ * with no photos and patched afterwards (rather than downloading first) so
+ * the dedup insert — the step that can legitimately lose a race to a
+ * concurrent scan — never pays for downloads it would then discard.
+ *
+ * Photos are a best-effort enrichment, never a precondition: every failure
+ * here is logged and swallowed, because an imported Listing with missing
+ * photos is strictly better than no Listing at all. Note these are plain
+ * image-CDN downloads of URLs the search response already returned, not
+ * eBay API calls — a scan still issues exactly one Browse API call per
+ * configured query (Req 2).
+ */
+async function attachCandidatePhotos(listingId: string, candidate: CandidateListing): Promise<void> {
+  if (candidate.imageUrls.length === 0) {
+    return;
+  }
+  try {
+    const photoPaths = await downloadImagesToFiles(candidate.imageUrls, listingId);
+    if (photoPaths.length === 0) {
+      logger.warn({ listingId, externalItemId: candidate.externalItemId }, 'No scan candidate photos could be downloaded');
+      return;
+    }
+    await updateListing(listingId, { photoPaths });
+    logger.debug({ listingId, photoCount: photoPaths.length }, 'Attached downloaded photos to imported Listing');
+  } catch (err) {
+    logger.warn({ listingId, externalItemId: candidate.externalItemId, err }, 'Failed to attach photos to imported Listing');
+  }
 }
 
 /**
@@ -39,7 +71,7 @@ async function importCandidateIfNew(
     return false;
   }
   try {
-    await createListing({
+    const listing = await createListing({
       sourceId: source.id,
       title: candidate.title,
       description: null,
@@ -51,6 +83,7 @@ async function importCandidateIfNew(
       externalSource: connector.platformType,
       externalItemId: candidate.externalItemId,
     });
+    await attachCandidatePhotos(listing.id, candidate);
     return true;
   } catch (err) {
     if (isUniqueConstraintViolation(err)) {

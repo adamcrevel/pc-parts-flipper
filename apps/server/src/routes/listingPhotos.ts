@@ -17,21 +17,17 @@ import multipart from '@fastify/multipart';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { getListingById, updateListing } from '../db/index.js';
 import { AppError } from '../error-handler.js';
 import { logger } from '../logger.js';
-
-// apps/server/src/routes/listingPhotos.ts -> apps/server/src/routes ->
-// apps/server/src -> apps/server -> apps -> <worktree root>, the same depth
-// client.ts resolves data/ from (see db/client.ts's comment for why four
-// `..` segments is correct for both tsx-from-src and node-from-dist runs).
-const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-const PHOTOS_DIR = path.resolve(moduleDir, '../../../../data/photos');
-
-// Guards against an unbounded upload size filling local disk; generous for
-// phone-camera photos of used PC hardware.
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+// PHOTOS_DIR and the per-file size cap now live in the shared photo-storage
+// module, so this upload route and the scan/backfill download path cannot
+// drift apart on where photos go or how large one may be. The resolution
+// rule is unchanged from what was inlined here before (same four `..`
+// segments to the worktree root, same 10MB cap) — it additionally honors
+// db/client.ts's DUCKDB_DATA_DIR override so a redirected database and its
+// photos stay together.
+import { MAX_FILE_BYTES, PHOTOS_DIR } from '../photos/photoStorage.js';
 
 /**
  * Registers `POST /api/listings/:id/photos` on the given Fastify instance.
