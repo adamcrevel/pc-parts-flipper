@@ -40,46 +40,69 @@ export function AdditionalPartsEditor({ rows, rowErrors, onChange }: AdditionalP
       {rows.map((row, index) => {
         const errors = rowErrors[index] ?? {};
         return (
-          <div key={index} className="grid grid-cols-[1fr_2fr_2fr_auto] items-start gap-2 rounded-md border border-border p-2">
-            <div className="space-y-1">
-              <select
-                value={row.category}
-                onChange={(e) => updateRow(index, { category: e.target.value as ComponentCategory })}
-                className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                aria-label={`Additional part ${index + 1} category`}
-              >
-                <option value="">Category…</option>
-                {CATEGORY_OPTIONS.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-              {errors.category && <p className="text-xs text-destructive">{errors.category}</p>}
-            </div>
+          // Same two-sub-line row shape as the Expected Parts editor: line 1
+          // identifies the part (category / brand / part #), line 2 carries
+          // the free-text description, note and the row action.
+          <div key={index} className="space-y-2 rounded-md border border-border p-2">
+            <div className="grid grid-cols-3 items-start gap-2">
+              <div className="space-y-1">
+                <select
+                  value={row.category}
+                  onChange={(e) => updateRow(index, { category: e.target.value as ComponentCategory })}
+                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                  aria-label={`Additional part ${index + 1} category`}
+                >
+                  <option value="">Category…</option>
+                  {CATEGORY_OPTIONS.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+                {errors.category && <p className="text-xs text-destructive">{errors.category}</p>}
+              </div>
 
-            <div className="space-y-1">
               <input
-                value={row.description}
-                onChange={(e) => updateRow(index, { description: e.target.value })}
-                placeholder="Description / model"
+                value={row.brand}
+                onChange={(e) => updateRow(index, { brand: e.target.value })}
+                placeholder="Brand (optional)"
                 className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                aria-label={`Additional part ${index + 1} description`}
+                aria-label={`Additional part ${index + 1} brand`}
               />
-              {errors.description && <p className="text-xs text-destructive">{errors.description}</p>}
+
+              <input
+                value={row.partNumber}
+                onChange={(e) => updateRow(index, { partNumber: e.target.value })}
+                placeholder="Part/Model # (optional)"
+                className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                aria-label={`Additional part ${index + 1} part number`}
+              />
             </div>
 
-            <input
-              value={row.note}
-              onChange={(e) => updateRow(index, { note: e.target.value })}
-              placeholder="Note (optional)"
-              className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-              aria-label={`Additional part ${index + 1} note`}
-            />
+            <div className="grid grid-cols-[2fr_2fr_auto] items-start gap-2">
+              <div className="space-y-1">
+                <input
+                  value={row.description}
+                  onChange={(e) => updateRow(index, { description: e.target.value })}
+                  placeholder="Description / condition notes"
+                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                  aria-label={`Additional part ${index + 1} description`}
+                />
+                {errors.description && <p className="text-xs text-destructive">{errors.description}</p>}
+              </div>
 
-            <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => removeRow(index)}>
-              Remove
-            </Button>
+              <input
+                value={row.note}
+                onChange={(e) => updateRow(index, { note: e.target.value })}
+                placeholder="Note (optional)"
+                className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                aria-label={`Additional part ${index + 1} note`}
+              />
+
+              <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => removeRow(index)}>
+                Remove
+              </Button>
+            </div>
           </div>
         );
       })}

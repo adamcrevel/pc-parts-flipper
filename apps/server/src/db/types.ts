@@ -79,11 +79,18 @@ export interface Listing {
   updatedAt: string;
 }
 
-/** One expected part on a Listing, with its estimated resale value (Req 2-3). */
+/**
+ * One expected part on a Listing, with its estimated resale value (Req 2-3).
+ * `brand`/`partNumber` are the component's structured identity, null when it
+ * was not confidently identified (never guessed); `description` holds the
+ * remaining context.
+ */
 export interface ExpectedPart {
   id: string;
   listingId: string;
   componentCategory: ComponentCategory;
+  brand: string | null;
+  partNumber: string | null;
   description: string;
   estimatedResaleValue: number;
   createdAt: string;
@@ -113,11 +120,17 @@ export interface TeardownResult {
   updatedAt: string;
 }
 
-/** A physical part produced by a teardown, tracked through resale (Req 6-7). */
+/**
+ * A physical part produced by a teardown, tracked through resale (Req 6-7).
+ * `brand`/`partNumber` carry over from the Expected Part (or Additional Part
+ * row) the teardown reconciled; null when never identified.
+ */
 export interface Part {
   id: string;
   purchaseId: string;
   category: ComponentCategory;
+  brand: string | null;
+  partNumber: string | null;
   description: string;
   status: PartStatus;
   unsellableReason: string | null;

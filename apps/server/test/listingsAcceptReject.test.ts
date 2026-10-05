@@ -33,7 +33,7 @@ function listingBody(sourceId: string, overrides: Partial<CreateListingInput> = 
     askingPrice: 150,
     listingDate: '2026-01-20',
     acquisitionFees: 10,
-    expectedParts: [{ componentCategory: 'CPU', description: 'i5-9500', estimatedResaleValue: 80 }],
+    expectedParts: [{ componentCategory: 'CPU', brand: 'Intel', partNumber: 'i5-9500', description: 'Pulled, tested', estimatedResaleValue: 80 }],
     ...overrides,
   };
 }

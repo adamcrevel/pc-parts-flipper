@@ -53,6 +53,11 @@ function badgeCount(el: HTMLElement): number {
   return Array.from(el.querySelectorAll('span')).filter((span) => span.textContent === 'AI suggested').length;
 }
 
+/** Every input carrying the given per-row aria-label suffix, in render order. */
+function inputsLabelled(el: HTMLElement, suffix: string): HTMLInputElement[] {
+  return (Array.from(el.querySelectorAll('input')) as HTMLInputElement[]).filter((input) => input.getAttribute('aria-label')?.endsWith(suffix));
+}
+
 // Holds the rows in state so the controlled editor's onChange actually
 // round-trips, exactly as ListingForm's own `setRows` does.
 function EditorHarness({ initialRows }: { initialRows: ExpectedPartRow[] }) {
@@ -63,7 +68,9 @@ function EditorHarness({ initialRows }: { initialRows: ExpectedPartRow[] }) {
 function aiRow(overrides: Partial<ExpectedPartRow> = {}): ExpectedPartRow {
   return {
     componentCategory: 'GPU',
-    description: 'NVIDIA RTX 3070',
+    brand: 'NVIDIA',
+    partNumber: 'RTX 3070',
+    description: 'pulled from a working rig',
     estimatedResaleValue: '',
     aiSuggested: true,
     aiConfidence: 'high',
@@ -75,7 +82,9 @@ function aiRow(overrides: Partial<ExpectedPartRow> = {}): ExpectedPartRow {
 function manualRow(overrides: Partial<ExpectedPartRow> = {}): ExpectedPartRow {
   return {
     componentCategory: 'CPU',
-    description: 'Ryzen 5 5600X',
+    brand: 'AMD',
+    partNumber: 'Ryzen 5 5600X',
+    description: 'boxed, with cooler',
     estimatedResaleValue: '90',
     ...overrides,
   };
@@ -120,8 +129,8 @@ describe('ExpectedPartsEditor AI-suggested badge', () => {
     const el = await mount(<EditorHarness initialRows={[aiRow(), aiRow({ componentCategory: 'RAM', description: '16GB DDR4' })]} />);
     expect(badgeCount(el)).toBe(2);
 
-    const descriptionInputs = Array.from(el.querySelectorAll('input[type="text"], input:not([type])')) as HTMLInputElement[];
-    await act(async () => setValue(descriptionInputs[0], 'NVIDIA RTX 3070 Ti'));
+    const descriptionInputs = inputsLabelled(el, 'description');
+    await act(async () => setValue(descriptionInputs[0], 'light coil whine'));
 
     // Only the edited row is reviewed; the untouched one stays flagged —
     // a blanket clear (or clearing the wrong index) fails here. Row
@@ -131,8 +140,7 @@ describe('ExpectedPartsEditor AI-suggested badge', () => {
     const rowContainers = Array.from(el.querySelectorAll('select')).map((select) => select.closest('div.rounded-md')!);
     expect(rowContainers[0].textContent).not.toContain('AI suggested');
     expect(rowContainers[1].textContent).toContain('AI suggested');
-    const values = (Array.from(el.querySelectorAll('input[type="text"], input:not([type])')) as HTMLInputElement[]).map((input) => input.value);
-    expect(values).toEqual(['NVIDIA RTX 3070 Ti', '16GB DDR4']);
+    expect(inputsLabelled(el, 'description').map((input) => input.value)).toEqual(['light coil whine', '16GB DDR4']);
   });
 
   it('drops the badge when the user edits the row category instead of its text', async () => {
@@ -149,5 +157,76 @@ describe('ExpectedPartsEditor AI-suggested badge', () => {
     await act(async () => setValue(valueInput, '250'));
 
     expect(badgeCount(el)).toBe(0);
+  });
+});
+
+
+describe('ExpectedPartsEditor brand and part number fields', () => {
+  it('renders one brand and one part number input per row, seeded from the row state', async () => {
+    const el = await mount(<EditorHarness initialRows={[manualRow(), aiRow()]} />);
+
+    // Per-row counts, not just "at least one": a single shared input (or an
+    // input dropped from the second row's sub-line) fails here.
+    expect(inputsLabelled(el, 'brand').map((input) => input.value)).toEqual(['AMD', 'NVIDIA']);
+    expect(inputsLabelled(el, 'part number').map((input) => input.value)).toEqual(['Ryzen 5 5600X', 'RTX 3070']);
+  });
+
+  it('renders brand and part number as empty inputs on a row that has neither', async () => {
+    const el = await mount(<EditorHarness initialRows={[manualRow({ brand: '', partNumber: '' })]} />);
+
+    // The never-guess rule reaching the UI: an unidentified part shows blank
+    // fields, not the description or any other stand-in value.
+    expect(inputsLabelled(el, 'brand')[0].value).toBe('');
+    expect(inputsLabelled(el, 'part number')[0].value).toBe('');
+  });
+
+  it('writes a typed brand back into that row only, leaving its sibling row untouched', async () => {
+    const el = await mount(<EditorHarness initialRows={[manualRow(), manualRow({ brand: 'Intel', partNumber: 'i5-12400' })]} />);
+
+    await act(async () => setValue(inputsLabelled(el, 'brand')[1], 'Corsair'));
+
+    // Both rows asserted: a patch applied to every row (or to the wrong
+    // index) changes row 1's value too, which this notices.
+    expect(inputsLabelled(el, 'brand').map((input) => input.value)).toEqual(['AMD', 'Corsair']);
+    // The sibling field on the edited row must survive the patch — a patch
+    // that replaced the row instead of merging into it would blank this.
+    expect(inputsLabelled(el, 'part number')[1].value).toBe('i5-12400');
+  });
+
+  it('writes a typed part number back into that row only', async () => {
+    const el = await mount(<EditorHarness initialRows={[manualRow(), manualRow({ brand: 'Intel', partNumber: 'i5-12400' })]} />);
+
+    await act(async () => setValue(inputsLabelled(el, 'part number')[0], '5700X'));
+
+    expect(inputsLabelled(el, 'part number').map((input) => input.value)).toEqual(['5700X', 'i5-12400']);
+    expect(inputsLabelled(el, 'brand').map((input) => input.value)).toEqual(['AMD', 'Intel']);
+  });
+
+  // Brand and part number get their own badge-clearing cases rather than one
+  // shared case: they are separate onChange call sites, and a missing
+  // `aiSuggested: false` on either one is invisible to a test that only
+  // exercises the other.
+  it('drops the badge when the user edits the brand the AI suggested', async () => {
+    const el = await mount(<EditorHarness initialRows={[aiRow(), aiRow({ componentCategory: 'RAM' })]} />);
+    expect(badgeCount(el)).toBe(2);
+
+    await act(async () => setValue(inputsLabelled(el, 'brand')[0], 'EVGA'));
+
+    expect(badgeCount(el)).toBe(1);
+    const rowContainers = Array.from(el.querySelectorAll('select')).map((select) => select.closest('div.rounded-md')!);
+    expect(rowContainers[0].textContent).not.toContain('AI suggested');
+    expect(rowContainers[1].textContent).toContain('AI suggested');
+  });
+
+  it('drops the badge when the user edits the part number the AI suggested', async () => {
+    const el = await mount(<EditorHarness initialRows={[aiRow(), aiRow({ componentCategory: 'RAM' })]} />);
+    expect(badgeCount(el)).toBe(2);
+
+    await act(async () => setValue(inputsLabelled(el, 'part number')[0], 'RTX 3070 Ti'));
+
+    expect(badgeCount(el)).toBe(1);
+    const rowContainers = Array.from(el.querySelectorAll('select')).map((select) => select.closest('div.rounded-md')!);
+    expect(rowContainers[0].textContent).not.toContain('AI suggested');
+    expect(rowContainers[1].textContent).toContain('AI suggested');
   });
 });

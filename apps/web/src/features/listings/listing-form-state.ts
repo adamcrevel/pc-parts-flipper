@@ -46,20 +46,31 @@ export function initialExpectedPartRows(initialValue?: ListingDetail): ExpectedP
   }
   return initialValue.expectedParts.map((part) => ({
     componentCategory: part.componentCategory,
+    // Null (not identified) renders as an empty input — the editor keeps
+    // every field as a string while editing, and blank maps back to null
+    // on submit.
+    brand: part.brand ?? '',
+    partNumber: part.partNumber ?? '',
     description: part.description,
     estimatedResaleValue: String(part.estimatedResaleValue),
   }));
 }
 
 /**
- * Converts one AI-identified part into a draft Expected Parts row. The
- * estimated resale value is deliberately left blank: the model is only asked
- * to identify parts, never to price them, so that field stays the user's to
- * fill in (and validateExpectedPartRows keeps insisting on it before save).
+ * Converts one AI-identified part into a draft Expected Parts row. Brand and
+ * part number come straight across as their own fields — the model is asked
+ * for them separately and told to return null rather than guess, so a blank
+ * here means "not identified", and `description` carries only whatever
+ * context those two fields don't already say. The estimated resale value is
+ * deliberately left blank: the model is only asked to identify parts, never
+ * to price them, so that field stays the user's to fill in (and
+ * validateExpectedPartRows keeps insisting on it before save).
  */
 export function aiPartToExpectedPartRow(part: AiIdentifiedPart): ExpectedPartRow {
   return {
     componentCategory: part.category,
+    brand: part.brand ?? '',
+    partNumber: part.partNumber ?? '',
     description: part.description,
     estimatedResaleValue: '',
     aiSuggested: true,

@@ -5,10 +5,16 @@ import { newId } from '../id.js';
 import { buildSetClause } from '../sqlHelpers.js';
 import type { ComponentCategory, Part, PartStatus } from '../types.js';
 
-/** Fields supplied when the teardown workflow generates a Part (Req 6). */
+/**
+ * Fields supplied when the teardown workflow generates a Part (Req 6).
+ * `brand`/`partNumber` carry over from the Expected Part being reconciled,
+ * or from the Additional Part row the user filled in; null when unidentified.
+ */
 export interface CreatePartInput {
   purchaseId: string;
   category: ComponentCategory;
+  brand: string | null;
+  partNumber: string | null;
   description: string;
 }
 
@@ -33,6 +39,8 @@ function mapRow(row: Record<string, unknown>): Part {
     id: row.id as string,
     purchaseId: row.purchase_id as string,
     category: row.category as ComponentCategory,
+    brand: (row.brand as string | null) ?? null,
+    partNumber: (row.part_number as string | null) ?? null,
     description: row.description as string,
     status: row.status as PartStatus,
     unsellableReason: row.unsellable_reason as string | null,
@@ -45,13 +53,15 @@ function mapRow(row: Record<string, unknown>): Part {
 export async function createPart(input: CreatePartInput): Promise<Part> {
   const connection = await getConnection();
   const reader = await connection.runAndReadAll(
-    `INSERT INTO parts (id, purchase_id, category, description)
-     VALUES ($id, $purchase_id, $category, $description)
+    `INSERT INTO parts (id, purchase_id, category, brand, part_number, description)
+     VALUES ($id, $purchase_id, $category, $brand, $part_number, $description)
      RETURNING *`,
     {
       id: newId(),
       purchase_id: input.purchaseId,
       category: input.category,
+      brand: input.brand,
+      part_number: input.partNumber,
       description: input.description,
     },
   );
@@ -119,7 +129,7 @@ export async function listPartsWithContext(options?: ListPartsOptions): Promise<
   }
   const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const reader = await connection.runAndReadAll(
-    `SELECT pt.id, pt.purchase_id, pt.category, pt.description, pt.status, pt.unsellable_reason, pt.created_at, pt.updated_at,
+    `SELECT pt.id, pt.purchase_id, pt.category, pt.brand, pt.part_number, pt.description, pt.status, pt.unsellable_reason, pt.created_at, pt.updated_at,
             l.title AS purchase_listing_title
      FROM parts pt
      JOIN purchases p ON p.id = pt.purchase_id
@@ -182,7 +192,7 @@ export async function updatePart(id: string, patch: UpdatePartInput): Promise<Pa
 export async function getPartWithContextById(id: string): Promise<PartWithPurchaseSummary | null> {
   const connection = await getConnection();
   const reader = await connection.runAndReadAll(
-    `SELECT pt.id, pt.purchase_id, pt.category, pt.description, pt.status, pt.unsellable_reason, pt.created_at, pt.updated_at,
+    `SELECT pt.id, pt.purchase_id, pt.category, pt.brand, pt.part_number, pt.description, pt.status, pt.unsellable_reason, pt.created_at, pt.updated_at,
             l.title AS purchase_listing_title
      FROM parts pt
      JOIN purchases p ON p.id = pt.purchase_id

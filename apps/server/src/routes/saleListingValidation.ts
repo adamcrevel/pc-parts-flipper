@@ -1,7 +1,7 @@
 // Request-body validation for Sale Listing create/update (Req 8, 13). Split
 // out of saleListings.ts to keep that file under the ~200-line standing
 // check, the same way listingValidation.ts was split out of listings.ts.
-import type { ComponentCategory, PlatformType } from '@pc-parts-flipper/shared';
+import { formatPartIdentity, type ComponentCategory, type PlatformType } from '@pc-parts-flipper/shared';
 import { AppError } from '../error-handler.js';
 
 // The only values DuckDB's platform_type ENUM column accepts; mirrors
@@ -58,25 +58,50 @@ function validateOptionalPlatform(value: unknown): PlatformType | undefined {
   return value as PlatformType;
 }
 
-/** The `${category}: ${description}` title a draft Sale Listing gets when the client sends no title override (Req 8). */
-export function defaultSaleListingTitle(category: ComponentCategory, description: string): string {
-  return `${category}: ${description}`;
+/**
+ * The title a draft Sale Listing gets when the client sends no title
+ * override (Req 8).
+ *
+ * A buyer searches for "NVIDIA RTX 3060", not for a category followed by a
+ * paragraph of condition notes, so a Part that carries a structured identity
+ * gets `brand partNumber` (either one alone if that is all there is). Only
+ * when neither is known does this fall back to the original
+ * `${category}: ${description}` form — which is why brand/partNumber are left
+ * null rather than guessed upstream: a wrong brand would silently become the
+ * listing's headline.
+ */
+export function defaultSaleListingTitle(
+  category: ComponentCategory,
+  description: string,
+  brand: string | null,
+  partNumber: string | null,
+): string {
+  // formatPartIdentity returns '' when neither half was identified (it also
+  // treats blank-but-not-null values as absent), which is the signal to fall
+  // back to the category/description form.
+  const identity = formatPartIdentity(brand, partNumber);
+  return identity.length > 0 ? identity : `${category}: ${description}`;
 }
 
 /**
  * Validates and normalizes a `POST /api/parts/:partId/sale-listings`
  * request body (Req 8, 13). Every field is optional on input: an omitted
  * `platform` defaults to `'other'`, an omitted `askingPrice` defaults to
- * `0`, and omitted `title`/`description` default to
- * `${category}: ${description}` / the Part's own description, generated
+ * `0`, an omitted `title` defaults to defaultSaleListingTitle (see above)
+ * and an omitted `description` to the Part's own description, both generated
  * from the owning Part — all meant to be edited immediately afterward via
  * the draft editor rather than required up front. A *supplied* title or
  * asking price is still validated (non-blank / non-negative) the same as
  * an update.
  */
-export function validateCreateSaleListingInput(body: SaleListingRequestBody, part: { category: ComponentCategory; description: string }): Required<NormalizedSaleListingFields> {
+export function validateCreateSaleListingInput(
+  body: SaleListingRequestBody,
+  part: { category: ComponentCategory; description: string; brand: string | null; partNumber: string | null },
+): Required<NormalizedSaleListingFields> {
   const platform = validateOptionalPlatform(body.platform) ?? 'other';
-  const title = body.title !== undefined ? requireNonBlankString(body.title, 'title') : defaultSaleListingTitle(part.category, part.description);
+  const title = body.title !== undefined
+    ? requireNonBlankString(body.title, 'title')
+    : defaultSaleListingTitle(part.category, part.description, part.brand, part.partNumber);
   const description = body.description !== undefined ? (body.description === null ? null : requireNonBlankString(body.description, 'description')) : part.description;
   const askingPrice = body.askingPrice !== undefined ? requireNonNegativeNumber(body.askingPrice, 'asking price') : 0;
   return { platform, title, description, askingPrice };

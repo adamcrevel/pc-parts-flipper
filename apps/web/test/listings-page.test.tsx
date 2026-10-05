@@ -84,6 +84,8 @@ function makeDetail(summary: ListingSummary, partDescription: string): ListingDe
         id: `${summary.id}-part-1`,
         listingId: summary.id,
         componentCategory: 'GPU',
+        brand: null,
+        partNumber: null,
         description: partDescription,
         estimatedResaleValue: summary.comparison.totalExpectedResaleValue,
         createdAt: '2024-01-01',

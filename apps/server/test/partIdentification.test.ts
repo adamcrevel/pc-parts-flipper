@@ -171,19 +171,97 @@ describe('buildIdentificationPrompt', () => {
     expect(text).toContain('RESPOND WITH ONLY RAW JSON');
     expect(text).toContain('No markdown, no code fences');
   });
+
+  it('asks for brand and part number as separate fields and forbids guessing them', () => {
+    const text = prompt.buildIdentificationPrompt(listingFixture());
+
+    // The two fields must be requested by their exact JSON names — the parser
+    // reads `brand`/`partNumber`, so a prompt asking for "model" instead would
+    // silently produce nulls for every part.
+    expect(text).toContain('"brand"');
+    expect(text).toContain('"partNumber"');
+    // Null-not-a-guess is the load-bearing half: these values become a sale
+    // listing's title, so a hallucinated model number is worse than a blank.
+    expect(text).toContain('Use JSON null for either one you cannot confidently support');
+    expect(text).toContain('do NOT put a placeholder such as "Unknown" or "N/A"');
+    // Description is narrowed rather than left as a prose restatement.
+    expect(text).toContain('Do NOT restate the brand or model number there');
+    // The response shape example must carry the fields too, including the
+    // null case — the example is what the model actually copies.
+    expect(text).toContain('"brand":"NVIDIA"');
+    expect(text).toContain('"brand":null');
+  });
 });
 
 describe('parseIdentificationResponse', () => {
   it('parses a well-formed raw JSON response', () => {
     const raw = JSON.stringify({
-      parts: [{ category: 'GPU', description: 'RTX 3060 12GB', confidence: 'high', source: 'both' }],
+      parts: [{ category: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3060', description: '12GB, tested working', confidence: 'high', source: 'both' }],
       notes: 'Photos look like stock images.',
     });
 
     expect(parser.parseIdentificationResponse(raw)).toEqual({
-      parts: [{ category: 'GPU', description: 'RTX 3060 12GB', confidence: 'high', source: 'both' }],
+      parts: [{ category: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3060', description: '12GB, tested working', confidence: 'high', source: 'both' }],
       notes: 'Photos look like stock images.',
     });
+  });
+
+  it('passes an explicitly-null brand/partNumber through as null, with no warning', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    // Null here is the model correctly answering "I could not identify this",
+    // which is the documented happy path — it must not be logged as a surprise.
+    const raw = JSON.stringify({
+      parts: [{ category: 'RAM', brand: null, partNumber: null, description: '2 DDR4 DIMMs, capacity not legible', confidence: 'low', source: 'image' }],
+      notes: '',
+    });
+
+    const result = parser.parseIdentificationResponse(raw);
+
+    expect(result.parts[0].brand).toBeNull();
+    expect(result.parts[0].partNumber).toBeNull();
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('coerces a malformed brand/partNumber to null, logs it, and keeps the rest of the part', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    // A number for brand and an object for partNumber: shapes the model was
+    // never asked for. Dropping the `typeof === 'string'` guard would let the
+    // number 42 reach the database as a brand; dropping the whole part would
+    // throw away an otherwise usable suggestion.
+    const raw = '{"parts":[{"category":"GPU","brand":42,"partNumber":{"x":1},"description":"12GB card","confidence":"high","source":"image"}],"notes":""}';
+
+    const result = parser.parseIdentificationResponse(raw);
+
+    expect(result.parts).toHaveLength(1);
+    expect(result.parts[0].brand).toBeNull();
+    expect(result.parts[0].partNumber).toBeNull();
+    // The rest of the part survives the coercion.
+    expect(result.parts[0].description).toBe('12GB card');
+    expect(result.parts[0].category).toBe('GPU');
+    // Accounted for, not silently dropped — and the log names which field.
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ field: 'brand', value: 42 }),
+      expect.stringContaining('non-string part identity field'),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ field: 'partNumber' }),
+      expect.stringContaining('non-string part identity field'),
+    );
+  });
+
+  it('treats a blank brand/partNumber string as not-identified rather than empty text', () => {
+    vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    // An empty brand reaching the database would render as a leading space in
+    // the default sale listing title, so blank must normalize to null.
+    const raw = JSON.stringify({
+      parts: [{ category: 'PSU', brand: '   ', partNumber: '', description: '650W', confidence: 'medium', source: 'text' }],
+      notes: '',
+    });
+
+    const result = parser.parseIdentificationResponse(raw);
+
+    expect(result.parts[0].brand).toBeNull();
+    expect(result.parts[0].partNumber).toBeNull();
   });
 
   it('strips a markdown code fence the model added despite being told not to', () => {
@@ -246,7 +324,7 @@ describe('parseIdentificationResponse', () => {
 
     const result = parser.parseIdentificationResponse(raw);
 
-    expect(result.parts).toEqual([{ category: 'GPU', description: '', confidence: 'high', source: 'image' }]);
+    expect(result.parts).toEqual([{ category: 'GPU', brand: null, partNumber: null, description: '', confidence: 'high', source: 'image' }]);
     expect(warnSpy).toHaveBeenCalledWith(
       expect.objectContaining({ entry: 'RTX 3060' }),
       expect.stringContaining('non-object part entry'),
@@ -457,7 +535,7 @@ describe('identifyListingParts', () => {
     runner.setOmpRunnerOverride(async (promptText, imagePaths) => {
       calls.push({ prompt: promptText, images: imagePaths });
       return JSON.stringify({
-        parts: [{ category: 'Storage', description: '1TB NVMe', confidence: 'medium', source: 'text' }],
+        parts: [{ category: 'Storage', brand: 'Samsung', partNumber: '980 PRO', description: '1TB, serial not visible', confidence: 'medium', source: 'text' }],
         notes: 'Serial not visible.',
       });
     });
@@ -466,7 +544,7 @@ describe('identifyListingParts', () => {
     const result = await identification.identifyListingParts(listing);
 
     expect(result).toEqual({
-      parts: [{ category: 'Storage', description: '1TB NVMe', confidence: 'medium', source: 'text' }],
+      parts: [{ category: 'Storage', brand: 'Samsung', partNumber: '980 PRO', description: '1TB, serial not visible', confidence: 'medium', source: 'text' }],
       notes: 'Serial not visible.',
     });
     expect(calls).toHaveLength(1);

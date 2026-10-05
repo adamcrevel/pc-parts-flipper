@@ -69,8 +69,14 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
       return;
     }
 
+    // Field-by-field (never a spread of `row`): ExpectedPartRow carries
+    // client-only draft state (aiSuggested/aiConfidence/aiSource) that must
+    // not reach the backend. Blank brand/part number send as null rather
+    // than '' — "not identified" is an absence, not an empty string.
     const expectedParts: ExpectedPartInput[] = rows.map((row) => ({
       componentCategory: row.componentCategory as ExpectedPartInput['componentCategory'],
+      brand: row.brand.trim() || null,
+      partNumber: row.partNumber.trim() || null,
       description: row.description.trim(),
       estimatedResaleValue: Number(row.estimatedResaleValue),
     }));

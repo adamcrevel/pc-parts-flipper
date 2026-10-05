@@ -53,7 +53,7 @@ function listingBody(sourceId: string, index: number): CreateListingInput {
     askingPrice: 100,
     listingDate: '2026-02-01',
     acquisitionFees: 0,
-    expectedParts: [{ componentCategory: 'CPU', description: 'Test CPU', estimatedResaleValue: 50 }],
+    expectedParts: [{ componentCategory: 'CPU', brand: 'Intel', partNumber: 'i5-8500', description: 'Test CPU', estimatedResaleValue: 50 }],
   };
 }
 

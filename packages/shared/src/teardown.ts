@@ -28,11 +28,20 @@ export interface TeardownResult {
 /** Part lifecycle (Req 7); only `ready_to_list` is reachable from the teardown submission this task builds. */
 export type PartStatus = 'ready_to_list' | 'listed' | 'sold' | 'unsellable';
 
-/** A physical part produced by a teardown, tracked through resale (Req 6-7). */
+/**
+ * A physical part produced by a teardown, tracked through resale (Req 6-7).
+ * `brand`/`partNumber` carry over from the Expected Part the teardown
+ * reconciled (or from the Additional Part row the user filled in), and stay
+ * null when the component was never identified — they drive the default
+ * Sale Listing title, which is why a real "NVIDIA RTX 3060" beats a generic
+ * "GPU: <prose>".
+ */
 export interface Part {
   id: string;
   purchaseId: string;
   category: ComponentCategory;
+  brand: string | null;
+  partNumber: string | null;
   description: string;
   status: PartStatus;
   unsellableReason: string | null;
@@ -67,9 +76,11 @@ export interface TeardownExpectedPartResultInput {
   note?: string | null;
 }
 
-/** One Additional Part found during teardown that wasn't on the originating Listing (Req 6). */
+/** One Additional Part found during teardown that wasn't on the originating Listing (Req 6). `brand`/`partNumber` are null when the user did not identify the component. */
 export interface TeardownAdditionalPartInput {
   category: ComponentCategory;
+  brand: string | null;
+  partNumber: string | null;
   description: string;
   note?: string | null;
 }

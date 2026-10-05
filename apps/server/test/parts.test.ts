@@ -38,7 +38,7 @@ function listingBody(i: number, sourceId: string): CreateListingInput {
     askingPrice: 100,
     listingDate: '2026-01-01',
     acquisitionFees: 0,
-    expectedParts: [{ componentCategory: 'CPU', description: `Test CPU ${i}`, estimatedResaleValue: 50 }],
+    expectedParts: [{ componentCategory: 'CPU', brand: 'Intel', partNumber: `i5-${i}`, description: `Test CPU ${i}`, estimatedResaleValue: 50 }],
   };
 }
 
@@ -192,5 +192,25 @@ describe('Part status transitions (T10)', () => {
     expect(ids, 'the just-sold Part must appear in the sold filter').toContain(soldPartId);
     expect(ids, 'a ready_to_list Part must not appear in the sold filter').not.toContain(readyPartId);
     expect(res.body.parts.every((p) => p.status === 'sold'), 'every row returned under status=sold must actually be sold').toBe(true);
+  }, 30_000);
+
+  it('carries the Part brand/partNumber on the detail GET and the status PATCH response', async () => {
+    // Both of those responses come from getPartWithContextById, which selects
+    // an explicit column list rather than `SELECT *` — a column missing from
+    // that list would surface here and in no other test, since the list
+    // endpoint uses a different (separately-enumerated) statement.
+    const partId = await createReadyToListPart();
+
+    const get = await getJson<PartSummary>(`${server.baseUrl}/api/parts/${partId}`);
+    expect(get.status).toBe(200);
+    // The seed fixture (listingBody above) sets Intel / i5-<n> on the single
+    // Expected Part, and teardown carries it onto the Part.
+    expect(get.body.brand).toBe('Intel');
+    expect(get.body.partNumber).toMatch(/^i5-\d+$/);
+
+    const patched = await patchJson<PartSummary>(`${server.baseUrl}/api/parts/${partId}/status`, { status: 'listed' });
+    expect(patched.status, JSON.stringify(patched.body)).toBe(200);
+    expect(patched.body.brand).toBe('Intel');
+    expect(patched.body.partNumber).toBe(get.body.partNumber);
   }, 30_000);
 });

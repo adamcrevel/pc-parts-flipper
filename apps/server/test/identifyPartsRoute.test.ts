@@ -88,8 +88,8 @@ describe('POST /api/listings/:id/identify-parts', () => {
   it('returns 200 with the parsed identification for an existing Listing', async () => {
     const modelOutput = JSON.stringify({
       parts: [
-        { category: 'CPU', description: 'Ryzen 5 5600X', confidence: 'high', source: 'text' },
-        { category: 'GPU', description: 'RTX 3060, 12GB variant unconfirmed', confidence: 'medium', source: 'image' },
+        { category: 'CPU', brand: 'AMD', partNumber: 'Ryzen 5 5600X', description: 'Boxed cooler included', confidence: 'high', source: 'text' },
+        { category: 'GPU', brand: 'NVIDIA', partNumber: null, description: 'RTX 3060, 12GB variant unconfirmed', confidence: 'medium', source: 'image' },
       ],
       notes: 'PSU wattage not visible in any photo.',
     });
@@ -105,7 +105,11 @@ describe('POST /api/listings/:id/identify-parts', () => {
 
     expect(res.status).toBe(200);
     expect(body.parts).toHaveLength(2);
-    expect(body.parts[0]).toEqual({ category: 'CPU', description: 'Ryzen 5 5600X', confidence: 'high', source: 'text' });
+    // Full-shape equality, so brand/partNumber reaching the HTTP response is
+    // proven rather than assumed — including the null half.
+    expect(body.parts[0]).toEqual({ category: 'CPU', brand: 'AMD', partNumber: 'Ryzen 5 5600X', description: 'Boxed cooler included', confidence: 'high', source: 'text' });
+    expect(body.parts[1].brand).toBe('NVIDIA');
+    expect(body.parts[1].partNumber).toBeNull();
     expect(body.notes).toBe('PSU wattage not visible in any photo.');
     // The route reached the real orchestrator (photo resolution included),
     // not some shortcut that echoed the fixture.

@@ -56,8 +56,13 @@ describe('Sale Listings API (T11, Req 8)', () => {
   // Drives Source -> Listing -> accept -> Purchase (shipped -> received) ->
   // teardown (present_as_expected) to mint a brand-new, real ready_to_list
   // Part, so every test gets its own Part rather than sharing mutable state
-  // across `it` blocks.
-  async function createReadyToListPart(label: string): Promise<Part> {
+  // across `it` blocks. `identity` is the Expected Part's brand/partNumber,
+  // which the teardown carries into the Part and which the Sale Listing
+  // draft's default title is then derived from.
+  async function createReadyToListPart(
+    label: string,
+    identity: { brand: string | null; partNumber: string | null } = { brand: null, partNumber: null },
+  ): Promise<Part> {
     const sourceRes = await postJson<SourceResponse>(`${server.baseUrl}/api/sources`, {
       name: `Sale Listing Test Source ${label}`,
       platformType: 'ebay',
@@ -74,7 +79,7 @@ describe('Sale Listings API (T11, Req 8)', () => {
       askingPrice: 100,
       listingDate: '2026-01-01',
       acquisitionFees: 0,
-      expectedParts: [{ componentCategory: 'GPU', description: `Test GPU ${label}`, estimatedResaleValue: 150 }],
+      expectedParts: [{ componentCategory: 'GPU', brand: identity.brand, partNumber: identity.partNumber, description: `Test GPU ${label}`, estimatedResaleValue: 150 }],
     };
     const listingRes = await postJson<ListingDetail>(`${server.baseUrl}/api/listings`, listingBody);
     expect(listingRes.status, `seed Listing creation failed: ${JSON.stringify(listingRes.body)}`).toBe(201);
@@ -100,8 +105,12 @@ describe('Sale Listings API (T11, Req 8)', () => {
     return part;
   }
 
-  it('drafts a Sale Listing pre-filled from the Part when the client sends no overrides', async () => {
+  it('falls back to the `category: description` title when the Part has neither brand nor part number', async () => {
     const part = await createReadyToListPart('prefill');
+    // Precondition, not an assumption: this Part really is unidentified, so
+    // the fallback below is the branch actually being exercised.
+    expect(part.brand).toBeNull();
+    expect(part.partNumber).toBeNull();
 
     const draftRes = await postJson<SaleListing>(`${server.baseUrl}/api/parts/${part.id}/sale-listings`, {});
     expect(draftRes.status, `draft creation failed: ${JSON.stringify(draftRes.body)}`).toBe(201);
@@ -114,6 +123,23 @@ describe('Sale Listings API (T11, Req 8)', () => {
     expect(draftRes.body.askingPrice).toBe(0);
     expect(draftRes.body.partId).toBe(part.id);
     expect(draftRes.body.listedAt).toBeNull();
+  });
+
+  it('titles the draft from the Part\'s brand and part number when it has them', async () => {
+    const part = await createReadyToListPart('identified', { brand: 'NVIDIA', partNumber: 'RTX 3060' });
+    // The whole point of carrying brand/partNumber through teardown: they
+    // must have survived Expected Part -> Part before the title can use them.
+    expect(part.brand).toBe('NVIDIA');
+    expect(part.partNumber).toBe('RTX 3060');
+
+    const draftRes = await postJson<SaleListing>(`${server.baseUrl}/api/parts/${part.id}/sale-listings`, {});
+    expect(draftRes.status, `draft creation failed: ${JSON.stringify(draftRes.body)}`).toBe(201);
+    expect(draftRes.body.title).toBe('NVIDIA RTX 3060');
+    // And explicitly NOT the fallback — a title that merely "contains the
+    // brand" would also pass a looser check while the fallback still ran.
+    expect(draftRes.body.title).not.toBe(`${part.category}: ${part.description}`);
+    // description keeps its own role; it is not replaced by the identity.
+    expect(draftRes.body.description).toBe(part.description);
   });
 
   it('honors a client-supplied title/platform/askingPrice instead of the Part-derived default', async () => {

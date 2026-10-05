@@ -67,6 +67,10 @@ const savedListing: ListingDetail = {
       id: 'part-1',
       listingId: 'listing-1',
       componentCategory: 'CPU',
+      // Hand-entered and never identified further: nulls here are what the
+      // editor must render as blank inputs.
+      brand: null,
+      partNumber: null,
       description: 'Ryzen 5 5600X',
       estimatedResaleValue: 90,
       createdAt: '2024-01-01',
@@ -75,10 +79,13 @@ const savedListing: ListingDetail = {
   ],
 };
 
+// The second part deliberately carries null brand/partNumber: the model is
+// told to leave them null rather than guess, so both the identified and the
+// unidentified shape have to survive the trip into the editor.
 const twoPartResponse: IdentifyPartsResponse = {
   parts: [
-    { category: 'GPU', description: 'NVIDIA RTX 3070', confidence: 'high', source: 'image' },
-    { category: 'PSU', description: 'Corsair RM750', confidence: 'medium', source: 'text' },
+    { category: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3070', description: 'triple-fan cooler visible', confidence: 'high', source: 'image' },
+    { category: 'PSU', brand: null, partNumber: null, description: 'Corsair RM750', confidence: 'medium', source: 'text' },
   ],
   notes: 'These look like stock photos, not the actual item.',
 };
@@ -138,6 +145,20 @@ function categoryValues(el: HTMLElement): string[] {
   return Array.from(el.querySelectorAll('select'))
     .filter((select) => select.getAttribute('aria-label')?.endsWith('category'))
     .map((select) => select.value);
+}
+
+/** Every row's brand input value, in render order. */
+function brandValues(el: HTMLElement): string[] {
+  return Array.from(el.querySelectorAll('input'))
+    .filter((input) => input.getAttribute('aria-label')?.endsWith('brand'))
+    .map((input) => input.value);
+}
+
+/** Every row's part number input value, in render order. */
+function partNumberValues(el: HTMLElement): string[] {
+  return Array.from(el.querySelectorAll('input'))
+    .filter((input) => input.getAttribute('aria-label')?.endsWith('part number'))
+    .map((input) => input.value);
 }
 
 describe('Identify Parts gating on a saved Listing', () => {
@@ -201,7 +222,7 @@ describe('Identify Parts results', () => {
 
     // The pre-existing row stays first and intact; the two suggestions are
     // added after it with the categories the response named.
-    expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'NVIDIA RTX 3070', 'Corsair RM750']);
+    expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
     expect(categoryValues(el)).toEqual(['CPU', 'GPU', 'PSU']);
 
     // Only the two appended rows are badged — the user's own row is not.
@@ -212,6 +233,24 @@ describe('Identify Parts results', () => {
     // the estimated resale value for the user to fill in.
     const valueInputs = Array.from(el.querySelectorAll('input[type="number"]')) as HTMLInputElement[];
     expect(valueInputs.map((input) => input.value).slice(-2)).toEqual(['', '']);
+  });
+
+  it('fills each suggested row\'s brand and part number from those response fields, not from its description', async () => {
+    identifyListingPartsMock.mockResolvedValue(twoPartResponse);
+    const el = await mountForm(savedListing);
+
+    await act(async () => findIdentifyButton(el)!.click());
+
+    // Row 1 is the pre-existing hand-entered part (null/null -> blank).
+    // Row 2 carries the identified pair verbatim and, crucially, its brand
+    // is 'NVIDIA' rather than its description 'triple-fan cooler visible':
+    // a conversion that folded identity back into description, or re-used
+    // the description for both fields, fails here.
+    expect(brandValues(el)).toEqual(['', 'NVIDIA', '']);
+    expect(partNumberValues(el)).toEqual(['', 'RTX 3070', '']);
+    // Row 3's nulls stay blank rather than becoming the string 'null' or a
+    // copy of its description — the never-guess rule, end to end.
+    expect(descriptionValues(el)[2]).toBe('Corsair RM750');
   });
 
   it('renders non-empty notes as a dismissible banner that the user can clear', async () => {
@@ -286,10 +325,38 @@ describe('Identify Parts draft state never reaches the backend', () => {
     // `aiConfidence` and `aiSource` are editor-only draft state, and a
     // spread-based row→input mapping would quietly carry all three into the
     // request body. toEqual on the whole array is what notices that.
+    // Both brand/partNumber shapes appear here: the GPU row sends the
+    // identified pair, the CPU and PSU rows send null (not '') for fields
+    // nobody filled in.
     expect(payload.expectedParts).toEqual([
-      { componentCategory: 'CPU', description: 'Ryzen 5 5600X', estimatedResaleValue: 90 },
-      { componentCategory: 'GPU', description: 'NVIDIA RTX 3070', estimatedResaleValue: 300 },
-      { componentCategory: 'PSU', description: 'Corsair RM750', estimatedResaleValue: 70 },
+      { componentCategory: 'CPU', brand: null, partNumber: null, description: 'Ryzen 5 5600X', estimatedResaleValue: 90 },
+      { componentCategory: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3070', description: 'triple-fan cooler visible', estimatedResaleValue: 300 },
+      { componentCategory: 'PSU', brand: null, partNumber: null, description: 'Corsair RM750', estimatedResaleValue: 70 },
     ]);
+  });
+
+  it('sends a hand-typed brand and part number, and null for one left whitespace-only', async () => {
+    const onSubmit = vi.fn(async () => savedListing);
+    const el = await mount(<ListingForm initialValue={savedListing} sources={sources} onSubmit={onSubmit} onCancel={() => {}} onSaved={() => {}} />);
+
+    const brandInput = (Array.from(el.querySelectorAll('input')) as HTMLInputElement[]).find((input) => input.getAttribute('aria-label')?.endsWith('brand'))!;
+    const partNumberInput = (Array.from(el.querySelectorAll('input')) as HTMLInputElement[]).find(
+      (input) => input.getAttribute('aria-label')?.endsWith('part number'),
+    )!;
+    await act(async () => {
+      setValue(brandInput, '  AMD  ');
+      // Whitespace-only is still "not identified": it must not survive as a
+      // ' ' string, which a `row.partNumber || null` without the trim would
+      // let through.
+      setValue(partNumberInput, '   ');
+    });
+
+    const form = el.querySelector('form') as HTMLFormElement;
+    await act(async () => form.requestSubmit());
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const payload = onSubmit.mock.calls[0][0] as CreateListingInput;
+    expect(payload.expectedParts[0].brand).toBe('AMD');
+    expect(payload.expectedParts[0].partNumber).toBeNull();
   });
 });

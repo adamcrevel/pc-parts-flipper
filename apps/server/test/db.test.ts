@@ -77,6 +77,9 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'external_source',
     'external_item_id',
   ],
+  // brand/part_number (brand-model feature) were added via ALTER_STATEMENTS
+  // after the original CREATE TABLE, so DuckDB reports them last rather than
+  // beside component_category where the TypeScript row type places them.
   expected_parts: [
     'id',
     'listing_id',
@@ -85,6 +88,8 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'estimated_resale_value',
     'created_at',
     'updated_at',
+    'brand',
+    'part_number',
   ],
   purchases: ['id', 'listing_id', 'status', 'price_paid', 'purchase_date', 'created_at', 'updated_at'],
   teardown_results: [
@@ -96,6 +101,7 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'created_at',
     'updated_at',
   ],
+  // brand/part_number likewise appended by ALTER_STATEMENTS.
   parts: [
     'id',
     'purchase_id',
@@ -105,6 +111,8 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'unsellable_reason',
     'created_at',
     'updated_at',
+    'brand',
+    'part_number',
   ],
   sale_listings: [
     'id',
@@ -168,26 +176,43 @@ describe('migrations create every table with the correct columns', () => {
     ).rejects.toThrow();
   });
 
-  it('adds the 5 ebay-scanning columns with the correct type and nullability (ALTER_STATEMENTS)', async () => {
+  it('adds every ALTER_STATEMENTS column with the correct type, nullable, and with no default (ALTER_STATEMENTS)', async () => {
     const connection = await getConnection();
     // Transcribed independently of schema.ts (VARCHAR/TIMESTAMP/INTEGER, all
     // nullable — none of the ALTER_STATEMENTS columns carry NOT NULL) so
     // this catches a type or nullability regression that the column-name-only
-    // test above cannot: that test only reads column_name, never data_type
-    // or is_nullable.
+    // test above cannot: that test only reads column_name, never data_type,
+    // is_nullable or column_default.
+    //
+    // column_default is projected as well as is_nullable, and that matters
+    // most for the four identity columns (expected_parts/parts brand and
+    // part_number). Those carry a standing invariant: brand and part number
+    // are never guessed, never defaulted — an unidentified component stays
+    // null. `is_nullable` alone cannot defend it. `ADD COLUMN ... DEFAULT
+    // 'Unknown'` leaves the column nullable (so is_nullable stays 'YES') and
+    // still lets an explicit NULL insert store null (so every round-trip
+    // test stays green), while silently backfilling a fabricated brand onto
+    // every row that already existed when the migration ran. The default
+    // itself is the only observable difference, so it is the thing asserted.
     const reader = await connection.runAndReadAll(
-      `SELECT table_name, column_name, data_type, is_nullable
+      `SELECT table_name, column_name, data_type, is_nullable, column_default
        FROM information_schema.columns
        WHERE (table_name = 'sources' AND column_name IN ('connector_config', 'last_scanned_at', 'last_scan_found_count'))
           OR (table_name = 'listings' AND column_name IN ('external_source', 'external_item_id'))
+          OR (table_name = 'expected_parts' AND column_name IN ('brand', 'part_number'))
+          OR (table_name = 'parts' AND column_name IN ('brand', 'part_number'))
        ORDER BY table_name, column_name`,
     );
     expect(reader.getRowObjectsJson()).toEqual([
-      { table_name: 'listings', column_name: 'external_item_id', data_type: 'VARCHAR', is_nullable: 'YES' },
-      { table_name: 'listings', column_name: 'external_source', data_type: 'VARCHAR', is_nullable: 'YES' },
-      { table_name: 'sources', column_name: 'connector_config', data_type: 'VARCHAR', is_nullable: 'YES' },
-      { table_name: 'sources', column_name: 'last_scan_found_count', data_type: 'INTEGER', is_nullable: 'YES' },
-      { table_name: 'sources', column_name: 'last_scanned_at', data_type: 'TIMESTAMP', is_nullable: 'YES' },
+      { table_name: 'expected_parts', column_name: 'brand', data_type: 'VARCHAR', is_nullable: 'YES', column_default: null },
+      { table_name: 'expected_parts', column_name: 'part_number', data_type: 'VARCHAR', is_nullable: 'YES', column_default: null },
+      { table_name: 'listings', column_name: 'external_item_id', data_type: 'VARCHAR', is_nullable: 'YES', column_default: null },
+      { table_name: 'listings', column_name: 'external_source', data_type: 'VARCHAR', is_nullable: 'YES', column_default: null },
+      { table_name: 'parts', column_name: 'brand', data_type: 'VARCHAR', is_nullable: 'YES', column_default: null },
+      { table_name: 'parts', column_name: 'part_number', data_type: 'VARCHAR', is_nullable: 'YES', column_default: null },
+      { table_name: 'sources', column_name: 'connector_config', data_type: 'VARCHAR', is_nullable: 'YES', column_default: null },
+      { table_name: 'sources', column_name: 'last_scan_found_count', data_type: 'INTEGER', is_nullable: 'YES', column_default: null },
+      { table_name: 'sources', column_name: 'last_scanned_at', data_type: 'TIMESTAMP', is_nullable: 'YES', column_default: null },
     ]);
   });
 });
@@ -370,10 +395,16 @@ describe('query functions round-trip data through the full lifecycle', () => {
     const expectedPart = await db.createExpectedPart({
       listingId: listing.id,
       componentCategory: 'CPU',
-      description: 'i5-8500',
+      brand: 'Intel',
+      partNumber: 'i5-8500',
+      description: 'Pulled from a working machine',
       estimatedResaleValue: 60,
     });
     expect(expectedPart.estimatedResaleValue).toBe(60);
+    // brand/partNumber must survive the INSERT ... RETURNING round-trip, not
+    // just be echoed back from the input object.
+    expect(expectedPart.brand).toBe('Intel');
+    expect(expectedPart.partNumber).toBe('i5-8500');
     const expectedParts = await db.listExpectedPartsByListing(listing.id);
     expect(expectedParts).toEqual([expectedPart]);
 
@@ -399,11 +430,19 @@ describe('query functions round-trip data through the full lifecycle', () => {
     const part = await db.createPart({
       purchaseId: purchase.id,
       category: 'CPU',
-      description: 'i5-8500',
+      brand: 'Intel',
+      partNumber: 'i5-8500',
+      description: 'Pulled, tested working',
     });
     expect(part.status).toBe('ready_to_list');
+    expect(part.brand).toBe('Intel');
+    expect(part.partNumber).toBe('i5-8500');
     const fetchedPart = await db.getPartById(part.id);
+    // A separate SELECT, so this proves the columns were persisted rather
+    // than only present on the RETURNING row.
     expect(fetchedPart).toEqual(part);
+    expect(fetchedPart?.brand).toBe('Intel');
+    expect(fetchedPart?.partNumber).toBe('i5-8500');
 
     const saleListing = await db.createSaleListing({
       partId: part.id,
@@ -475,7 +514,7 @@ describe('UNIQUE constraints back the database-level routing guards', () => {
       photoPaths: [],
     });
     const purchase = await db.createPurchase({ listingId: listing.id, pricePaid: 100, purchaseDate: '2024-04-02' });
-    const part = await db.createPart({ purchaseId: purchase.id, category: 'CPU', description: 'i5-8500' });
+    const part = await db.createPart({ purchaseId: purchase.id, category: 'CPU', brand: null, partNumber: null, description: 'i5-8500' });
 
     await db.createSale({
       partId: part.id,
@@ -514,6 +553,8 @@ describe('UNIQUE constraints back the database-level routing guards', () => {
     const expectedPart = await db.createExpectedPart({
       listingId: listing.id,
       componentCategory: 'CPU',
+      brand: null,
+      partNumber: null,
       description: 'i5-8500',
       estimatedResaleValue: 60,
     });
@@ -556,5 +597,68 @@ describe('UNIQUE constraints back the database-level routing guards', () => {
     expect(additionalOne.id).not.toBe(additionalTwo.id);
     const results = await db.listTeardownResultsByPurchase(purchase.id);
     expect(results.filter((r) => r.expectedPartId === null)).toHaveLength(2);
+  });
+});
+
+describe('Expected Part brand/part number', () => {
+  // Seeds the minimum chain (source -> listing) an Expected Part needs.
+  async function seedListing(): Promise<string> {
+    const source = await db.createSource({ name: 'eBay search', platformType: 'ebay', url: null, notes: null });
+    const listing = await db.createListing({
+      sourceId: source.id,
+      title: 'Dell OptiPlex bundle',
+      description: null,
+      listingUrl: null,
+      askingPrice: 100,
+      listingDate: '2024-05-01',
+      acquisitionFees: 0,
+      photoPaths: [],
+    });
+    return listing.id;
+  }
+
+  it('stores null for an unidentified component rather than inventing a placeholder', async () => {
+    const listingId = await seedListing();
+    const created = await db.createExpectedPart({
+      listingId,
+      componentCategory: 'RAM',
+      brand: null,
+      partNumber: null,
+      description: 'Two DDR4 DIMMs, capacity not legible',
+      estimatedResaleValue: 30,
+    });
+    const fetched = await db.getExpectedPartById(created.id);
+    expect(fetched?.brand).toBeNull();
+    expect(fetched?.partNumber).toBeNull();
+  });
+
+  it('applies brand/partNumber through updateExpectedPart, and clears them again on an explicit null', async () => {
+    const listingId = await seedListing();
+    const created = await db.createExpectedPart({
+      listingId,
+      componentCategory: 'GPU',
+      brand: null,
+      partNumber: null,
+      description: 'Unidentified card',
+      estimatedResaleValue: 150,
+    });
+
+    // Filling the fields in later is the real editing flow: a part the user
+    // identifies after the listing was first captured.
+    const identified = await db.updateExpectedPart(created.id, { brand: 'NVIDIA', partNumber: 'RTX 3060' });
+    expect(identified?.brand).toBe('NVIDIA');
+    expect(identified?.partNumber).toBe('RTX 3060');
+
+    // An omitted key must leave the column untouched (buildSetClause's
+    // undefined contract), while an explicit null must clear it — the two
+    // directions are different code paths and a test of only one proves
+    // nothing about the other.
+    const descriptionOnly = await db.updateExpectedPart(created.id, { description: 'Now identified' });
+    expect(descriptionOnly?.brand).toBe('NVIDIA');
+    expect(descriptionOnly?.partNumber).toBe('RTX 3060');
+
+    const cleared = await db.updateExpectedPart(created.id, { brand: null, partNumber: null });
+    expect(cleared?.brand).toBeNull();
+    expect(cleared?.partNumber).toBeNull();
   });
 });

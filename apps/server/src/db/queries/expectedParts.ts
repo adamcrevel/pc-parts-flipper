@@ -4,10 +4,16 @@ import { newId } from '../id.js';
 import { buildSetClause, toNumber } from '../sqlHelpers.js';
 import type { ComponentCategory, ExpectedPart } from '../types.js';
 
-/** Fields the caller supplies when adding an Expected Part to a Listing. */
+/**
+ * Fields the caller supplies when adding an Expected Part to a Listing.
+ * `brand`/`partNumber` are nullable on purpose: a component the user (or the
+ * AI identifier) could not pin down is stored blank, never guessed.
+ */
 export interface CreateExpectedPartInput {
   listingId: string;
   componentCategory: ComponentCategory;
+  brand: string | null;
+  partNumber: string | null;
   description: string;
   estimatedResaleValue: number;
 }
@@ -15,6 +21,8 @@ export interface CreateExpectedPartInput {
 /** Fields that may be edited on an existing Expected Part; omitted keys are left unchanged. */
 export interface UpdateExpectedPartInput {
   componentCategory?: ComponentCategory;
+  brand?: string | null;
+  partNumber?: string | null;
   description?: string;
   estimatedResaleValue?: number;
 }
@@ -25,6 +33,8 @@ function mapRow(row: Record<string, unknown>): ExpectedPart {
     id: row.id as string,
     listingId: row.listing_id as string,
     componentCategory: row.component_category as ComponentCategory,
+    brand: (row.brand as string | null) ?? null,
+    partNumber: (row.part_number as string | null) ?? null,
     description: row.description as string,
     estimatedResaleValue: toNumber(row.estimated_resale_value as string),
     createdAt: row.created_at as string,
@@ -36,13 +46,15 @@ function mapRow(row: Record<string, unknown>): ExpectedPart {
 export async function createExpectedPart(input: CreateExpectedPartInput): Promise<ExpectedPart> {
   const connection = await getConnection();
   const reader = await connection.runAndReadAll(
-    `INSERT INTO expected_parts (id, listing_id, component_category, description, estimated_resale_value)
-     VALUES ($id, $listing_id, $component_category, $description, $estimated_resale_value)
+    `INSERT INTO expected_parts (id, listing_id, component_category, brand, part_number, description, estimated_resale_value)
+     VALUES ($id, $listing_id, $component_category, $brand, $part_number, $description, $estimated_resale_value)
      RETURNING *`,
     {
       id: newId(),
       listing_id: input.listingId,
       component_category: input.componentCategory,
+      brand: input.brand,
+      part_number: input.partNumber,
       description: input.description,
       estimated_resale_value: input.estimatedResaleValue,
     },
@@ -84,6 +96,8 @@ export async function updateExpectedPart(
   const connection = await getConnection();
   const { setSql, params } = buildSetClause({
     component_category: patch.componentCategory,
+    brand: patch.brand,
+    part_number: patch.partNumber,
     description: patch.description,
     estimated_resale_value: patch.estimatedResaleValue,
   });

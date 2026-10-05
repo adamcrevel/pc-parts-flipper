@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { PartSummary } from '@pc-parts-flipper/shared';
+import { formatPartIdentity, type PartSummary } from '@pc-parts-flipper/shared';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { PartUnsellableForm } from '@/features/parts/part-unsellable-form';
@@ -27,11 +27,11 @@ interface PartsTableProps {
 }
 
 /**
- * The Parts list table: category, description, status badge, the owning
- * Purchase's Listing title, and — for `ready_to_list` rows only — a "Mark
- * Unsellable" action that opens an inline required-reason form (Req 7, 13)
- * plus a "Prepare Sale Listing" action that navigates to T11's Sale
- * Listing draft flow (Req 8), which is what actually drives the
+ * The Parts list table: category, brand/model, description, status badge,
+ * the owning Purchase's Listing title, and — for `ready_to_list` rows only
+ * — a "Mark Unsellable" action that opens an inline required-reason form
+ * (Req 7, 13) plus a "Prepare Sale Listing" action that navigates to T11's
+ * Sale Listing draft flow (Req 8), which is what actually drives the
  * `ready_to_list -> listed` transition. `listed` rows instead show a
  * "Record Sale" action that navigates to T12's Sale-recording form, which
  * drives the `listed -> sold` transition (Req 7, 9).
@@ -55,6 +55,7 @@ export function PartsTable({ parts, onMarkUnsellable }: PartsTableProps) {
         <thead>
           <tr className="border-b border-border text-muted-foreground">
             <th className="px-4 py-2 font-medium">Category</th>
+            <th className="px-4 py-2 font-medium">Brand / Model</th>
             <th className="px-4 py-2 font-medium">Description</th>
             <th className="px-4 py-2 font-medium">Status</th>
             <th className="px-4 py-2 font-medium">Listing</th>
@@ -65,6 +66,10 @@ export function PartsTable({ parts, onMarkUnsellable }: PartsTableProps) {
           {parts.map((part) => (
             <tr key={part.id} className="border-b border-border last:border-0 align-top">
               <td className="px-4 py-3 font-medium">{part.category}</td>
+              {/* The identity a user needs to decide what to do with the part next — "NVIDIA RTX 3070", or whichever half was identified. Both are nullable by design (never guessed at identification or teardown time), so '—' stands in when neither is known. */}
+              <td className="px-4 py-3">
+                {formatPartIdentity(part.brand, part.partNumber) || <span className="text-muted-foreground">—</span>}
+              </td>
               <td className="px-4 py-3">{part.description}</td>
               <td className="px-4 py-3">
                 <span className={cn('inline-block rounded-full border px-3 py-1 text-xs font-medium', STATUS_BADGE_CLASSES[part.status])}>

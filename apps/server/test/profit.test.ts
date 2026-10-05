@@ -43,8 +43,8 @@ function twoPartListingBody(title: string, sourceId: string, askingPrice: number
     listingDate: '2026-01-01',
     acquisitionFees: 0,
     expectedParts: [
-      { componentCategory: 'CPU', description: 'Part A', estimatedResaleValue: 50 },
-      { componentCategory: 'GPU', description: 'Part B', estimatedResaleValue: 80 },
+      { componentCategory: 'CPU', brand: 'Intel', partNumber: 'i7-10700', description: 'Part A', estimatedResaleValue: 50 },
+      { componentCategory: 'GPU', brand: null, partNumber: null, description: 'Part B', estimatedResaleValue: 80 },
     ],
   };
 }

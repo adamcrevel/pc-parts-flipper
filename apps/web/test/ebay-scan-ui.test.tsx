@@ -44,7 +44,7 @@ function makeListing(overrides: Partial<ListingSummary> = {}): ListingSummary {
 function makeListingDetail(overrides: Partial<ListingDetail> = {}): ListingDetail {
   return {
     ...makeListing(),
-    expectedParts: [{ id: 'part-1', componentCategory: 'CPU', description: 'CPU', estimatedResaleValue: 150 }],
+    expectedParts: [{ id: 'part-1', componentCategory: 'CPU', brand: null, partNumber: null, description: 'CPU', estimatedResaleValue: 150 }],
     ...overrides,
   };
 }
@@ -208,7 +208,7 @@ describe('ListingComparisonSummary in ListingForm context (Req 10)', () => {
     const initialValue = makeListingDetail({
       externalItemId: 'ebay-123',
       externalSource: 'ebay',
-      expectedParts: [{ id: 'part-1', componentCategory: 'CPU', description: 'CPU', estimatedResaleValue: 150 }],
+      expectedParts: [{ id: 'part-1', componentCategory: 'CPU', brand: null, partNumber: null, description: 'CPU', estimatedResaleValue: 150 }],
     });
     const el = await mount(
       <ListingForm

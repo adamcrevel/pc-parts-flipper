@@ -43,6 +43,8 @@ export function stripCodeFence(raw: string): string {
 // Loosely-typed view of one parsed part before any field has been confirmed.
 interface RawPart {
   category?: unknown;
+  brand?: unknown;
+  partNumber?: unknown;
   description?: unknown;
   confidence?: unknown;
   source?: unknown;
@@ -59,6 +61,24 @@ function coerceCategory(value: unknown): ComponentCategory {
   return 'Other';
 }
 
+// Normalizes one optional identity field (brand / partNumber). A null or
+// absent value is the model correctly saying "not identified" and passes
+// through silently; anything else non-string (a number, an object) is a shape
+// the model was not asked for, so it is coerced to null *and* logged — never
+// dropped without being accounted for. A blank/whitespace string is treated as
+// null too: "not identified" must not reach the database as empty text that
+// later renders as a blank brand in a sale listing title.
+function coerceIdentityField(value: unknown, field: 'brand' | 'partNumber'): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (value !== null && value !== undefined) {
+    logger.warn({ field, value }, 'AI identification returned a non-string part identity field; coercing to null');
+  }
+  return null;
+}
+
 // Normalizes one part. Every field is defended independently so a single odd
 // value never costs more than that one field.
 function normalizePart(raw: RawPart): AiIdentifiedPart {
@@ -71,6 +91,8 @@ function normalizePart(raw: RawPart): AiIdentifiedPart {
 
   return {
     category: coerceCategory(raw.category),
+    brand: coerceIdentityField(raw.brand, 'brand'),
+    partNumber: coerceIdentityField(raw.partNumber, 'partNumber'),
     description: typeof raw.description === 'string' ? raw.description : '',
     confidence,
     source,

@@ -1,3 +1,4 @@
+import { formatPartIdentity } from '@pc-parts-flipper/shared';
 import { EXPECTED_PART_RESULT_OPTIONS, RESULT_LABELS, type TeardownRow, type TeardownRowErrors } from '@/features/teardown/teardown-form-state';
 
 interface TeardownChecklistProps {
@@ -7,11 +8,18 @@ interface TeardownChecklistProps {
 }
 
 /**
- * One row per Expected Part on the originating Listing (Req 6): category,
- * description, and estimated resale value shown for reference, a result
- * selector, and a note field that becomes required (Requirement 13) once
- * 'present but different' or 'missing' is selected — enforced by the
+ * One row per Expected Part on the originating Listing (Req 6): the part's
+ * identity, description, and estimated resale value shown for reference, a
+ * result selector, and a note field that becomes required (Requirement 13)
+ * once 'present but different' or 'missing' is selected — enforced by the
  * caller's validateTeardownRows, not here.
+ *
+ * This is the screen a user reads while physically matching parts in front
+ * of them, so the headline is the identity ("GPU — NVIDIA RTX 3070"), not
+ * the free-text description, which no longer carries brand/model at all.
+ * Identity is nullable by design (never guessed), so a row with neither half
+ * identified falls back to its description — the only thing left that can
+ * tell two same-category rows apart.
  */
 export function TeardownChecklist({ rows, rowErrors, onChange }: TeardownChecklistProps) {
   function updateRow(index: number, patch: Partial<TeardownRow>) {
@@ -27,12 +35,18 @@ export function TeardownChecklist({ rows, rowErrors, onChange }: TeardownCheckli
       {rows.map((row, index) => {
         const errors = rowErrors[index] ?? {};
         const requiresNote = row.result === 'present_but_different' || row.result === 'missing';
+        const identity = formatPartIdentity(row.brand, row.partNumber);
+        // What names this row everywhere: its headline, and the accessible
+        // name of both of its controls.
+        const rowLabel = identity || row.description;
         return (
           <div key={row.expectedPartId} className="space-y-2 rounded-md border border-border p-3">
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <div>
                 <span className="font-medium">{row.category}</span>
-                <span className="text-muted-foreground"> — {row.description}</span>
+                <span data-testid="teardown-row-identity"> — {rowLabel}</span>
+                {/* Condition notes stay visible as a secondary line when the identity already fills the headline, so nothing the identifier wrote is lost from the reconciliation screen. */}
+                {identity !== '' && <span className="text-muted-foreground"> · {row.description}</span>}
               </div>
               <span className="text-muted-foreground">Est. value: ${row.estimatedResaleValue.toFixed(2)}</span>
             </div>
@@ -42,7 +56,7 @@ export function TeardownChecklist({ rows, rowErrors, onChange }: TeardownCheckli
                 value={row.result}
                 onChange={(e) => updateRow(index, { result: e.target.value as TeardownRow['result'] })}
                 className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                aria-label={`${row.description} result`}
+                aria-label={`${rowLabel} result`}
               >
                 <option value="">Select result…</option>
                 {EXPECTED_PART_RESULT_OPTIONS.map((option) => (
@@ -62,7 +76,7 @@ export function TeardownChecklist({ rows, rowErrors, onChange }: TeardownCheckli
                   rows={2}
                   placeholder="Note (required)"
                   className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                  aria-label={`${row.description} note`}
+                  aria-label={`${rowLabel} note`}
                 />
                 {errors.note && <p className="text-xs text-destructive">{errors.note}</p>}
               </div>

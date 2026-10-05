@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import type { PurchaseDetail } from '@pc-parts-flipper/shared';
+import { formatPartIdentity, type PurchaseDetail } from '@pc-parts-flipper/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoadingSpinner } from '@/components/loading-spinner';
@@ -150,6 +150,7 @@ export function PurchaseDetailPage() {
               <thead>
                 <tr className="border-b border-border text-muted-foreground">
                   <th className="px-4 py-2 font-medium">Category</th>
+                  <th className="px-4 py-2 font-medium">Brand / Model</th>
                   <th className="px-4 py-2 font-medium">Description</th>
                   <th className="px-4 py-2 font-medium">Est. Resale Value</th>
                 </tr>
@@ -158,6 +159,10 @@ export function PurchaseDetailPage() {
                 {purchase.listing.expectedParts.map((part) => (
                   <tr key={part.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-3">{part.componentCategory}</td>
+                    {/* Which part this row is about, matching the Parts list's own column. Both halves are nullable by design (never guessed at identification time), so '—' stands in when neither is known — description alone no longer carries brand/model. */}
+                    <td className="px-4 py-3">
+                      {formatPartIdentity(part.brand, part.partNumber) || <span className="text-muted-foreground">—</span>}
+                    </td>
                     <td className="px-4 py-3">{part.description}</td>
                     <td className="px-4 py-3">${part.estimatedResaleValue.toFixed(2)}</td>
                   </tr>

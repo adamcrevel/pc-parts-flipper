@@ -13,6 +13,8 @@ export const VALID_STATUSES: readonly ListingStatus[] = ['open', 'accepted', 're
 // functions below before anything reaches the db layer.
 interface ExpectedPartRequestBody {
   componentCategory?: unknown;
+  brand?: unknown;
+  partNumber?: unknown;
   description?: unknown;
   estimatedResaleValue?: unknown;
 }
@@ -70,10 +72,21 @@ function requireValidDate(value: unknown, fieldName: string): string {
   return trimmed;
 }
 
+// Null, undefined, or an all-whitespace string all mean "not identified" for
+// the optional brand/partNumber fields — a value of only spaces is as absent
+// as no value at all, and these are deliberately never defaulted to
+// placeholder text when the component could not be pinned down.
+function trimmedOrNull(value: unknown): string | null {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 /**
  * Validates one Expected Parts row, throwing an AppError(400) naming its
  * index on the first violation (Requirement 13: category/description
- * required, estimated resale value non-negative).
+ * required, estimated resale value non-negative). `brand`/`partNumber` are
+ * optional — omitted or blank normalizes to null, which is the honest
+ * representation of "this component was not identified".
  */
 function validateExpectedPartInput(raw: unknown, index: number): ExpectedPartInput {
   const body = (typeof raw === 'object' && raw !== null ? raw : {}) as ExpectedPartRequestBody;
@@ -85,7 +98,13 @@ function validateExpectedPartInput(raw: unknown, index: number): ExpectedPartInp
   const description = requireNonBlankString(body.description, `expectedParts[${index}].description`);
   const estimatedResaleValue = requireNonNegativeNumber(body.estimatedResaleValue, `expectedParts[${index}].estimatedResaleValue`);
 
-  return { componentCategory: componentCategory as ComponentCategory, description, estimatedResaleValue };
+  return {
+    componentCategory: componentCategory as ComponentCategory,
+    brand: trimmedOrNull(body.brand),
+    partNumber: trimmedOrNull(body.partNumber),
+    description,
+    estimatedResaleValue,
+  };
 }
 
 /**

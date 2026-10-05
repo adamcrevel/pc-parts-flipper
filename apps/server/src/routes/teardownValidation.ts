@@ -26,6 +26,8 @@ interface ResultRequestBody {
 }
 interface AdditionalPartRequestBody {
   category?: unknown;
+  brand?: unknown;
+  partNumber?: unknown;
   description?: unknown;
   note?: unknown;
 }
@@ -43,11 +45,22 @@ function requireNonBlankString(value: unknown, fieldName: string): string {
   return trimmed;
 }
 
-// Null, undefined, or an all-whitespace string all count as "no note" here —
-// a note consisting only of spaces is as useless as an absent one.
+// Null, undefined, or an all-whitespace string all count as "no value" here —
+// a note (or a brand/part number) consisting only of spaces is as useless as
+// an absent one. For brand/partNumber this is also the deliberate choice not
+// to invent placeholder text for a component nobody identified.
 function trimmedOrNull(value: unknown): string | null {
   const trimmed = typeof value === 'string' ? value.trim() : '';
   return trimmed.length > 0 ? trimmed : null;
+}
+
+/** One validated Additional Part row, ready for createPart. */
+export interface ValidatedAdditionalPart {
+  category: ComponentCategory;
+  brand: string | null;
+  partNumber: string | null;
+  description: string;
+  note: string | null;
 }
 
 /**
@@ -75,15 +88,21 @@ function validateResultEntry(raw: unknown, expectedPart: ExpectedPart): Teardown
   return { expectedPartId: expectedPart.id, result: result as (typeof VALID_EXPECTED_PART_RESULTS)[number], note };
 }
 
-/** Validates one Additional Part row (Requirement 13: category/description required; note optional). */
-function validateAdditionalPartEntry(raw: unknown, index: number): { category: ComponentCategory; description: string; note: string | null } {
+/** Validates one Additional Part row (Requirement 13: category/description required; brand, part number and note all optional, blank normalizing to null). */
+function validateAdditionalPartEntry(raw: unknown, index: number): ValidatedAdditionalPart {
   const body = (typeof raw === 'object' && raw !== null ? raw : {}) as AdditionalPartRequestBody;
   const category = typeof body.category === 'string' ? body.category : '';
   if (!VALID_CATEGORIES.includes(category as ComponentCategory)) {
     throw new AppError(`additionalParts[${index}].category is required and must be one of: ${VALID_CATEGORIES.join(', ')}`, 400);
   }
   const description = requireNonBlankString(body.description, `additionalParts[${index}].description`);
-  return { category: category as ComponentCategory, description, note: trimmedOrNull(body.note) };
+  return {
+    category: category as ComponentCategory,
+    brand: trimmedOrNull(body.brand),
+    partNumber: trimmedOrNull(body.partNumber),
+    description,
+    note: trimmedOrNull(body.note),
+  };
 }
 
 /**
@@ -97,7 +116,7 @@ function validateAdditionalPartEntry(raw: unknown, index: number): { category: C
 export function validateTeardownSubmission(
   body: SubmitTeardownRequestBody,
   expectedParts: ExpectedPart[],
-): { results: TeardownExpectedPartResultInput[]; additionalParts: { category: ComponentCategory; description: string; note: string | null }[] } {
+): { results: TeardownExpectedPartResultInput[]; additionalParts: ValidatedAdditionalPart[] } {
   const rawResults = Array.isArray(body.results) ? body.results : [];
   const expectedPartsById = new Map(expectedParts.map((part) => [part.id, part]));
   const seenExpectedPartIds = new Set<string>();

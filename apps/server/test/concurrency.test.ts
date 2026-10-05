@@ -50,7 +50,7 @@ function listingBody(i: number, sourceId: string): CreateListingInput {
     askingPrice: 100,
     listingDate: '2026-01-01',
     acquisitionFees: 0,
-    expectedParts: [{ componentCategory: 'CPU', description: `Test CPU ${i}`, estimatedResaleValue: 50 }],
+    expectedParts: [{ componentCategory: 'CPU', brand: 'Intel', partNumber: `i5-${i}`, description: `Test CPU ${i}`, estimatedResaleValue: 50 }],
   };
 }
 

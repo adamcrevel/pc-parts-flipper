@@ -38,9 +38,9 @@ function listingBody(sourceId: string, overrides: Partial<CreateListingInput> = 
     listingDate: '2026-01-15',
     acquisitionFees: 25,
     expectedParts: [
-      { componentCategory: 'CPU', description: 'i7-10700', estimatedResaleValue: 60 },
-      { componentCategory: 'RAM', description: '16GB DDR4', estimatedResaleValue: 30 },
-      { componentCategory: 'Storage', description: '512GB NVMe', estimatedResaleValue: 20 },
+      { componentCategory: 'CPU', brand: 'Intel', partNumber: 'i7-10700', description: 'Pulled from a working machine', estimatedResaleValue: 60 },
+      { componentCategory: 'RAM', brand: null, partNumber: null, description: '16GB DDR4', estimatedResaleValue: 30 },
+      { componentCategory: 'Storage', brand: 'Samsung', partNumber: null, description: '512GB NVMe', estimatedResaleValue: 20 },
     ],
     ...overrides,
   };
@@ -85,11 +85,50 @@ describe('Listing CRUD + Expected Parts + Req-3 comparison (T6)', () => {
     // The round-trip set must match exactly on the fields the client
     // submitted, not merely have the same length.
     const fetchedSorted = [...fetched.body.expectedParts].sort((a, b) => a.description.localeCompare(b.description));
-    expect(fetchedSorted.map((p) => ({ componentCategory: p.componentCategory, description: p.description, estimatedResaleValue: p.estimatedResaleValue }))).toEqual([
-      { componentCategory: 'Storage', description: '512GB NVMe', estimatedResaleValue: 20 },
-      { componentCategory: 'RAM', description: '16GB DDR4', estimatedResaleValue: 30 },
-      { componentCategory: 'CPU', description: 'i7-10700', estimatedResaleValue: 60 },
+    expect(fetchedSorted.map((p) => ({ componentCategory: p.componentCategory, brand: p.brand, partNumber: p.partNumber, description: p.description, estimatedResaleValue: p.estimatedResaleValue }))).toEqual([
+      { componentCategory: 'Storage', brand: 'Samsung', partNumber: null, description: '512GB NVMe', estimatedResaleValue: 20 },
+      { componentCategory: 'RAM', brand: null, partNumber: null, description: '16GB DDR4', estimatedResaleValue: 30 },
+      { componentCategory: 'CPU', brand: 'Intel', partNumber: 'i7-10700', description: 'Pulled from a working machine', estimatedResaleValue: 60 },
     ].sort((a, b) => a.description.localeCompare(b.description)));
+  });
+
+  it('accepts an Expected Part with brand/partNumber omitted entirely, normalizing both to null', async () => {
+    // The optional half of the contract: a component the user could not
+    // identify is submitted without these keys at all and must come back as
+    // null — never as an empty string, and never rejected as a missing
+    // required field.
+    // Deliberately built as an untyped object rather than through
+    // listingBody: the point of this test is a wire body that genuinely
+    // lacks the keys, which the typed CreateListingInput cannot express.
+    const body = {
+      ...listingBody(sourceId),
+      expectedParts: [{ componentCategory: 'PSU', description: '650W, no label visible', estimatedResaleValue: 25 }],
+    };
+    const created = await postJson<ListingDetail>(`${server.baseUrl}/api/listings`, body);
+
+    expect(created.status, `create failed: ${JSON.stringify(created.body)}`).toBe(201);
+    expect(created.body.expectedParts[0].brand).toBeNull();
+    expect(created.body.expectedParts[0].partNumber).toBeNull();
+  });
+
+  it('normalizes a blank/whitespace brand and partNumber to null, and trims a real one', async () => {
+    // Whitespace-only input is the realistic failure mode of a form field the
+    // user tabbed through: it must be stored as "not identified", not as text
+    // that would later render as a leading space in a sale listing title.
+    const created = await postJson<ListingDetail>(`${server.baseUrl}/api/listings`, listingBody(sourceId, {
+      expectedParts: [
+        { componentCategory: 'GPU', brand: '   ', partNumber: '', description: 'Unidentified card', estimatedResaleValue: 150 },
+        { componentCategory: 'CPU', brand: '  AMD  ', partNumber: '  Ryzen 5 5600X ', description: 'Boxed', estimatedResaleValue: 90 },
+      ],
+    }));
+
+    expect(created.status, `create failed: ${JSON.stringify(created.body)}`).toBe(201);
+    const gpu = created.body.expectedParts.find((p) => p.componentCategory === 'GPU');
+    expect(gpu?.brand).toBeNull();
+    expect(gpu?.partNumber).toBeNull();
+    const cpu = created.body.expectedParts.find((p) => p.componentCategory === 'CPU');
+    expect(cpu?.brand).toBe('AMD');
+    expect(cpu?.partNumber).toBe('Ryzen 5 5600X');
   });
 
   it('computes the Req-3 comparison correctly for a known input, on both GET detail and GET list', async () => {

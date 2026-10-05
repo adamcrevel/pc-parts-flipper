@@ -113,14 +113,37 @@ export async function registerTeardownRoutes<
       );
       // 'missing' means nothing physically arrived — no Part to track.
       if (entry.result !== 'missing') {
-        createdParts.push(await createPart({ purchaseId: purchase.id, category: expectedPart.componentCategory, description: expectedPart.description }));
+        // brand/partNumber travel with the component itself, so the Part
+        // inherits whatever identity the Expected Part carried (null included
+        // — an unidentified expectation produces an unidentified Part, never
+        // a guess).
+        createdParts.push(
+          await createPart({
+            purchaseId: purchase.id,
+            category: expectedPart.componentCategory,
+            brand: expectedPart.brand,
+            partNumber: expectedPart.partNumber,
+            description: expectedPart.description,
+          }),
+        );
       }
     }
     for (const additional of additionalParts) {
       teardownResults.push(
         await createTeardownResult({ purchaseId: purchase.id, expectedPartId: null, result: 'additional', note: additional.note }),
       );
-      createdParts.push(await createPart({ purchaseId: purchase.id, category: additional.category, description: additional.description }));
+      // An Additional Part was never on the Listing, so its identity comes
+      // from the teardown form's own brand/model inputs rather than from an
+      // Expected Part row.
+      createdParts.push(
+        await createPart({
+          purchaseId: purchase.id,
+          category: additional.category,
+          brand: additional.brand,
+          partNumber: additional.partNumber,
+          description: additional.description,
+        }),
+      );
     }
 
     // Reuses purchases.ts's own forward-only lifecycle rule rather than

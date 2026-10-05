@@ -17,6 +17,7 @@ import type {
   CreateListingInput,
   ListPartsResponse,
   ListingDetail,
+  Part,
   PurchaseDetail,
   SubmitTeardownResponse,
 } from '@pc-parts-flipper/shared';
@@ -67,9 +68,9 @@ describe('teardown workflow proof (T9)', () => {
       listingDate: '2026-01-01',
       acquisitionFees: 0,
       expectedParts: [
-        { componentCategory: 'CPU', description: `Test CPU ${label}`, estimatedResaleValue: 50 },
-        { componentCategory: 'GPU', description: `Test GPU ${label}`, estimatedResaleValue: 80 },
-        { componentCategory: 'RAM', description: `Test RAM ${label}`, estimatedResaleValue: 20 },
+        { componentCategory: 'CPU', brand: 'Intel', partNumber: 'i7-10700', description: `Test CPU ${label}`, estimatedResaleValue: 50 },
+        { componentCategory: 'GPU', brand: null, partNumber: null, description: `Test GPU ${label}`, estimatedResaleValue: 80 },
+        { componentCategory: 'RAM', brand: 'Corsair', partNumber: 'CMK16GX4M2B3200C16', description: `Test RAM ${label}`, estimatedResaleValue: 20 },
       ],
     };
     const listingRes = await postJson<ListingDetail>(`${server.baseUrl}/api/listings`, listingBody);
@@ -124,7 +125,7 @@ describe('teardown workflow proof (T9)', () => {
         { expectedPartId: expectedPartIds.gpu, result: 'present_but_different', note: 'Different GPU model than listed' },
         { expectedPartId: expectedPartIds.ram, result: 'missing', note: 'RAM never arrived' },
       ],
-      additionalParts: [{ category: 'Storage', description: 'Bonus SSD found inside', note: 'Not on the listing' }],
+      additionalParts: [{ category: 'Storage', brand: 'Samsung', partNumber: '970 EVO', description: 'Bonus SSD found inside', note: 'Not on the listing' }],
     });
     expect(submitRes.status, `teardown submission failed: ${JSON.stringify(submitRes.body)}`).toBe(200);
 
@@ -145,14 +146,61 @@ describe('teardown workflow proof (T9)', () => {
     // the total count happens to match.
     expect(createdCategories).not.toContain('RAM');
 
+    // brand/partNumber must travel Expected Part -> Part for a reconciled
+    // row, and Additional Part submission -> Part for an unexpected find.
+    // Without this the Sale Listing default title silently degrades back to
+    // `category: description` for every part in the system.
+    const createdPart = (category: string): Part | undefined => submitRes.body.createdParts.find((part) => part.category === category);
+    expect(createdPart('CPU')?.brand).toBe('Intel');
+    expect(createdPart('CPU')?.partNumber).toBe('i7-10700');
+    // The unidentified GPU stays unidentified — teardown must not invent an
+    // identity for a part that never had one.
+    expect(createdPart('GPU')?.brand).toBeNull();
+    expect(createdPart('GPU')?.partNumber).toBeNull();
+    // The additional find's identity comes from the teardown form itself.
+    expect(createdPart('Storage')?.brand).toBe('Samsung');
+    expect(createdPart('Storage')?.partNumber).toBe('970 EVO');
+
     // Reconcile against the real GET endpoint too, not just the POST
     // response — proves the Parts actually persisted, not just echoed back.
     const partsList = await getJson<ListPartsResponse>(`${server.baseUrl}/api/parts?purchaseId=${purchaseId}&limit=20`);
     expect(partsList.body.total).toBe(3);
     expect(partsList.body.parts.map((part) => part.category).sort()).toEqual(['CPU', 'GPU', 'Storage']);
+    // Read back through the Parts list query too: that endpoint selects an
+    // explicit column list rather than `SELECT *`, so a column missing from
+    // it would show up here and nowhere else.
+    expect(partsList.body.parts.find((part) => part.category === 'CPU')?.partNumber).toBe('i7-10700');
+    expect(partsList.body.parts.find((part) => part.category === 'Storage')?.brand).toBe('Samsung');
 
     // Purchase status change also persisted, not just echoed.
     const purchaseAfter = await getJson<PurchaseDetail>(`${server.baseUrl}/api/purchases/${purchaseId}`);
     expect(purchaseAfter.body.status).toBe('torn_down');
+  });
+
+  it('accepts an Additional Part with brand/partNumber omitted or blank, storing null on the Part', async () => {
+    const { purchaseId, expectedPartIds } = await createPurchaseWithThreeExpectedParts('additional-optional');
+    await patchJson<PurchaseDetail>(`${server.baseUrl}/api/purchases/${purchaseId}/status`, { status: 'shipped' });
+    await patchJson<PurchaseDetail>(`${server.baseUrl}/api/purchases/${purchaseId}/status`, { status: 'received' });
+
+    const submitRes = await postJson<SubmitTeardownResponse>(`${server.baseUrl}/api/purchases/${purchaseId}/teardown`, {
+      results: [
+        { expectedPartId: expectedPartIds.cpu, result: 'missing', note: 'not present' },
+        { expectedPartId: expectedPartIds.gpu, result: 'missing', note: 'not present' },
+        { expectedPartId: expectedPartIds.ram, result: 'missing', note: 'not present' },
+      ],
+      // One row omits the keys entirely, the other sends whitespace: both
+      // must validate and normalize to null rather than 400 or store blanks.
+      additionalParts: [
+        { category: 'Cooler', description: 'Unbranded tower cooler' },
+        { category: 'Case', brand: '  ', partNumber: '   ', description: 'Generic ATX case' },
+      ],
+    });
+
+    expect(submitRes.status, `teardown submission failed: ${JSON.stringify(submitRes.body)}`).toBe(200);
+    expect(submitRes.body.createdParts).toHaveLength(2);
+    for (const part of submitRes.body.createdParts) {
+      expect(part.brand, `${part.category} brand should be null`).toBeNull();
+      expect(part.partNumber, `${part.category} partNumber should be null`).toBeNull();
+    }
   });
 });

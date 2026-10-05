@@ -8,10 +8,21 @@ export const RESULT_LABELS: Record<TeardownExpectedPartResultInput['result'], st
   missing: 'Missing',
 };
 
-/** One Expected Part checklist row's draft state. `result` stays '' until the user picks one, so an unanswered row is distinguishable from a real choice. */
+/**
+ * One Expected Part checklist row's draft state. `result` stays '' until the
+ * user picks one, so an unanswered row is distinguishable from a real choice.
+ *
+ * `brand`/`partNumber` are carried through read-only, purely so the checklist
+ * can show *which* part a row is about ("NVIDIA RTX 3070") rather than only
+ * its free-text condition notes — they are never edited here and never sent
+ * back, since a teardown reconciles Expected Parts rather than re-identifying
+ * them. Both stay nullable: neither is ever guessed or defaulted.
+ */
 export interface TeardownRow {
   expectedPartId: string;
   category: ComponentCategory;
+  brand: string | null;
+  partNumber: string | null;
   description: string;
   estimatedResaleValue: number;
   result: TeardownExpectedPartResultInput['result'] | '';
@@ -29,6 +40,8 @@ export function initialTeardownRows(expectedParts: ExpectedPart[]): TeardownRow[
   return expectedParts.map((part) => ({
     expectedPartId: part.id,
     category: part.componentCategory,
+    brand: part.brand,
+    partNumber: part.partNumber,
     description: part.description,
     estimatedResaleValue: part.estimatedResaleValue,
     result: '',
@@ -36,9 +49,16 @@ export function initialTeardownRows(expectedParts: ExpectedPart[]): TeardownRow[
   }));
 }
 
-/** One Additional Part draft row — a part found during teardown that wasn't on the originating Listing. */
+/**
+ * One Additional Part draft row — a part found during teardown that wasn't
+ * on the originating Listing. `brand`/`partNumber` mirror the Expected Parts
+ * editor's: strings while editing, optional, and sent as null (never
+ * guessed or defaulted) when left blank.
+ */
 export interface AdditionalPartRow {
   category: ComponentCategory | '';
+  brand: string;
+  partNumber: string;
   description: string;
   note: string;
 }
@@ -51,7 +71,7 @@ export interface AdditionalPartRowErrors {
 
 /** An empty draft Additional Part row, used both for the initial state and "Add Part". */
 export function emptyAdditionalPartRow(): AdditionalPartRow {
-  return { category: '', description: '', note: '' };
+  return { category: '', brand: '', partNumber: '', description: '', note: '' };
 }
 
 /** Builds the POST /api/purchases/:id/teardown request body from validated checklist + additional-part rows. Callers must validate first — this does not re-check required fields. */
@@ -62,8 +82,12 @@ export function buildSubmitTeardownInput(rows: TeardownRow[], additionalRows: Ad
       result: row.result as TeardownExpectedPartResultInput['result'],
       note: row.note.trim().length > 0 ? row.note.trim() : null,
     })),
+    // Built field by field, so client-only row state can never leak into
+    // the request body; blank brand/part number send as null.
     additionalParts: additionalRows.map((row) => ({
       category: row.category as ComponentCategory,
+      brand: row.brand.trim() || null,
+      partNumber: row.partNumber.trim() || null,
       description: row.description.trim(),
       note: row.note.trim().length > 0 ? row.note.trim() : null,
     })),

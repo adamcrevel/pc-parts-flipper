@@ -20,11 +20,20 @@ export type ComponentCategory =
 /** Listing lifecycle (Req 4). Accepting one creates a linked Purchase (T7+). */
 export type ListingStatus = 'open' | 'accepted' | 'rejected';
 
-/** One expected part on a Listing, with its estimated resale value (Req 2-3). */
+/**
+ * One expected part on a Listing, with its estimated resale value (Req 2-3).
+ * `brand` and `partNumber` are the structured identity of the component
+ * (e.g. "NVIDIA" / "RTX 3060"); both are null whenever the part has not been
+ * confidently identified — they are never guessed or filled with placeholder
+ * text. `description` keeps its separate role: condition notes and whatever
+ * context brand/partNumber do not already carry.
+ */
 export interface ExpectedPart {
   id: string;
   listingId: string;
   componentCategory: ComponentCategory;
+  brand: string | null;
+  partNumber: string | null;
   description: string;
   estimatedResaleValue: number;
   createdAt: string;
@@ -82,9 +91,11 @@ export interface AcceptListingResponse {
   purchaseId: string;
 }
 
-/** One row of the Expected Parts editor in a create/edit request body. */
+/** One row of the Expected Parts editor in a create/edit request body. `brand`/`partNumber` are null when the user has not identified the component. */
 export interface ExpectedPartInput {
   componentCategory: ComponentCategory;
+  brand: string | null;
+  partNumber: string | null;
   description: string;
   estimatedResaleValue: number;
 }

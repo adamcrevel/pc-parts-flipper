@@ -78,7 +78,7 @@ describe('Sale recording route (T12)', () => {
       askingPrice: 100,
       listingDate: '2026-01-01',
       acquisitionFees: 0,
-      expectedParts: [{ componentCategory: 'CPU', description: `Sales Test CPU ${titleSuffix}`, estimatedResaleValue: 50 }],
+      expectedParts: [{ componentCategory: 'CPU', brand: 'Intel', partNumber: 'i5-8500', description: `Sales Test CPU ${titleSuffix}`, estimatedResaleValue: 50 }],
     };
     const listingRes = await postJson<ListingDetail>(`${server.baseUrl}/api/listings`, listingBody);
     expect(listingRes.status, `Listing creation failed: ${JSON.stringify(listingRes.body)}`).toBe(201);

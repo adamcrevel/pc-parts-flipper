@@ -132,21 +132,34 @@ export const TABLE_STATEMENTS: readonly string[] = [
 ];
 
 // -- Phase 3: alters ---------------------------------------------------
-// Columns the ebay-scanning feature adds on top of the original schema:
-// a per-source connector_config (JSON-encoded EbayConnectorConfig, see
-// packages/shared/src/connectors.ts) driving what each source's scheduled
-// eBay scan searches for, last_scanned_at/last_scan_found_count so the UI
-// can show scan recency and yield, and external_source/external_item_id on
-// listings so an eBay-sourced listing can be deduped against a listing a
-// user already entered manually from the same eBay item. Uses
+// Columns later features add on top of the original schema. Uses
 // ADD COLUMN IF NOT EXISTS so this phase is safe to re-run on every boot,
 // same as the table/index phases above.
+//
+// The ebay-scanning feature: a per-source connector_config (JSON-encoded
+// EbayConnectorConfig, see packages/shared/src/connectors.ts) driving what
+// each source's scheduled eBay scan searches for, last_scanned_at/
+// last_scan_found_count so the UI can show scan recency and yield, and
+// external_source/external_item_id on listings so an eBay-sourced listing
+// can be deduped against a listing a user already entered manually from the
+// same eBay item.
+//
+// The brand/model feature: brand and part_number on both expected_parts and
+// parts, so a component's manufacturer and model/part number are first-class
+// structured fields rather than prose buried in `description` (which keeps
+// its role as condition notes and remaining context). Both are nullable on
+// purpose: a part that cannot be confidently identified is left blank, never
+// guessed or filled with placeholder text.
 export const ALTER_STATEMENTS: readonly string[] = [
   `ALTER TABLE sources ADD COLUMN IF NOT EXISTS connector_config VARCHAR`,
   `ALTER TABLE sources ADD COLUMN IF NOT EXISTS last_scanned_at TIMESTAMP`,
   `ALTER TABLE sources ADD COLUMN IF NOT EXISTS last_scan_found_count INTEGER`,
   `ALTER TABLE listings ADD COLUMN IF NOT EXISTS external_source VARCHAR`,
   `ALTER TABLE listings ADD COLUMN IF NOT EXISTS external_item_id VARCHAR`,
+  `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS brand VARCHAR`,
+  `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS part_number VARCHAR`,
+  `ALTER TABLE parts ADD COLUMN IF NOT EXISTS brand VARCHAR`,
+  `ALTER TABLE parts ADD COLUMN IF NOT EXISTS part_number VARCHAR`,
 ];
 
 // -- Phase 4: indexes ------------------------------------------------------

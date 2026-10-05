@@ -27,9 +27,17 @@ export type AiPartSource = 'text' | 'image' | 'both';
  * fixed ComponentCategory values (the server coerces anything else to
  * 'Other'), so a suggestion can drop straight into the Expected Parts editor's
  * category select without a second mapping step.
+ *
+ * `brand` and `partNumber` are the component's structured identity; the model
+ * is instructed to return null for either it cannot support from the listing
+ * text or photos, so a null here means "not identified", never "no brand".
+ * `description` carries only what brand/partNumber do not — condition and
+ * notable details — rather than restating them in prose.
  */
 export interface AiIdentifiedPart {
   category: ComponentCategory;
+  brand: string | null;
+  partNumber: string | null;
   description: string;
   confidence: AiPartConfidence;
   source: AiPartSource;
