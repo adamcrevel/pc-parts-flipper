@@ -53,6 +53,7 @@ export function initialExpectedPartRows(initialValue?: ListingDetail): ExpectedP
     partNumber: part.partNumber ?? '',
     description: part.description,
     estimatedResaleValue: String(part.estimatedResaleValue),
+    identityCandidates: part.identityCandidates ?? [],
   }));
 }
 
@@ -76,5 +77,6 @@ export function aiPartToExpectedPartRow(part: AiIdentifiedPart): ExpectedPartRow
     aiSuggested: true,
     aiConfidence: part.confidence,
     aiSource: part.source,
+    identityCandidates: part.identityCandidates ?? [],
   };
 }

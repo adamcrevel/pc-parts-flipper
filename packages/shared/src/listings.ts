@@ -4,6 +4,7 @@
 // and the Req 3 computed comparison the HTTP layer adds on top — this file
 // lives here (not apps/server) because apps/web may never import apps/server
 // directly (standing check).
+import type { IdentityCandidate } from './aiIdentification.js';
 
 /** Fixed component category list (assumption A8), not user-configurable. */
 export type ComponentCategory =
@@ -26,7 +27,9 @@ export type ListingStatus = 'open' | 'accepted' | 'rejected';
  * (e.g. "NVIDIA" / "RTX 3060"); both are null whenever the part has not been
  * confidently identified — they are never guessed or filled with placeholder
  * text. `description` keeps its separate role: condition notes and whatever
- * context brand/partNumber do not already carry.
+ * context brand/partNumber do not already carry. `identityCandidates` holds
+ * other plausible brand/partNumber pairings from AI identification that
+ * weren't picked as primary (empty when not AI-identified or unambiguous).
  */
 export interface ExpectedPart {
   id: string;
@@ -36,6 +39,7 @@ export interface ExpectedPart {
   partNumber: string | null;
   description: string;
   estimatedResaleValue: number;
+  identityCandidates: IdentityCandidate[];
   createdAt: string;
   updatedAt: string;
 }
@@ -98,6 +102,7 @@ export interface ExpectedPartInput {
   partNumber: string | null;
   description: string;
   estimatedResaleValue: number;
+  identityCandidates: IdentityCandidate[];
 }
 
 /**

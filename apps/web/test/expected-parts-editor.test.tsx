@@ -72,6 +72,7 @@ function aiRow(overrides: Partial<ExpectedPartRow> = {}): ExpectedPartRow {
     partNumber: 'RTX 3070',
     description: 'pulled from a working rig',
     estimatedResaleValue: '',
+    identityCandidates: [],
     aiSuggested: true,
     aiConfidence: 'high',
     aiSource: 'image',
@@ -86,6 +87,7 @@ function manualRow(overrides: Partial<ExpectedPartRow> = {}): ExpectedPartRow {
     partNumber: 'Ryzen 5 5600X',
     description: 'boxed, with cooler',
     estimatedResaleValue: '90',
+    identityCandidates: [],
     ...overrides,
   };
 }

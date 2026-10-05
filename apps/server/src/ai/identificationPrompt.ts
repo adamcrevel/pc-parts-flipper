@@ -11,6 +11,11 @@ import { VALID_CATEGORIES } from '../routes/listingValidation.js';
 // Expected Parts editor and the DuckDB ENUM column actually accept.
 export const ALLOWED_CATEGORIES: readonly ComponentCategory[] = VALID_CATEGORIES;
 
+// Upper bound on how many alternates `identityCandidates` may carry for one
+// part. Shared between the prompt instruction (below) and the parser's
+// cap-and-Warn enforcement, so the two can never drift apart.
+export const MAX_IDENTITY_CANDIDATES = 4;
+
 /**
  * Builds the prompt for one Listing. The instructions it carries are load
  * bearing, each for an observed reason:
@@ -63,8 +68,9 @@ export function buildIdentificationPrompt(listing: Listing): string {
     '5. For every part, state what your identification is based on in the "source" field: "text" if it came from the listing title/description only, "image" if it came from a photo only, or "both" if the text and a photo agree.',
     '6. Set "confidence" to "high", "medium" or "low" reflecting how sure you are of that specific part.',
     '7. Use the "notes" field for anything that does not belong to one specific part — caveats, data-quality warnings, or observations about the listing itself (for example if the photos look like stock/marketing images rather than the actual item being sold). Use an empty string if you have nothing to add.',
+    `8. If you cannot settle on one brand but can narrow it down to a short list of specific, genuinely plausible brands, report them in an "identityCandidates" array of {"brand","partNumber"} pairs, ranked most-to-least likely and capped at ${MAX_IDENTITY_CANDIDATES} entries — fill in "partNumber" per candidate where you know it, else null. The same applies when the brand is known but the exact model/part number is only narrowed to a short list: repeat that brand on every candidate and vary "partNumber". Do NOT pad the list by repeating the same pair, and do NOT include a candidate identical to the "brand"/"partNumber" you already reported at the top level. Leave "identityCandidates" as an empty array when there is no real lead to narrow from — never invent a spread of guesses just to fill it.`,
     '',
     'RESPOND WITH ONLY RAW JSON matching exactly this shape. No markdown, no code fences, no commentary before or after:',
-    '{"parts":[{"category":"GPU","brand":"NVIDIA","partNumber":"RTX 3060","description":"12GB, tested working, light dust","confidence":"high","source":"both"},{"category":"RAM","brand":null,"partNumber":null,"description":"2 DDR4 DIMMs, capacity not legible in photos","confidence":"low","source":"image"}],"notes":"..."}',
+    '{"parts":[{"category":"GPU","brand":"NVIDIA","partNumber":"RTX 3060","description":"12GB, tested working, light dust","confidence":"high","source":"both","identityCandidates":[]},{"category":"RAM","brand":null,"partNumber":null,"description":"2 DDR4 DIMMs, capacity not legible in photos","confidence":"low","source":"image","identityCandidates":[]},{"category":"GPU","brand":"NVIDIA","partNumber":null,"description":"single fan, blower-style cooler","confidence":"medium","source":"image","identityCandidates":[{"brand":"NVIDIA","partNumber":"GTX 1650"},{"brand":"NVIDIA","partNumber":"GTX 1650 Super"}]}],"notes":"..."}',
   ].join('\n');
 }

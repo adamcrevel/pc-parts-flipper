@@ -9,10 +9,10 @@
 //     invented) is survivable — one odd field is coerced to a safe value and
 //     logged at Warn, rather than throwing away an otherwise useful set of
 //     suggestions the user can edit by hand anyway.
-import type { AiIdentifiedPart, AiPartConfidence, AiPartSource, ComponentCategory, IdentifyPartsResponse } from '@pc-parts-flipper/shared';
+import type { AiIdentifiedPart, AiPartConfidence, AiPartSource, ComponentCategory, IdentifyPartsResponse, IdentityCandidate } from '@pc-parts-flipper/shared';
 import { AppError } from '../error-handler.js';
 import { logger } from '../logger.js';
-import { ALLOWED_CATEGORIES } from './identificationPrompt.js';
+import { ALLOWED_CATEGORIES, MAX_IDENTITY_CANDIDATES } from './identificationPrompt.js';
 
 const VALID_CONFIDENCES: readonly AiPartConfidence[] = ['high', 'medium', 'low'];
 const VALID_SOURCES: readonly AiPartSource[] = ['text', 'image', 'both'];
@@ -48,6 +48,7 @@ interface RawPart {
   description?: unknown;
   confidence?: unknown;
   source?: unknown;
+  identityCandidates?: unknown;
 }
 
 // Coerces an unrecognized category to 'Other' rather than rejecting the whole
@@ -79,6 +80,52 @@ function coerceIdentityField(value: unknown, field: 'brand' | 'partNumber'): str
   return null;
 }
 
+// Normalizes the model's "identityCandidates" array, the alternate
+// brand/partNumber pairings it reports when it can narrow a part's identity
+// to a short list but not a single answer. A non-array/absent value becomes
+// an empty list (the common case: most parts settle on one identity). Each
+// entry's brand/partNumber is run through the same coerceIdentityField logic
+// as the primary identity fields, so a malformed sub-field is coerced and
+// logged the same way rather than failing the whole candidate. An entry that
+// coerces to {brand: null, partNumber: null} carries no information and is
+// dropped — it is not a real candidate. Exact-duplicate pairs are deduped,
+// keeping the first (highest-ranked) occurrence, and anything past
+// MAX_IDENTITY_CANDIDATES is dropped with a Warn, mirroring coerceCategory's
+// log style: a struct of context plus a one-line description of the coercion.
+function coerceIdentityCandidates(value: unknown): IdentityCandidate[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const candidates: IdentityCandidate[] = [];
+  for (const entry of value) {
+    const raw = typeof entry === 'object' && entry !== null ? (entry as { brand?: unknown; partNumber?: unknown }) : {};
+    const brand = coerceIdentityField(raw.brand, 'brand');
+    const partNumber = coerceIdentityField(raw.partNumber, 'partNumber');
+    if (brand === null && partNumber === null) {
+      continue;
+    }
+    // String key keeps the dedup check O(1) per entry without a nested
+    // equality loop; null is distinguishable from any real string value.
+    const key = `${brand ?? '\0'}\u0001${partNumber ?? '\0'}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    candidates.push({ brand, partNumber });
+  }
+
+  if (candidates.length > MAX_IDENTITY_CANDIDATES) {
+    logger.warn(
+      { count: candidates.length, max: MAX_IDENTITY_CANDIDATES },
+      'AI identification returned more identityCandidates than allowed; truncating to the limit',
+    );
+    return candidates.slice(0, MAX_IDENTITY_CANDIDATES);
+  }
+  return candidates;
+}
+
 // Normalizes one part. Every field is defended independently so a single odd
 // value never costs more than that one field.
 function normalizePart(raw: RawPart): AiIdentifiedPart {
@@ -96,6 +143,7 @@ function normalizePart(raw: RawPart): AiIdentifiedPart {
     description: typeof raw.description === 'string' ? raw.description : '',
     confidence,
     source,
+    identityCandidates: coerceIdentityCandidates(raw.identityCandidates),
   };
 }
 

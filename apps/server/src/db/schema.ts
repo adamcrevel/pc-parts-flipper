@@ -160,6 +160,14 @@ export const ALTER_STATEMENTS: readonly string[] = [
   `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS part_number VARCHAR`,
   `ALTER TABLE parts ADD COLUMN IF NOT EXISTS brand VARCHAR`,
   `ALTER TABLE parts ADD COLUMN IF NOT EXISTS part_number VARCHAR`,
+  // JSON-encoded array of IdentityCandidate objects (see
+  // packages/shared/src/aiIdentification.ts), stored as text for the same
+  // reason as listings.photo_paths above: DuckDB's native LIST type has
+  // empty-array type-inference ambiguity in the Node client, so the column
+  // is a VARCHAR and parsed/stringified in queries/expectedParts.ts and
+  // queries/parts.ts instead.
+  `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS identity_candidates VARCHAR DEFAULT '[]'`,
+  `ALTER TABLE parts ADD COLUMN IF NOT EXISTS identity_candidates VARCHAR DEFAULT '[]'`,
 ];
 
 // -- Phase 4: indexes ------------------------------------------------------

@@ -90,6 +90,7 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'updated_at',
     'brand',
     'part_number',
+    'identity_candidates',
   ],
   purchases: ['id', 'listing_id', 'status', 'price_paid', 'purchase_date', 'created_at', 'updated_at'],
   teardown_results: [
@@ -113,6 +114,7 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'updated_at',
     'brand',
     'part_number',
+    'identity_candidates',
   ],
   sale_listings: [
     'id',
@@ -399,8 +401,14 @@ describe('query functions round-trip data through the full lifecycle', () => {
       partNumber: 'i5-8500',
       description: 'Pulled from a working machine',
       estimatedResaleValue: 60,
+      identityCandidates: [],
     });
     expect(expectedPart.estimatedResaleValue).toBe(60);
+    // An empty identityCandidates input must persist and round-trip as `[]`
+    // (not null/undefined) — the degenerate case of the same
+    // JSON.stringify/JSON.parse mechanism the non-empty-array tests below
+    // exercise with real candidate data.
+    expect(expectedPart.identityCandidates).toEqual([]);
     // brand/partNumber must survive the INSERT ... RETURNING round-trip, not
     // just be echoed back from the input object.
     expect(expectedPart.brand).toBe('Intel');
@@ -433,8 +441,12 @@ describe('query functions round-trip data through the full lifecycle', () => {
       brand: 'Intel',
       partNumber: 'i5-8500',
       description: 'Pulled, tested working',
+      identityCandidates: [],
     });
     expect(part.status).toBe('ready_to_list');
+    // Same empty-array round-trip guarantee as expectedPart above, now for
+    // the parts table's identity_candidates column.
+    expect(part.identityCandidates).toEqual([]);
     expect(part.brand).toBe('Intel');
     expect(part.partNumber).toBe('i5-8500');
     const fetchedPart = await db.getPartById(part.id);
@@ -514,7 +526,7 @@ describe('UNIQUE constraints back the database-level routing guards', () => {
       photoPaths: [],
     });
     const purchase = await db.createPurchase({ listingId: listing.id, pricePaid: 100, purchaseDate: '2024-04-02' });
-    const part = await db.createPart({ purchaseId: purchase.id, category: 'CPU', brand: null, partNumber: null, description: 'i5-8500' });
+    const part = await db.createPart({ purchaseId: purchase.id, category: 'CPU', brand: null, partNumber: null, description: 'i5-8500', identityCandidates: [] });
 
     await db.createSale({
       partId: part.id,
@@ -557,6 +569,7 @@ describe('UNIQUE constraints back the database-level routing guards', () => {
       partNumber: null,
       description: 'i5-8500',
       estimatedResaleValue: 60,
+      identityCandidates: [],
     });
     const purchase = await db.createPurchase({ listingId: listing.id, pricePaid: 100, purchaseDate: '2024-04-02' });
 
@@ -626,6 +639,7 @@ describe('Expected Part brand/part number', () => {
       partNumber: null,
       description: 'Two DDR4 DIMMs, capacity not legible',
       estimatedResaleValue: 30,
+      identityCandidates: [],
     });
     const fetched = await db.getExpectedPartById(created.id);
     expect(fetched?.brand).toBeNull();
@@ -641,6 +655,7 @@ describe('Expected Part brand/part number', () => {
       partNumber: null,
       description: 'Unidentified card',
       estimatedResaleValue: 150,
+      identityCandidates: [],
     });
 
     // Filling the fields in later is the real editing flow: a part the user
@@ -660,5 +675,114 @@ describe('Expected Part brand/part number', () => {
     const cleared = await db.updateExpectedPart(created.id, { brand: null, partNumber: null });
     expect(cleared?.brand).toBeNull();
     expect(cleared?.partNumber).toBeNull();
+  });
+});
+
+// T2 proof: identity_candidates (apps/server/src/db/queries/expectedParts.ts,
+// queries/parts.ts) round-trips a non-empty IdentityCandidate[] through
+// create/update/read on both tables, and is actually present in
+// listPartsWithContext/getPartWithContextById's explicit SELECT column list
+// — not just on mapRow's shape, which a dropped SELECT column would not
+// catch (JSON.parse(undefined) throws rather than silently returning []).
+describe('identity_candidates round-trips through expected_parts and parts (T2)', () => {
+  const candidates = [
+    { brand: 'NVIDIA', partNumber: 'RTX 3070' },
+    { brand: 'NVIDIA', partNumber: 'RTX 3080' },
+  ];
+
+  // Seeds the minimum chain (source -> listing) an Expected Part needs.
+  async function seedListing(): Promise<string> {
+    const source = await db.createSource({ name: 'eBay search', platformType: 'ebay', url: null, notes: null });
+    const listing = await db.createListing({
+      sourceId: source.id,
+      title: 'Dell OptiPlex bundle',
+      description: null,
+      listingUrl: null,
+      askingPrice: 100,
+      listingDate: '2024-05-01',
+      acquisitionFees: 0,
+      photoPaths: [],
+    });
+    return listing.id;
+  }
+
+  it('createExpectedPart stores a non-empty identityCandidates array and mapRow parses it back out on a fresh SELECT', async () => {
+    const listingId = await seedListing();
+    const created = await db.createExpectedPart({
+      listingId,
+      componentCategory: 'GPU',
+      brand: null,
+      partNumber: null,
+      description: 'Ambiguous GPU, two plausible SKUs',
+      estimatedResaleValue: 200,
+      identityCandidates: candidates,
+    });
+    expect(created.identityCandidates).toEqual(candidates);
+
+    // Separate SELECT (not the INSERT ... RETURNING row), so this proves
+    // the JSON.stringify'd value was actually persisted as text and
+    // JSON.parse'd back into the same structure, not merely echoed.
+    const fetched = await db.getExpectedPartById(created.id);
+    expect(fetched?.identityCandidates).toEqual(candidates);
+  });
+
+  it('updateExpectedPart persists an updated identityCandidates array through its set-clause branch', async () => {
+    const listingId = await seedListing();
+    const created = await db.createExpectedPart({
+      listingId,
+      componentCategory: 'GPU',
+      brand: null,
+      partNumber: null,
+      description: 'Ambiguous GPU',
+      estimatedResaleValue: 200,
+      identityCandidates: [{ brand: 'AMD', partNumber: 'RX 6700' }],
+    });
+
+    const updated = await db.updateExpectedPart(created.id, { identityCandidates: candidates });
+    expect(updated?.identityCandidates).toEqual(candidates);
+
+    // An omitted key must leave the column untouched (buildSetClause's
+    // undefined contract) — proves identityCandidates participates in that
+    // same undefined-vs-explicit-value branch as brand/partNumber above,
+    // rather than always being overwritten.
+    const untouched = await db.updateExpectedPart(created.id, { description: 'Still ambiguous' });
+    expect(untouched?.identityCandidates).toEqual(candidates);
+  });
+
+  it('createPart stores a non-empty identityCandidates array and mapRow parses it back out on a fresh SELECT', async () => {
+    const source = await db.createSource({ name: 'eBay search', platformType: 'ebay', url: null, notes: null });
+    const listing = await db.createListing({
+      sourceId: source.id,
+      title: 'Dell OptiPlex bundle',
+      description: null,
+      listingUrl: null,
+      askingPrice: 100,
+      listingDate: '2024-05-01',
+      acquisitionFees: 0,
+      photoPaths: [],
+    });
+    const purchase = await db.createPurchase({ listingId: listing.id, pricePaid: 100, purchaseDate: '2024-05-02' });
+    const created = await db.createPart({
+      purchaseId: purchase.id,
+      category: 'GPU',
+      brand: null,
+      partNumber: null,
+      description: 'Carried over from an ambiguous Expected Part',
+      identityCandidates: candidates,
+    });
+    expect(created.identityCandidates).toEqual(candidates);
+
+    const fetched = await db.getPartById(created.id);
+    expect(fetched?.identityCandidates).toEqual(candidates);
+
+    // listPartsWithContext/getPartWithContextById use their own explicit
+    // SELECT column list (not `SELECT *`) — proving identityCandidates
+    // comes back through both proves `pt.identity_candidates,` is actually
+    // present in that list, not just that mapRow knows the field.
+    const withContext = await db.getPartWithContextById(created.id);
+    expect(withContext?.identityCandidates).toEqual(candidates);
+
+    const listed = await db.listPartsWithContext({ purchaseId: purchase.id });
+    expect(listed.find((p) => p.id === created.id)?.identityCandidates).toEqual(candidates);
   });
 });

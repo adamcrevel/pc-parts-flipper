@@ -40,6 +40,7 @@ function makePart(overrides: Partial<PartSummary> = {}): PartSummary {
     description: 'light coil whine under load',
     status: 'ready_to_list',
     unsellableReason: null,
+    identityCandidates: [],
     createdAt: '2024-01-01',
     updatedAt: '2024-01-01',
     purchase: { id: 'purchase-1', listingTitle: 'Gaming PC bundle' },
@@ -114,5 +115,22 @@ describe('PartsTable brand/model display', () => {
 
     const brandCells = Array.from(el.querySelectorAll('tbody tr')).map((tr) => tr.querySelectorAll('td')[1].textContent);
     expect(brandCells).toEqual(['NVIDIA RTX 3070', 'Corsair RM750']);
+  });
+
+  it('shows alternate candidate pairings alongside the primary identity when the AI left some unresolved', async () => {
+    const el = await mountTable([
+      makePart({
+        identityCandidates: [
+          { brand: 'NVIDIA', partNumber: 'RTX 3070' }, // duplicate of the primary — dropped by formatIdentityCandidates
+          { brand: 'NVIDIA', partNumber: 'RTX 3080' },
+        ],
+      }),
+    ]);
+
+    // Both the primary identity and the alternates note live in the same
+    // cell; asserting the cell's exact text (not a whole-row substring
+    // search) confirms the alternates annotation actually renders next to
+    // the primary rather than merely that the component didn't crash.
+    expect(firstRowCells(el)[1]).toBe('NVIDIA RTX 3070 (or NVIDIA RTX 3080)');
   });
 });

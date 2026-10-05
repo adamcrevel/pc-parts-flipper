@@ -180,6 +180,70 @@ describe('Listing CRUD + Expected Parts + Req-3 comparison (T6)', () => {
     expect(res.body.error?.message, `expected an error message naming "estimatedResaleValue", got ${JSON.stringify(res.body)}`).toMatch(/estimatedResaleValue/i);
   });
 
+  it('persists a non-empty expectedParts[].identityCandidates array and round-trips it via GET (Req 6)', async () => {
+    const candidates = [
+      { brand: 'NVIDIA', partNumber: 'RTX 3070' },
+      { brand: 'NVIDIA', partNumber: 'RTX 3070 Ti' },
+    ];
+    const created = await postJson<ListingDetail>(`${server.baseUrl}/api/listings`, listingBody(sourceId, {
+      expectedParts: [
+        { componentCategory: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3070', description: 'Pulled, no box', estimatedResaleValue: 200, identityCandidates: candidates },
+      ],
+    }));
+    expect(created.status, `create failed: ${JSON.stringify(created.body)}`).toBe(201);
+    expect(created.body.expectedParts[0].identityCandidates).toEqual(candidates);
+
+    // Must survive a real fetch, not just an echo of the request body —
+    // the save-time persistence Req 6 actually guards (the candidate list
+    // is never dropped even though the user never picked one).
+    const fetched = await getJson<ListingDetail>(`${server.baseUrl}/api/listings/${created.body.id}`);
+    expect(fetched.status).toBe(200);
+    expect(fetched.body.expectedParts[0].identityCandidates).toEqual(candidates);
+  });
+
+  it('defaults identityCandidates to [] when the field is absent from the request body (backward compatible)', async () => {
+    // Deliberately built as an untyped object, like the brand/partNumber-
+    // omitted test above: the point is a wire body genuinely lacking the
+    // key, as a pre-Req-6 client would send.
+    const body = {
+      ...listingBody(sourceId),
+      expectedParts: [{ componentCategory: 'PSU', description: 'No candidates sent', estimatedResaleValue: 25 }],
+    };
+    const created = await postJson<ListingDetail>(`${server.baseUrl}/api/listings`, body);
+    expect(created.status, `create failed: ${JSON.stringify(created.body)}`).toBe(201);
+    expect(created.body.expectedParts[0].identityCandidates).toEqual([]);
+  });
+
+  it('rejects a non-array identityCandidates with 400, never silently coercing it', async () => {
+    const before = await getJson<ListListingsResponse>(`${server.baseUrl}/api/listings?limit=1`);
+    const body = {
+      ...listingBody(sourceId),
+      expectedParts: [{ componentCategory: 'PSU', description: 'Bad candidates shape', estimatedResaleValue: 25, identityCandidates: 'NVIDIA' }],
+    };
+    const res = await postJson<{ error?: { message?: string } }>(`${server.baseUrl}/api/listings`, body);
+    expect(res.status).toBe(400);
+    expect(res.body.error?.message, `expected an error naming "identityCandidates", got ${JSON.stringify(res.body)}`).toMatch(/identityCandidates/i);
+
+    const after = await getJson<ListListingsResponse>(`${server.baseUrl}/api/listings?limit=1`);
+    expect(after.body.total, 'a rejected create must not change the stored Listing count').toBe(before.body.total);
+  });
+
+  it('rejects an identityCandidates entry with a wrong-typed brand with 400, never silently coercing it', async () => {
+    const before = await getJson<ListListingsResponse>(`${server.baseUrl}/api/listings?limit=1`);
+    const body = {
+      ...listingBody(sourceId),
+      expectedParts: [
+        { componentCategory: 'GPU', description: 'Malformed candidate entry', estimatedResaleValue: 25, identityCandidates: [{ brand: 42, partNumber: 'RTX 3070' }] },
+      ],
+    };
+    const res = await postJson<{ error?: { message?: string } }>(`${server.baseUrl}/api/listings`, body);
+    expect(res.status).toBe(400);
+    expect(res.body.error?.message, `expected an error naming "identityCandidates", got ${JSON.stringify(res.body)}`).toMatch(/identityCandidates/i);
+
+    const after = await getJson<ListListingsResponse>(`${server.baseUrl}/api/listings?limit=1`);
+    expect(after.body.total, 'a rejected create must not change the stored Listing count').toBe(before.body.total);
+  });
+
   it('PUT fully replaces a Listing\'s Expected Parts set (old rows gone, new rows present)', async () => {
     const created = await postJson<ListingDetail>(`${server.baseUrl}/api/listings`, listingBody(sourceId));
     expect(created.status).toBe(201);

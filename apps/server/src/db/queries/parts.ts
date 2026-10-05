@@ -1,5 +1,6 @@
 // Typed CRUD for the `parts` table (Req 6-7, 10).
 import type { DuckDBValue } from '@duckdb/node-api';
+import type { IdentityCandidate } from '@pc-parts-flipper/shared';
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
 import { buildSetClause } from '../sqlHelpers.js';
@@ -16,6 +17,7 @@ export interface CreatePartInput {
   brand: string | null;
   partNumber: string | null;
   description: string;
+  identityCandidates: IdentityCandidate[];
 }
 
 /** Fields that may be edited on an existing Part; omitted keys are left unchanged. */
@@ -44,6 +46,7 @@ function mapRow(row: Record<string, unknown>): Part {
     description: row.description as string,
     status: row.status as PartStatus,
     unsellableReason: row.unsellable_reason as string | null,
+    identityCandidates: JSON.parse(row.identity_candidates as string) as IdentityCandidate[],
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -53,8 +56,8 @@ function mapRow(row: Record<string, unknown>): Part {
 export async function createPart(input: CreatePartInput): Promise<Part> {
   const connection = await getConnection();
   const reader = await connection.runAndReadAll(
-    `INSERT INTO parts (id, purchase_id, category, brand, part_number, description)
-     VALUES ($id, $purchase_id, $category, $brand, $part_number, $description)
+    `INSERT INTO parts (id, purchase_id, category, brand, part_number, description, identity_candidates)
+     VALUES ($id, $purchase_id, $category, $brand, $part_number, $description, $identity_candidates)
      RETURNING *`,
     {
       id: newId(),
@@ -63,6 +66,7 @@ export async function createPart(input: CreatePartInput): Promise<Part> {
       brand: input.brand,
       part_number: input.partNumber,
       description: input.description,
+      identity_candidates: JSON.stringify(input.identityCandidates),
     },
   );
   return mapRow(reader.getRowObjectsJson()[0]);
@@ -129,7 +133,7 @@ export async function listPartsWithContext(options?: ListPartsOptions): Promise<
   }
   const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const reader = await connection.runAndReadAll(
-    `SELECT pt.id, pt.purchase_id, pt.category, pt.brand, pt.part_number, pt.description, pt.status, pt.unsellable_reason, pt.created_at, pt.updated_at,
+    `SELECT pt.id, pt.purchase_id, pt.category, pt.brand, pt.part_number, pt.description, pt.status, pt.unsellable_reason, pt.identity_candidates, pt.created_at, pt.updated_at,
             l.title AS purchase_listing_title
      FROM parts pt
      JOIN purchases p ON p.id = pt.purchase_id
@@ -192,7 +196,7 @@ export async function updatePart(id: string, patch: UpdatePartInput): Promise<Pa
 export async function getPartWithContextById(id: string): Promise<PartWithPurchaseSummary | null> {
   const connection = await getConnection();
   const reader = await connection.runAndReadAll(
-    `SELECT pt.id, pt.purchase_id, pt.category, pt.brand, pt.part_number, pt.description, pt.status, pt.unsellable_reason, pt.created_at, pt.updated_at,
+    `SELECT pt.id, pt.purchase_id, pt.category, pt.brand, pt.part_number, pt.description, pt.status, pt.unsellable_reason, pt.identity_candidates, pt.created_at, pt.updated_at,
             l.title AS purchase_listing_title
      FROM parts pt
      JOIN purchases p ON p.id = pt.purchase_id

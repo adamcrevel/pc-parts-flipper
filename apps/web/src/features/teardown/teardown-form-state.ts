@@ -1,4 +1,4 @@
-import type { ComponentCategory, ExpectedPart, SubmitTeardownInput, TeardownExpectedPartResultInput } from '@pc-parts-flipper/shared';
+import type { ComponentCategory, ExpectedPart, IdentityCandidate, SubmitTeardownInput, TeardownExpectedPartResultInput } from '@pc-parts-flipper/shared';
 
 /** The result options a user may pick per Expected Part row (Req 6); 'additional' is never offered here — it's reserved for rows the user adds separately below. */
 export const EXPECTED_PART_RESULT_OPTIONS: readonly TeardownExpectedPartResultInput['result'][] = ['present_as_expected', 'present_but_different', 'missing'];
@@ -25,6 +25,7 @@ export interface TeardownRow {
   partNumber: string | null;
   description: string;
   estimatedResaleValue: number;
+  identityCandidates: IdentityCandidate[];
   result: TeardownExpectedPartResultInput['result'] | '';
   note: string;
 }
@@ -44,6 +45,7 @@ export function initialTeardownRows(expectedParts: ExpectedPart[]): TeardownRow[
     partNumber: part.partNumber,
     description: part.description,
     estimatedResaleValue: part.estimatedResaleValue,
+    identityCandidates: part.identityCandidates,
     result: '',
     note: '',
   }));

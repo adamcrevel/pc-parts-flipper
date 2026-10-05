@@ -4,6 +4,7 @@
 // to the shared package, so apps/web can reuse them over the HTTP API's JSON
 // shapes, is left to the tasks that build the routes/screens on top of this
 // module.
+import type { IdentityCandidate } from '@pc-parts-flipper/shared';
 
 // -- Enums -------------------------------------------------------------
 
@@ -93,6 +94,8 @@ export interface ExpectedPart {
   partNumber: string | null;
   description: string;
   estimatedResaleValue: number;
+  /** Other plausible brand/partNumber pairings the AI identifier considered but did not pick as primary; empty for manually-entered Expected Parts. */
+  identityCandidates: IdentityCandidate[];
   createdAt: string;
   updatedAt: string;
 }
@@ -134,6 +137,8 @@ export interface Part {
   description: string;
   status: PartStatus;
   unsellableReason: string | null;
+  /** Carried over from the Expected Part (or Additional Part) this Part was reconciled from; empty when never identified. */
+  identityCandidates: IdentityCandidate[];
   createdAt: string;
   updatedAt: string;
 }

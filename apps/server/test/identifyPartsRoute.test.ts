@@ -107,7 +107,7 @@ describe('POST /api/listings/:id/identify-parts', () => {
     expect(body.parts).toHaveLength(2);
     // Full-shape equality, so brand/partNumber reaching the HTTP response is
     // proven rather than assumed — including the null half.
-    expect(body.parts[0]).toEqual({ category: 'CPU', brand: 'AMD', partNumber: 'Ryzen 5 5600X', description: 'Boxed cooler included', confidence: 'high', source: 'text' });
+    expect(body.parts[0]).toEqual({ category: 'CPU', brand: 'AMD', partNumber: 'Ryzen 5 5600X', description: 'Boxed cooler included', confidence: 'high', source: 'text', identityCandidates: [] });
     expect(body.parts[1].brand).toBe('NVIDIA');
     expect(body.parts[1].partNumber).toBeNull();
     expect(body.notes).toBe('PSU wattage not visible in any photo.');

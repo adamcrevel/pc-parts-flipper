@@ -160,6 +160,9 @@ describe('teardown workflow proof (T9)', () => {
     // The additional find's identity comes from the teardown form itself.
     expect(createdPart('Storage')?.brand).toBe('Samsung');
     expect(createdPart('Storage')?.partNumber).toBe('970 EVO');
+    // An Additional Part has no Expected Part behind it, so it must come
+    // out with an empty candidate list rather than inheriting anything.
+    expect(createdPart('Storage')?.identityCandidates).toEqual([]);
 
     // Reconcile against the real GET endpoint too, not just the POST
     // response — proves the Parts actually persisted, not just echoed back.
@@ -202,5 +205,75 @@ describe('teardown workflow proof (T9)', () => {
       expect(part.brand, `${part.category} brand should be null`).toBeNull();
       expect(part.partNumber, `${part.category} partNumber should be null`).toBeNull();
     }
+  });
+
+  it('carries a non-empty Expected Part identityCandidates array verbatim onto the created Part (Req 7)', async () => {
+    const sourceRes = await postJson<SourceResponse>(`${server.baseUrl}/api/sources`, {
+      name: 'Teardown Test Source identity-candidates',
+      platformType: 'ebay',
+      url: 'https://example.com/teardown-test-identity-candidates',
+      notes: null,
+    });
+    expect(sourceRes.status, `seed Source creation failed: ${JSON.stringify(sourceRes.body)}`).toBe(201);
+
+    const candidates = [
+      { brand: 'NVIDIA', partNumber: 'RTX 3070' },
+      { brand: 'NVIDIA', partNumber: 'RTX 3070 Ti' },
+    ];
+    // Built as a loosely-typed body (not CreateListingInput) the same way
+    // listings.test.ts's identityCandidates tests do: identityCandidates is
+    // not yet on every typed fixture builder in this repo (a gap the T6
+    // reviewer separately flagged on the web side), so this avoids
+    // depending on that.
+    const listingBody = {
+      sourceId: sourceRes.body.id,
+      title: 'Teardown Test Listing identity-candidates',
+      description: null,
+      listingUrl: 'https://example.com/listing-identity-candidates',
+      askingPrice: 100,
+      listingDate: '2026-01-01',
+      acquisitionFees: 0,
+      expectedParts: [
+        {
+          componentCategory: 'GPU',
+          brand: 'NVIDIA',
+          partNumber: 'RTX 3070',
+          description: 'Test GPU identity-candidates',
+          estimatedResaleValue: 200,
+          identityCandidates: candidates,
+        },
+      ],
+    };
+    const listingRes = await postJson<ListingDetail>(`${server.baseUrl}/api/listings`, listingBody);
+    expect(listingRes.status, `seed Listing creation failed: ${JSON.stringify(listingRes.body)}`).toBe(201);
+    expect(listingRes.body.expectedParts[0].identityCandidates).toEqual(candidates);
+    const gpuExpectedPartId = listingRes.body.expectedParts[0].id;
+
+    const acceptRes = await postJson<AcceptListingResponse>(`${server.baseUrl}/api/listings/${listingRes.body.id}/accept`, {});
+    expect(acceptRes.status, `accept failed: ${JSON.stringify(acceptRes.body)}`).toBe(201);
+    const purchaseId = acceptRes.body.purchaseId;
+
+    const shipped = await patchJson<PurchaseDetail>(`${server.baseUrl}/api/purchases/${purchaseId}/status`, { status: 'shipped' });
+    const received = await patchJson<PurchaseDetail>(`${server.baseUrl}/api/purchases/${purchaseId}/status`, { status: 'received' });
+    expect(shipped.status, JSON.stringify(shipped.body)).toBe(200);
+    expect(received.status, JSON.stringify(received.body)).toBe(200);
+
+    const submitRes = await postJson<SubmitTeardownResponse>(`${server.baseUrl}/api/purchases/${purchaseId}/teardown`, {
+      results: [{ expectedPartId: gpuExpectedPartId, result: 'present_as_expected', note: null }],
+      additionalParts: [],
+    });
+    expect(submitRes.status, `teardown submission failed: ${JSON.stringify(submitRes.body)}`).toBe(200);
+    expect(submitRes.body.createdParts).toHaveLength(1);
+
+    // The sharpest assertion this test exists for: the created Part's
+    // identityCandidates must be the exact same array the Expected Part
+    // carried — not dropped to [], and not some other value.
+    expect(submitRes.body.createdParts[0].identityCandidates).toEqual(candidates);
+
+    // Reconcile against the real GET /api/parts endpoint too, not just the
+    // POST response — proves the value actually persisted, not just echoed.
+    const partsList = await getJson<ListPartsResponse>(`${server.baseUrl}/api/parts?purchaseId=${purchaseId}&limit=5`);
+    expect(partsList.body.parts).toHaveLength(1);
+    expect(partsList.body.parts[0].identityCandidates).toEqual(candidates);
   });
 });

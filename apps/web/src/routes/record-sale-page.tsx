@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { formatPartIdentity, type PartSummary } from '@pc-parts-flipper/shared';
+import { formatIdentityCandidates, formatPartIdentity, type PartSummary } from '@pc-parts-flipper/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoadingSpinner } from '@/components/loading-spinner';
@@ -53,6 +53,8 @@ export function RecordSalePage() {
   // '' when neither brand nor part number was identified — the signal to fall
   // back to the free-text description in the heading.
   const identity = formatPartIdentity(part.brand, part.partNumber);
+  // Other plausible brand/model pairings the AI considered but didn't pick as primary.
+  const alternates = formatIdentityCandidates(part.identityCandidates, part.brand, part.partNumber);
 
   return (
     <div className="space-y-4">
@@ -74,6 +76,8 @@ export function RecordSalePage() {
               {part.description}
             </p>
           )}
+          {/* Other plausible brand/model pairings the AI considered but didn't pick as primary, shown as a muted secondary note. */}
+          {alternates !== '' && <p className="text-sm text-muted-foreground">({alternates})</p>}
         </CardHeader>
         <CardContent>
           {part.status !== 'listed' ? (

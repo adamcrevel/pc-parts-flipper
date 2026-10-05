@@ -51,6 +51,7 @@ function makeExpectedPart(overrides: Partial<ExpectedPart> = {}): ExpectedPart {
     partNumber: 'RTX 3070',
     description: 'triple-fan cooler visible',
     estimatedResaleValue: 220,
+    identityCandidates: [],
     createdAt: '2024-01-01',
     updatedAt: '2024-01-01',
     ...overrides,
@@ -159,5 +160,22 @@ describe('PurchaseDetailPage Expected Parts brand/model display', () => {
 
     const identityCells = Array.from(el.querySelectorAll('tbody tr')).map((tr) => tr.querySelectorAll('td')[1].textContent);
     expect(identityCells).toEqual(['NVIDIA RTX 3070', 'Corsair RM750']);
+  });
+
+  it('shows alternate candidate pairings alongside the primary identity when the AI left some unresolved', async () => {
+    const el = await mountPage([
+      makeExpectedPart({
+        identityCandidates: [
+          { brand: 'NVIDIA', partNumber: 'RTX 3070' }, // duplicate of the primary — dropped by formatIdentityCandidates
+          { brand: 'NVIDIA', partNumber: 'RTX 3080' },
+        ],
+      }),
+    ]);
+
+    // Both the primary identity and the alternates note live in the same
+    // cell; asserting the cell's exact text (not a whole-page substring
+    // search) confirms the alternates annotation actually renders next to
+    // the primary rather than merely that the page didn't crash.
+    expect(firstRowCells(el)[1]).toBe('NVIDIA RTX 3070 (or NVIDIA RTX 3080)');
   });
 });

@@ -8,6 +8,7 @@
 // that creates Parts in this task's scope; T10 (the Parts screen) imports it
 // from here rather than redefining it.
 import type { ComponentCategory, ExpectedPart } from './listings.js';
+import type { IdentityCandidate } from './aiIdentification.js';
 import type { PurchaseStatus } from './purchases.js';
 
 /** Outcome of reconciling one Expected Part (or an unexpected find) during teardown (Req 6). */
@@ -34,7 +35,8 @@ export type PartStatus = 'ready_to_list' | 'listed' | 'sold' | 'unsellable';
  * reconciled (or from the Additional Part row the user filled in), and stay
  * null when the component was never identified — they drive the default
  * Sale Listing title, which is why a real "NVIDIA RTX 3060" beats a generic
- * "GPU: <prose>".
+ * "GPU: <prose>". `identityCandidates` likewise carries over the originating
+ * Expected Part's alternate brand/partNumber pairings, when any exist.
  */
 export interface Part {
   id: string;
@@ -45,6 +47,7 @@ export interface Part {
   description: string;
   status: PartStatus;
   unsellableReason: string | null;
+  identityCandidates: IdentityCandidate[];
   createdAt: string;
   updatedAt: string;
 }

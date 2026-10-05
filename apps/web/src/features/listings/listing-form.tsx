@@ -79,6 +79,7 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
       partNumber: row.partNumber.trim() || null,
       description: row.description.trim(),
       estimatedResaleValue: Number(row.estimatedResaleValue),
+      identityCandidates: row.identityCandidates,
     }));
 
     setSubmitError(null);

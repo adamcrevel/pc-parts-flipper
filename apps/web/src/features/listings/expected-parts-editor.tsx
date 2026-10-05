@@ -1,6 +1,7 @@
-import type { AiPartConfidence, AiPartSource, ComponentCategory } from '@pc-parts-flipper/shared';
+import type { AiPartConfidence, AiPartSource, ComponentCategory, IdentityCandidate } from '@pc-parts-flipper/shared';
 import { Button } from '@/components/ui/button';
 import { AiSuggestedBadge } from '@/features/listings/ai-suggested-badge';
+import { IdentityCandidatesPicker } from '@/features/listings/identity-candidates-picker';
 
 // The fixed category list (assumption A8) the <select> below renders.
 const CATEGORY_OPTIONS: readonly ComponentCategory[] = ['CPU', 'GPU', 'Motherboard', 'RAM', 'Storage', 'PSU', 'Case', 'Cooler', 'Other'];
@@ -35,6 +36,10 @@ export interface ExpectedPartRow {
   // actually saved.
   aiConfidence?: AiPartConfidence;
   aiSource?: AiPartSource;
+  // Alternate brand/partNumber pairings the AI considered but did not pick
+  // as primary (T1); always [] for rows never produced by AI
+  // identification. Rendered via IdentityCandidatesPicker when non-empty.
+  identityCandidates: IdentityCandidate[];
 }
 
 /** Per-row field errors, keyed the same way ListingForm's other field errors are. */
@@ -46,7 +51,7 @@ export interface ExpectedPartRowErrors {
 
 /** An empty draft row, used both for the initial row and "Add Part". */
 export function emptyExpectedPartRow(): ExpectedPartRow {
-  return { componentCategory: '', brand: '', partNumber: '', description: '', estimatedResaleValue: '' };
+  return { componentCategory: '', brand: '', partNumber: '', description: '', estimatedResaleValue: '', identityCandidates: [] };
 }
 
 /** Human-readable wording for which evidence the model drew a suggestion from. */
@@ -85,6 +90,14 @@ export function ExpectedPartsEditor({ rows, rowErrors, onChange }: ExpectedParts
 
   function removeRow(index: number) {
     onChange(rows.filter((_, i) => i !== index));
+  }
+
+  // Applies a picked IdentityCandidate's brand/partNumber to the row
+  // without clearing aiSuggested — unlike updateRow, picking an alternate
+  // the AI itself proposed is still reviewing its suggestion, not a
+  // free-text edit of it.
+  function pickIdentityCandidate(index: number, candidate: IdentityCandidate) {
+    onChange(rows.map((row, i) => (i === index ? { ...row, brand: candidate.brand ?? '', partNumber: candidate.partNumber ?? '' } : row)));
   }
 
   return (
@@ -147,6 +160,10 @@ export function ExpectedPartsEditor({ rows, rowErrors, onChange }: ExpectedParts
                 aria-label={`Expected part ${index + 1} part number`}
               />
             </div>
+
+            {row.identityCandidates.length > 0 && (
+              <IdentityCandidatesPicker candidates={row.identityCandidates} brand={row.brand} partNumber={row.partNumber} onPick={(candidate) => pickIdentityCandidate(index, candidate)} />
+            )}
 
             <div className="grid grid-cols-[2fr_1fr_auto] items-start gap-2">
               <div className="space-y-1">

@@ -201,7 +201,7 @@ describe('parseIdentificationResponse', () => {
     });
 
     expect(parser.parseIdentificationResponse(raw)).toEqual({
-      parts: [{ category: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3060', description: '12GB, tested working', confidence: 'high', source: 'both' }],
+      parts: [{ category: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3060', description: '12GB, tested working', confidence: 'high', source: 'both', identityCandidates: [] }],
       notes: 'Photos look like stock images.',
     });
   });
@@ -324,7 +324,7 @@ describe('parseIdentificationResponse', () => {
 
     const result = parser.parseIdentificationResponse(raw);
 
-    expect(result.parts).toEqual([{ category: 'GPU', brand: null, partNumber: null, description: '', confidence: 'high', source: 'image' }]);
+    expect(result.parts).toEqual([{ category: 'GPU', brand: null, partNumber: null, description: '', confidence: 'high', source: 'image', identityCandidates: [] }]);
     expect(warnSpy).toHaveBeenCalledWith(
       expect.objectContaining({ entry: 'RTX 3060' }),
       expect.stringContaining('non-object part entry'),
@@ -352,6 +352,145 @@ describe('parseIdentificationResponse', () => {
     expect(() => parser.parseIdentificationResponse('{"notes":"nothing found"}')).toThrow(
       expect.objectContaining({ statusCode: 502, message: expect.stringContaining('missing a "parts" array') }),
     );
+  });
+});
+
+describe('parseIdentificationResponse identityCandidates', () => {
+  it('coerces a non-array or absent identityCandidates to an empty list', () => {
+    const absent = JSON.stringify({
+      parts: [{ category: 'GPU', description: 'RTX 3060', confidence: 'high', source: 'image' }],
+      notes: '',
+    });
+    expect(parser.parseIdentificationResponse(absent).parts[0].identityCandidates).toEqual([]);
+
+    // A non-array value (string) rather than an array — the same "not the
+    // shape asked for" defence as the field-level coercions above.
+    const wrongShape = JSON.stringify({
+      parts: [{ category: 'GPU', description: 'RTX 3060', confidence: 'high', source: 'image', identityCandidates: 'not an array' }],
+      notes: '',
+    });
+    expect(parser.parseIdentificationResponse(wrongShape).parts[0].identityCandidates).toEqual([]);
+  });
+
+  it('drops a candidate entry whose brand and partNumber both coerce to null', () => {
+    // One real candidate alongside one that carries no information at all —
+    // only the real one may survive into the result.
+    const raw = JSON.stringify({
+      parts: [{
+        category: 'GPU', description: 'RTX 3060', confidence: 'medium', source: 'text',
+        identityCandidates: [{ brand: 'NVIDIA', partNumber: 'RTX 3060' }, { brand: null, partNumber: null }],
+      }],
+      notes: '',
+    });
+
+    const result = parser.parseIdentificationResponse(raw);
+
+    expect(result.parts[0].identityCandidates).toEqual([{ brand: 'NVIDIA', partNumber: 'RTX 3060' }]);
+  });
+
+  it('coerces a malformed brand/partNumber inside one candidate entry to null and logs it, same as the primary field', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    const raw = JSON.stringify({
+      parts: [{
+        category: 'GPU', description: 'RTX 3060', confidence: 'medium', source: 'text',
+        identityCandidates: [{ brand: 42, partNumber: 'RTX 3060' }],
+      }],
+      notes: '',
+    });
+
+    const result = parser.parseIdentificationResponse(raw);
+
+    expect(result.parts[0].identityCandidates).toEqual([{ brand: null, partNumber: 'RTX 3060' }]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ field: 'brand', value: 42 }),
+      expect.stringContaining('non-string part identity field'),
+    );
+  });
+
+  it('dedupes exact-duplicate {brand,partNumber} candidate pairs, keeping the first occurrence', () => {
+    const raw = JSON.stringify({
+      parts: [{
+        category: 'GPU', description: 'RTX 3060', confidence: 'medium', source: 'text',
+        identityCandidates: [
+          { brand: 'NVIDIA', partNumber: 'RTX 3060' },
+          { brand: 'NVIDIA', partNumber: 'RTX 3060' },
+          { brand: 'EVGA', partNumber: 'RTX 3060' },
+        ],
+      }],
+      notes: '',
+    });
+
+    const result = parser.parseIdentificationResponse(raw);
+
+    // Three entries in, one exact duplicate collapsed — the first
+    // occurrence (highest-ranked) is the one kept.
+    expect(result.parts[0].identityCandidates).toEqual([
+      { brand: 'NVIDIA', partNumber: 'RTX 3060' },
+      { brand: 'EVGA', partNumber: 'RTX 3060' },
+    ]);
+  });
+
+  it('truncates more than MAX_IDENTITY_CANDIDATES entries to the cap and logs a Warn', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    // Five distinct candidates — one more than the cap of four.
+    const identityCandidates = ['A', 'B', 'C', 'D', 'E'].map((brand) => ({ brand, partNumber: null }));
+    const raw = JSON.stringify({
+      parts: [{ category: 'GPU', description: 'RTX 3060', confidence: 'low', source: 'text', identityCandidates }],
+      notes: '',
+    });
+
+    const result = parser.parseIdentificationResponse(raw);
+
+    expect(result.parts[0].identityCandidates).toHaveLength(prompt.MAX_IDENTITY_CANDIDATES);
+    expect(result.parts[0].identityCandidates).toEqual([
+      { brand: 'A', partNumber: null },
+      { brand: 'B', partNumber: null },
+      { brand: 'C', partNumber: null },
+      { brand: 'D', partNumber: null },
+    ]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ count: 5, max: prompt.MAX_IDENTITY_CANDIDATES }),
+      expect.stringContaining('more identityCandidates than allowed'),
+    );
+  });
+
+  it('keeps exactly MAX_IDENTITY_CANDIDATES entries untruncated with no Warn', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    const identityCandidates = ['A', 'B', 'C', 'D'].map((brand) => ({ brand, partNumber: null }));
+    const raw = JSON.stringify({
+      parts: [{ category: 'GPU', description: 'RTX 3060', confidence: 'low', source: 'text', identityCandidates }],
+      notes: '',
+    });
+
+    const result = parser.parseIdentificationResponse(raw);
+
+    expect(result.parts[0].identityCandidates).toHaveLength(4);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not exclude a candidate matching the part\'s own primary brand/partNumber — that exclusion is display-side, not the parser\'s', () => {
+    // normalizePart coerces `brand`/`partNumber` and `identityCandidates`
+    // independently with no cross-check between them; the primary-pair
+    // exclusion named in Requirement 5 is applied later, at display time, by
+    // formatIdentityCandidates (packages/shared/src/partIdentity.ts) — not
+    // here. Proven directly: a candidate identical to the part's own primary
+    // identity survives untouched into the parsed result.
+    const raw = JSON.stringify({
+      parts: [{
+        category: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3060', description: '12GB', confidence: 'high', source: 'both',
+        identityCandidates: [{ brand: 'NVIDIA', partNumber: 'RTX 3060' }, { brand: 'EVGA', partNumber: 'RTX 3060' }],
+      }],
+      notes: '',
+    });
+
+    const result = parser.parseIdentificationResponse(raw);
+
+    expect(result.parts[0].brand).toBe('NVIDIA');
+    expect(result.parts[0].partNumber).toBe('RTX 3060');
+    expect(result.parts[0].identityCandidates).toEqual([
+      { brand: 'NVIDIA', partNumber: 'RTX 3060' },
+      { brand: 'EVGA', partNumber: 'RTX 3060' },
+    ]);
   });
 });
 
@@ -544,7 +683,7 @@ describe('identifyListingParts', () => {
     const result = await identification.identifyListingParts(listing);
 
     expect(result).toEqual({
-      parts: [{ category: 'Storage', brand: 'Samsung', partNumber: '980 PRO', description: '1TB, serial not visible', confidence: 'medium', source: 'text' }],
+      parts: [{ category: 'Storage', brand: 'Samsung', partNumber: '980 PRO', description: '1TB, serial not visible', confidence: 'medium', source: 'text', identityCandidates: [] }],
       notes: 'Serial not visible.',
     });
     expect(calls).toHaveLength(1);

@@ -329,9 +329,9 @@ describe('Identify Parts draft state never reaches the backend', () => {
     // identified pair, the CPU and PSU rows send null (not '') for fields
     // nobody filled in.
     expect(payload.expectedParts).toEqual([
-      { componentCategory: 'CPU', brand: null, partNumber: null, description: 'Ryzen 5 5600X', estimatedResaleValue: 90 },
-      { componentCategory: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3070', description: 'triple-fan cooler visible', estimatedResaleValue: 300 },
-      { componentCategory: 'PSU', brand: null, partNumber: null, description: 'Corsair RM750', estimatedResaleValue: 70 },
+      { componentCategory: 'CPU', brand: null, partNumber: null, description: 'Ryzen 5 5600X', estimatedResaleValue: 90, identityCandidates: [] },
+      { componentCategory: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3070', description: 'triple-fan cooler visible', estimatedResaleValue: 300, identityCandidates: [] },
+      { componentCategory: 'PSU', brand: null, partNumber: null, description: 'Corsair RM750', estimatedResaleValue: 70, identityCandidates: [] },
     ]);
   });
 

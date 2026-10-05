@@ -23,6 +23,18 @@ export type AiPartConfidence = 'high' | 'medium' | 'low';
 export type AiPartSource = 'text' | 'image' | 'both';
 
 /**
+ * One alternate brand/partNumber pairing the model considered plausible but
+ * did not pick as the primary identification — e.g. when a GPU's exact SKU
+ * within a product line can't be pinned down from the listing. Carried
+ * alongside the primary `brand`/`partNumber` on `AiIdentifiedPart` so the UI
+ * can show "or NVIDIA RTX 3070, NVIDIA RTX 3080" without a second AI call.
+ */
+export interface IdentityCandidate {
+  brand: string | null;
+  partNumber: string | null;
+}
+
+/**
  * One AI-suggested Expected Part. `category` is always one of the project's
  * fixed ComponentCategory values (the server coerces anything else to
  * 'Other'), so a suggestion can drop straight into the Expected Parts editor's
@@ -32,7 +44,10 @@ export type AiPartSource = 'text' | 'image' | 'both';
  * is instructed to return null for either it cannot support from the listing
  * text or photos, so a null here means "not identified", never "no brand".
  * `description` carries only what brand/partNumber do not — condition and
- * notable details — rather than restating them in prose.
+ * notable details — rather than restating them in prose. `identityCandidates`
+ * holds other plausible brand/partNumber pairings the model considered but
+ * did not settle on as primary (may be empty when the model was confident or
+ * found no alternatives).
  */
 export interface AiIdentifiedPart {
   category: ComponentCategory;
@@ -41,6 +56,7 @@ export interface AiIdentifiedPart {
   description: string;
   confidence: AiPartConfidence;
   source: AiPartSource;
+  identityCandidates: IdentityCandidate[];
 }
 
 /**

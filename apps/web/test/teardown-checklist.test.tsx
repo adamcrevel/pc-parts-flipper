@@ -46,6 +46,7 @@ function makeExpectedPart(overrides: Partial<ExpectedPart> = {}): ExpectedPart {
     partNumber: 'RTX 3070',
     description: 'triple-fan cooler visible',
     estimatedResaleValue: 220,
+    identityCandidates: [],
     createdAt: '2024-01-01',
     updatedAt: '2024-01-01',
     ...overrides,
@@ -151,6 +152,24 @@ describe('TeardownChecklist identity display', () => {
     // so a screen-reader user can tell two GPU rows apart too.
     const labels = Array.from(el.querySelectorAll('select')).map((node) => node.getAttribute('aria-label'));
     expect(labels).toEqual(['NVIDIA RTX 3070 result', 'Corsair RM750 result']);
+  });
+
+  it('shows alternate candidate pairings as a secondary note when the AI left some unresolved', async () => {
+    const el = await mountChecklist([
+      makeExpectedPart({
+        identityCandidates: [
+          { brand: 'NVIDIA', partNumber: 'RTX 3070' }, // duplicate of the primary — dropped by formatIdentityCandidates
+          { brand: 'NVIDIA', partNumber: 'RTX 3080' },
+        ],
+      }),
+    ]);
+
+    // The alternates note sits alongside the identity/description line for
+    // this row; addressed via the identity span's own parent (not a
+    // whole-screen substring search) so a stray 'or ...' elsewhere couldn't
+    // make this pass for the wrong reason.
+    const row = el.querySelector('[data-testid="teardown-row-identity"]')?.parentElement;
+    expect(row?.textContent).toContain(' · or NVIDIA RTX 3080');
   });
 });
 

@@ -57,6 +57,7 @@ function makePart(overrides: Partial<PartSummary> = {}): PartSummary {
     description: 'light coil whine under load',
     status: 'listed',
     unsellableReason: null,
+    identityCandidates: [],
     createdAt: '2024-01-01',
     updatedAt: '2024-01-01',
     purchase: { id: 'purchase-1', listingTitle: 'Gaming PC bundle' },
@@ -122,5 +123,23 @@ describe('RecordSalePage part heading', () => {
     // the description must not then be duplicated onto a second line.
     expect(heading(el)).toBe('GPU: light coil whine under load');
     expect(el.querySelector('[data-testid="record-sale-part-description"]')).toBeNull();
+  });
+
+  it('shows alternate candidate pairings as a secondary note when the AI left some unresolved', async () => {
+    const el = await mountPage(
+      makePart({
+        identityCandidates: [
+          { brand: 'NVIDIA', partNumber: 'RTX 3070' }, // duplicate of the primary — dropped by formatIdentityCandidates
+          { brand: 'NVIDIA', partNumber: 'RTX 3080' },
+        ],
+      }),
+    );
+
+    // The heading itself names only the primary identity; the alternates
+    // render as their own secondary paragraph, addressed positionally
+    // (not a whole-page substring search) so a stray '(or ...)' elsewhere
+    // couldn't make this pass for the wrong reason.
+    const paragraphs = Array.from(el.querySelectorAll('p')).map((p) => p.textContent);
+    expect(paragraphs).toContain('(or NVIDIA RTX 3080)');
   });
 });

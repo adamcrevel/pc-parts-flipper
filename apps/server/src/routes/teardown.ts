@@ -124,6 +124,7 @@ export async function registerTeardownRoutes<
             brand: expectedPart.brand,
             partNumber: expectedPart.partNumber,
             description: expectedPart.description,
+            identityCandidates: expectedPart.identityCandidates,
           }),
         );
       }
@@ -142,6 +143,8 @@ export async function registerTeardownRoutes<
           brand: additional.brand,
           partNumber: additional.partNumber,
           description: additional.description,
+          // Hand-typed Additional Part has no AI suggestion behind it.
+          identityCandidates: [],
         }),
       );
     }

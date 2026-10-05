@@ -1,4 +1,5 @@
 // Typed CRUD for the `expected_parts` table (Req 2-3, 6).
+import type { IdentityCandidate } from '@pc-parts-flipper/shared';
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
 import { buildSetClause, toNumber } from '../sqlHelpers.js';
@@ -16,6 +17,7 @@ export interface CreateExpectedPartInput {
   partNumber: string | null;
   description: string;
   estimatedResaleValue: number;
+  identityCandidates: IdentityCandidate[];
 }
 
 /** Fields that may be edited on an existing Expected Part; omitted keys are left unchanged. */
@@ -25,6 +27,7 @@ export interface UpdateExpectedPartInput {
   partNumber?: string | null;
   description?: string;
   estimatedResaleValue?: number;
+  identityCandidates?: IdentityCandidate[];
 }
 
 // Converts one raw JSON row into the camelCase ExpectedPart shape.
@@ -37,6 +40,7 @@ function mapRow(row: Record<string, unknown>): ExpectedPart {
     partNumber: (row.part_number as string | null) ?? null,
     description: row.description as string,
     estimatedResaleValue: toNumber(row.estimated_resale_value as string),
+    identityCandidates: JSON.parse(row.identity_candidates as string) as IdentityCandidate[],
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -46,8 +50,8 @@ function mapRow(row: Record<string, unknown>): ExpectedPart {
 export async function createExpectedPart(input: CreateExpectedPartInput): Promise<ExpectedPart> {
   const connection = await getConnection();
   const reader = await connection.runAndReadAll(
-    `INSERT INTO expected_parts (id, listing_id, component_category, brand, part_number, description, estimated_resale_value)
-     VALUES ($id, $listing_id, $component_category, $brand, $part_number, $description, $estimated_resale_value)
+    `INSERT INTO expected_parts (id, listing_id, component_category, brand, part_number, description, estimated_resale_value, identity_candidates)
+     VALUES ($id, $listing_id, $component_category, $brand, $part_number, $description, $estimated_resale_value, $identity_candidates)
      RETURNING *`,
     {
       id: newId(),
@@ -57,6 +61,7 @@ export async function createExpectedPart(input: CreateExpectedPartInput): Promis
       part_number: input.partNumber,
       description: input.description,
       estimated_resale_value: input.estimatedResaleValue,
+      identity_candidates: JSON.stringify(input.identityCandidates),
     },
   );
   return mapRow(reader.getRowObjectsJson()[0]);
@@ -100,6 +105,7 @@ export async function updateExpectedPart(
     part_number: patch.partNumber,
     description: patch.description,
     estimated_resale_value: patch.estimatedResaleValue,
+    identity_candidates: patch.identityCandidates !== undefined ? JSON.stringify(patch.identityCandidates) : undefined,
   });
   await connection.run(`UPDATE expected_parts SET ${setSql} WHERE id = $id`, { ...params, id });
   return getExpectedPartById(id);

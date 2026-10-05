@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Prototype — AI identification ranges</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%237c3aed'/%3E%3Ctext x='12' y='17' font-size='13' text-anchor='middle' fill='white' font-family='sans-serif'%3EAI%3C/text%3E%3C/svg%3E" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // Mirrors apps/web/tailwind.config.js exactly: same semantic color slots,
+  // wired to the same hsl(var(--x)) CSS-variable convention used by the real app.
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          border: 'hsl(var(--border))',
+          input: 'hsl(var(--input))',
+          ring: 'hsl(var(--ring))',
+          background: 'hsl(var(--background))',
+          foreground: 'hsl(var(--foreground))',
+          primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
+          secondary: { DEFAULT: 'hsl(var(--secondary))', foreground: 'hsl(var(--secondary-foreground))' },
+          destructive: { DEFAULT: 'hsl(var(--destructive))', foreground: 'hsl(var(--destructive-foreground))' },
+          muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
+          accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
+          card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
+        },
+        borderRadius: { lg: 'var(--radius)', md: 'calc(var(--radius) - 2px)', sm: 'calc(var(--radius) - 4px)' },
+      },
+    },
+  };
+</script>
+<style>
+  /* Lifted verbatim from apps/web/src/index.css :root block (light theme only — the real app's .dark block is not exercised by any of the screens this prototype covers). */
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+  }
+  body { background: hsl(var(--background)); color: hsl(var(--foreground)); }
+  /* AiSuggestedBadge's own violet pill, reused unmodified for the static "AI suggested" badges. */
+  .ai-badge {
+    display: inline-flex; align-items: center; border-radius: 9999px;
+    border: 1px solid rgb(124 58 237 / 0.4); background: rgb(124 58 237 / 0.1);
+    padding: 0.125rem 0.5rem; font-size: 0.75rem; font-weight: 500; color: rgb(109 40 217);
+  }
+  /* New interactive candidate chip (T5/identity-candidates-picker.tsx): same violet
+     family as AiSuggestedBadge so a reader reads it as "part of the same AI-origin
+     story", but clickable — hover/active states a static badge never needed. */
+  .candidate-chip {
+    display: inline-flex; align-items: center; gap: 0.25rem; border-radius: 9999px;
+    border: 1px solid rgb(124 58 237 / 0.4); background: rgb(124 58 237 / 0.1);
+    padding: 0.125rem 0.625rem; font-size: 0.75rem; font-weight: 500; color: rgb(109 40 217);
+    cursor: pointer; transition: background-color 0.15s, box-shadow 0.15s;
+  }
+  .candidate-chip:hover { background: rgb(124 58 237 / 0.2); }
+  .candidate-chip.picked { box-shadow: 0 0 0 2px rgb(124 58 237 / 0.5); background: rgb(124 58 237 / 0.25); }
+  .candidate-chip.picked::before { content: "✓ "; }
+  .proto-frame { border: 1px dashed rgb(124 58 237 / 0.5); border-radius: 0.5rem; padding: 1rem; }
+  .proto-label {
+    display: inline-block; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em;
+    text-transform: uppercase; color: rgb(109 40 217); margin-bottom: 0.5rem;
+  }
+</style>
+</head>
+<body class="min-h-screen">
+<div class="mx-auto max-w-5xl space-y-10 p-6">
+
+  <header class="space-y-1 border-b border-border pb-4">
+    <h1 class="text-2xl font-semibold">Prototype — AI identification ranges</h1>
+    <p class="text-sm text-muted-foreground">
+      Clickable walkthrough of every UI surface Requirements 3, 4, 8, 9 touch. Dashed violet frames and the
+      <span class="proto-label align-middle">PROTOTYPE ONLY</span> label mark what's new; everything else is the existing screen, unchanged.
+    </p>
+    <nav class="flex flex-wrap gap-3 pt-2 text-sm">
+      <a href="#editor" class="text-primary underline underline-offset-4">1. Expected Parts editor</a>
+      <a href="#purchase" class="text-primary underline underline-offset-4">2. Purchase detail table</a>
+      <a href="#teardown" class="text-primary underline underline-offset-4">3. Teardown checklist</a>
+      <a href="#parts" class="text-primary underline underline-offset-4">4. Parts list table</a>
+      <a href="#sale" class="text-primary underline underline-offset-4">5. Record Sale heading</a>
+    </nav>
+  </header>
+
+  <!-- ============================================================ -->
+  <!-- 1. Expected Parts editor — identity-candidates-picker (T5)    -->
+  <!-- ============================================================ -->
+  <section id="editor" class="space-y-4">
+    <h2 class="text-lg font-semibold">1 · Listing form — Expected Parts editor</h2>
+    <p class="text-sm text-muted-foreground">
+      Faithful copy of <code>expected-parts-editor.tsx</code>'s row markup (category/brand/partNumber grid, AI-suggested badge,
+      border-border row card). Three rows below show the three cases Req 1–4 describe, side by side for contrast.
+      Click a candidate chip on rows 2 or 3 — it fills that row's brand/model inputs in one action, exactly like T5's
+      "picking one is never required before save" (Req 9): the Add Part / row stays fully save-able with or without a pick.
+    </p>
+
+    <div class="space-y-3">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-medium">Expected Parts</h3>
+        <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-background px-3 text-xs h-8 shadow-sm">Add Part</button>
+      </div>
+
+      <!-- Row 1: normal confident case — UNCHANGED, no candidate list -->
+      <div class="space-y-2 rounded-md border border-border p-2">
+        <div class="flex items-center gap-2">
+          <span class="ai-badge">AI suggested</span>
+          <span class="text-xs text-muted-foreground">high confidence · from the listing text and photos</span>
+        </div>
+        <div class="grid grid-cols-3 items-start gap-2">
+          <select disabled class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"><option>GPU</option></select>
+          <input disabled value="NVIDIA" class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm" />
+          <input disabled value="RTX 3070" class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm" />
+        </div>
+        <div class="grid grid-cols-[2fr_1fr_auto] items-start gap-2">
+          <input disabled value="Pulled from a working rig, light dust" class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm" />
+          <input disabled value="140.00" class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm" />
+          <button disabled class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-background px-3 text-xs h-8 opacity-50">Remove</button>
+        </div>
+        <p class="text-xs text-muted-foreground pl-1">One confident brand + model → no candidate list (Req 1). Unchanged from today.</p>
+      </div>
+
+      <!-- Row 2: brand ambiguous, model known per-candidate (Req 3) -->
+      <div class="space-y-2 rounded-md border border-border p-2" id="row-2">
+        <div class="flex items-center gap-2">
+          <span class="ai-badge">AI suggested</span>
+          <span class="text-xs text-muted-foreground">low confidence · from the photos</span>
+        </div>
+        <div class="grid grid-cols-3 items-start gap-2">
+          <select disabled class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"><option>Storage</option></select>
+          <input id="row-2-brand" value="" placeholder="Brand (optional)" class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm" />
+          <input id="row-2-part" value="" placeholder="Part/Model # (optional)" class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm" />
+        </div>
+        <div class="grid grid-cols-[2fr_1fr_auto] items-start gap-2">
+          <input disabled value="M.2 NVMe SSD, pulled from laptop" class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm" />
+          <input disabled value="45.00" class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm" />
+          <button disabled class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-background px-3 text-xs h-8 opacity-50">Remove</button>
+        </div>
+        <div class="proto-frame">
+          <span class="proto-label">new — identity-candidates-picker.tsx (T5)</span>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-xs text-muted-foreground mr-1">Brand unclear — possible matches:</span>
+            <button type="button" class="candidate-chip" data-row="2" data-brand="Samsung" data-part="970 EVO">Samsung — 970 EVO</button>
+            <button type="button" class="candidate-chip" data-row="2" data-brand="Western Digital" data-part="SN750">Western Digital — SN750</button>
+            <button type="button" class="candidate-chip" data-row="2" data-brand="Crucial" data-part="P5">Crucial — P5</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 3: brand known, model ambiguous (Req 4) -->
+      <div class="space-y-2 rounded-md border border-border p-2" id="row-3">
+        <div class="flex items-center gap-2">
+          <span class="ai-badge">AI suggested</span>
+          <span class="text-xs text-muted-foreground">medium confidence · from the listing text</span>
+        </div>
+        <div class="grid grid-cols-3 items-start gap-2">
+          <select disabled class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"><option>PSU</option></select>
+          <input id="row-3-brand" value="Corsair" class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm" />
+          <input id="row-3-part" value="" placeholder="Part/Model # (optional)" class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm" />
+        </div>
+        <div class="grid grid-cols-[2fr_1fr_auto] items-start gap-2">
+          <input disabled value="Modular PSU, cables included" class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm" />
+          <input disabled value="60.00" class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm" />
+          <button disabled class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-background px-3 text-xs h-8 opacity-50">Remove</button>
+        </div>
+        <div class="proto-frame">
+          <span class="proto-label">new — identity-candidates-picker.tsx (T5)</span>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-xs text-muted-foreground mr-1">Brand confident, model unclear — possible matches:</span>
+            <button type="button" class="candidate-chip" data-row="3" data-brand="Corsair" data-part="RM750">RM750</button>
+            <button type="button" class="candidate-chip" data-row="3" data-brand="Corsair" data-part="RM650">RM650</button>
+            <button type="button" class="candidate-chip" data-row="3" data-brand="Corsair" data-part="RM850">RM850</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- 2. Purchase detail page — Expected Parts table (T6, line ~164) -->
+  <!-- ============================================================ -->
+  <section id="purchase" class="space-y-4">
+    <h2 class="text-lg font-semibold">2 · Purchase detail page — Expected Parts table</h2>
+    <p class="text-sm text-muted-foreground">Faithful copy of the Card + table markup in <code>purchase-detail-page.tsx</code>.</p>
+    <div class="rounded-xl border bg-card text-card-foreground shadow">
+      <div class="flex flex-col space-y-1.5 p-6">
+        <div class="font-semibold leading-none tracking-tight">Expected Parts</div>
+      </div>
+      <div class="p-6 pt-0">
+        <table class="w-full border-collapse text-left text-sm">
+          <thead>
+            <tr class="border-b border-border text-muted-foreground">
+              <th class="px-4 py-2 font-medium">Category</th>
+              <th class="px-4 py-2 font-medium">Brand / Model</th>
+              <th class="px-4 py-2 font-medium">Description</th>
+              <th class="px-4 py-2 font-medium">Est. Resale Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-border">
+              <td class="px-4 py-3">GPU</td>
+              <td class="px-4 py-3">NVIDIA RTX 3070</td>
+              <td class="px-4 py-3">Pulled from a working rig, light dust</td>
+              <td class="px-4 py-3">$140.00</td>
+            </tr>
+            <tr class="border-b border-border last:border-0">
+              <td class="px-4 py-3">Storage</td>
+              <td class="px-4 py-3">
+                <span class="text-muted-foreground">—</span>
+                <div class="proto-frame mt-1 inline-block py-1">
+                  <span class="proto-label mb-0">new — formatIdentityCandidates (T1/T6)</span>
+                  <span class="block text-xs text-muted-foreground">or Samsung 970 EVO, Western Digital SN750, Crucial P5</span>
+                </div>
+              </td>
+              <td class="px-4 py-3">M.2 NVMe SSD, pulled from laptop</td>
+              <td class="px-4 py-3">$45.00</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- 3. Teardown checklist (T6, line ~38)                          -->
+  <!-- ============================================================ -->
+  <section id="teardown" class="space-y-4">
+    <h2 class="text-lg font-semibold">3 · Teardown checklist</h2>
+    <p class="text-sm text-muted-foreground">Faithful copy of one row's markup from <code>teardown-checklist.tsx</code> — identity headline, appended " · " segments, select + result.</p>
+    <div class="space-y-3 max-w-xl">
+      <div class="space-y-2 rounded-md border border-border p-3">
+        <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
+          <div>
+            <span class="font-medium">PSU</span>
+            <span> — Corsair</span>
+            <span class="text-muted-foreground"> · Modular PSU, cables included</span>
+            <span class="proto-frame ml-1 inline-block py-0.5 px-2 align-middle">
+              <span class="proto-label mb-0 mr-1">new (T6)</span>
+              <span class="text-muted-foreground">· or Corsair RM750, Corsair RM650, Corsair RM850</span>
+            </span>
+          </div>
+          <span class="text-muted-foreground">Est. value: $60.00</span>
+        </div>
+        <select disabled class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"><option>Select result…</option></select>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- 4. Parts list table (T6, line ~71)                            -->
+  <!-- ============================================================ -->
+  <section id="parts" class="space-y-4">
+    <h2 class="text-lg font-semibold">4 · Parts list table</h2>
+    <p class="text-sm text-muted-foreground">Faithful copy of <code>parts-table.tsx</code>'s row markup, Brand/Model column.</p>
+    <div class="overflow-x-auto max-w-3xl">
+      <table class="w-full border-collapse text-left text-sm">
+        <thead>
+          <tr class="border-b border-border text-muted-foreground">
+            <th class="px-4 py-2 font-medium">Category</th>
+            <th class="px-4 py-2 font-medium">Brand / Model</th>
+            <th class="px-4 py-2 font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-border last:border-0 align-top">
+            <td class="px-4 py-3 font-medium">PSU</td>
+            <td class="px-4 py-3">
+              Corsair RM750
+              <div class="proto-frame mt-1 inline-block py-1">
+                <span class="proto-label mb-0">new (T6)</span>
+                <span class="block text-xs text-muted-foreground">or Corsair RM650, Corsair RM850</span>
+              </div>
+            </td>
+            <td class="px-4 py-3">
+              <span class="inline-block rounded-full border border-amber-600 bg-amber-600/10 px-3 py-1 text-xs font-medium text-amber-700">Listed</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- 5. Record Sale heading (T6, line ~55)                         -->
+  <!-- ============================================================ -->
+  <section id="sale" class="space-y-4 pb-10">
+    <h2 class="text-lg font-semibold">5 · Record Sale page heading</h2>
+    <p class="text-sm text-muted-foreground">Faithful copy of the CardHeader in <code>record-sale-page.tsx</code>.</p>
+    <div class="rounded-xl border bg-card text-card-foreground shadow max-w-xl">
+      <div class="flex flex-col space-y-1.5 p-6">
+        <div class="font-semibold leading-none tracking-tight">PSU: Corsair RM750</div>
+        <p class="text-sm text-muted-foreground">Modular PSU, cables included</p>
+        <div class="proto-frame py-1.5">
+          <span class="proto-label mb-0">new (T6)</span>
+          <p class="text-sm text-muted-foreground">or Corsair RM650, Corsair RM850</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  // Wiring for the two editor candidate-picker rows: clicking a chip fills
+  // that row's brand/model inputs (Req 9) and marks the chosen chip picked,
+  // clearing any previous pick in the same row — exactly the one-action
+  // behavior T5's identity-candidates-picker.tsx implements.
+  document.querySelectorAll('.candidate-chip').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      var row = chip.getAttribute('data-row');
+      var brand = chip.getAttribute('data-brand');
+      var part = chip.getAttribute('data-part');
+      document.getElementById('row-' + row + '-brand').value = brand;
+      document.getElementById('row-' + row + '-part').value = part;
+      document.querySelectorAll('#row-' + row + ' .candidate-chip').forEach(function (sibling) {
+        sibling.classList.remove('picked');
+      });
+      chip.classList.add('picked');
+    });
+  });
+</script>
+</body>
+</html>

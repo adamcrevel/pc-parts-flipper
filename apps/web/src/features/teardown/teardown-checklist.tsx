@@ -1,4 +1,4 @@
-import { formatPartIdentity } from '@pc-parts-flipper/shared';
+import { formatIdentityCandidates, formatPartIdentity } from '@pc-parts-flipper/shared';
 import { EXPECTED_PART_RESULT_OPTIONS, RESULT_LABELS, type TeardownRow, type TeardownRowErrors } from '@/features/teardown/teardown-form-state';
 
 interface TeardownChecklistProps {
@@ -36,6 +36,8 @@ export function TeardownChecklist({ rows, rowErrors, onChange }: TeardownCheckli
         const errors = rowErrors[index] ?? {};
         const requiresNote = row.result === 'present_but_different' || row.result === 'missing';
         const identity = formatPartIdentity(row.brand, row.partNumber);
+        // Other plausible brand/model pairings the AI considered but didn't pick as primary.
+        const alternates = formatIdentityCandidates(row.identityCandidates, row.brand, row.partNumber);
         // What names this row everywhere: its headline, and the accessible
         // name of both of its controls.
         const rowLabel = identity || row.description;
@@ -47,6 +49,8 @@ export function TeardownChecklist({ rows, rowErrors, onChange }: TeardownCheckli
                 <span data-testid="teardown-row-identity"> — {rowLabel}</span>
                 {/* Condition notes stay visible as a secondary line when the identity already fills the headline, so nothing the identifier wrote is lost from the reconciliation screen. */}
                 {identity !== '' && <span className="text-muted-foreground"> · {row.description}</span>}
+                {/* Other plausible brand/model pairings the AI considered but didn't pick as primary, shown as a muted secondary note. */}
+                {alternates !== '' && <span className="text-muted-foreground"> · {alternates}</span>}
               </div>
               <span className="text-muted-foreground">Est. value: ${row.estimatedResaleValue.toFixed(2)}</span>
             </div>

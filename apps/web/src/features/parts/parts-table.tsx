@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { formatPartIdentity, type PartSummary } from '@pc-parts-flipper/shared';
+import { formatIdentityCandidates, formatPartIdentity, type PartSummary } from '@pc-parts-flipper/shared';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { PartUnsellableForm } from '@/features/parts/part-unsellable-form';
@@ -69,6 +69,10 @@ export function PartsTable({ parts, onMarkUnsellable }: PartsTableProps) {
               {/* The identity a user needs to decide what to do with the part next — "NVIDIA RTX 3070", or whichever half was identified. Both are nullable by design (never guessed at identification or teardown time), so '—' stands in when neither is known. */}
               <td className="px-4 py-3">
                 {formatPartIdentity(part.brand, part.partNumber) || <span className="text-muted-foreground">—</span>}
+                {/* Other plausible brand/model pairings the AI considered but didn't pick as primary, shown as a muted secondary note. */}
+                {formatIdentityCandidates(part.identityCandidates, part.brand, part.partNumber) && (
+                  <span className="text-muted-foreground"> ({formatIdentityCandidates(part.identityCandidates, part.brand, part.partNumber)})</span>
+                )}
               </td>
               <td className="px-4 py-3">{part.description}</td>
               <td className="px-4 py-3">
