@@ -54,6 +54,16 @@ export const TABLE_STATEMENTS: readonly string[] = [
     created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
     updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
   )`,
+  `CREATE TABLE IF NOT EXISTS part_reference_photos (
+    id UUID PRIMARY KEY,
+    category component_category NOT NULL,
+    brand VARCHAR NOT NULL,
+    part_number VARCHAR,
+    photo_path VARCHAR NOT NULL,
+    source VARCHAR NOT NULL,
+    listing_id UUID REFERENCES listings(id),
+    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp
+  )`,
   `CREATE TABLE IF NOT EXISTS expected_parts (
     id UUID PRIMARY KEY,
     listing_id UUID NOT NULL REFERENCES listings(id),
@@ -191,5 +201,7 @@ export const INDEX_STATEMENTS: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS idx_parts_purchase_id ON parts(purchase_id)`,
   `CREATE INDEX IF NOT EXISTS idx_sale_listings_part_id ON sale_listings(part_id)`,
   `CREATE INDEX IF NOT EXISTS idx_sales_part_id ON sales(part_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_reference_photos_category_brand ON part_reference_photos(category, brand)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_reference_photos_dedup ON part_reference_photos(category, brand, part_number, photo_path)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_listings_source_external_item ON listings(source_id, external_item_id)`,
 ];

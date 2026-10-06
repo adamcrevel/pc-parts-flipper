@@ -24,7 +24,8 @@ const DEFAULT_DATA_DIR = path.resolve(moduleDir, '../../../../data');
 // must get the photos that database references redirected with it, or its
 // rows would point at files written into the real shared data/ directory.
 // One variable moves both halves of the data directory together.
-const DATA_DIR = process.env.DUCKDB_DATA_DIR ?? DEFAULT_DATA_DIR;
+/** Absolute root directory for this process's data (photos, reference photos, DuckDB file). */
+export const DATA_DIR = process.env.DUCKDB_DATA_DIR ?? DEFAULT_DATA_DIR;
 
 /** Absolute directory every stored listing photo is written into. */
 export const PHOTOS_DIR = path.join(DATA_DIR, 'photos');

@@ -17,9 +17,10 @@ import multipart from '@fastify/multipart';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { getListingById, updateListing } from '../db/index.js';
+import { getListingById, listExpectedPartsByListing, updateListing } from '../db/index.js';
 import { AppError } from '../error-handler.js';
 import { logger } from '../logger.js';
+import { promoteReferencesForExpectedParts } from './listings.js';
 // PHOTOS_DIR and the per-file size cap now live in the shared photo-storage
 // module, so this upload route and the scan/backfill download path cannot
 // drift apart on where photos go or how large one may be. The resolution
@@ -72,7 +73,15 @@ export async function registerListingPhotoRoutes<
     if (storedPaths.length === 0) {
       throw new AppError('At least one photo file is required', 400);
     }
+    const updated = await updateListing(id, { photoPaths: [...listing.photoPaths, ...storedPaths] });
+    if (!updated) {
+      throw new AppError(`Listing ${id} not found`, 404);
+    }
 
-    return updateListing(id, { photoPaths: [...listing.photoPaths, ...storedPaths] });
+    // Promote reference photos for any Expected Part with a confirmed brand (Req T2)
+    const expectedParts = await listExpectedPartsByListing(id);
+    await promoteReferencesForExpectedParts(id, updated.photoPaths, expectedParts);
+
+    return updated;
   });
 }

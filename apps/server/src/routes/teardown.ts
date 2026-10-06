@@ -35,6 +35,7 @@ import {
   getPurchaseById,
   listExpectedPartsByListing,
   listTeardownResultsByPurchase,
+  promoteReferencePhotos,
   updatePurchase,
 } from '../db/index.js';
 import { AppError } from '../error-handler.js';
@@ -147,6 +148,29 @@ export async function registerTeardownRoutes<
           identityCandidates: [],
         }),
       );
+    }
+    // Promote reference photos for any Additional Part with a confirmed
+    // brand (Req T2). Wrap in try/catch: a reference-library write failure
+    // must never break submitting the teardown. Note: reconciled Expected
+    // Parts are deliberately NOT re-promoted (identity was already promoted
+    // when Expected Part was first saved to the Listing).
+    for (const additional of additionalParts) {
+      if (additional.brand) {
+        try {
+          await promoteReferencePhotos(
+            listing.id,
+            listing.photoPaths,
+            additional.category,
+            additional.brand,
+            additional.partNumber ?? null,
+          );
+        } catch (err) {
+          logger.error(
+            { err, listingId: listing.id, additional },
+            'Failed to promote reference photos for Additional Part',
+          );
+        }
+      }
     }
 
     // Reuses purchases.ts's own forward-only lifecycle rule rather than

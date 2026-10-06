@@ -69,7 +69,7 @@ function coerceCategory(value: unknown): ComponentCategory {
 // dropped without being accounted for. A blank/whitespace string is treated as
 // null too: "not identified" must not reach the database as empty text that
 // later renders as a blank brand in a sale listing title.
-function coerceIdentityField(value: unknown, field: 'brand' | 'partNumber'): string | null {
+export function coerceIdentityField(value: unknown, field: 'brand' | 'partNumber'): string | null {
   if (typeof value === 'string') {
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
@@ -92,7 +92,7 @@ function coerceIdentityField(value: unknown, field: 'brand' | 'partNumber'): str
 // keeping the first (highest-ranked) occurrence, and anything past
 // MAX_IDENTITY_CANDIDATES is dropped with a Warn, mirroring coerceCategory's
 // log style: a struct of context plus a one-line description of the coercion.
-function coerceIdentityCandidates(value: unknown): IdentityCandidate[] {
+export function coerceIdentityCandidates(value: unknown): IdentityCandidate[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -196,3 +196,4 @@ export function parseIdentificationResponse(rawStdout: string): IdentifyPartsRes
     notes: typeof notes === 'string' ? notes : '',
   };
 }
+

@@ -15,7 +15,7 @@ import type {
   RawServerBase,
   RawServerDefault,
 } from 'fastify';
-import type { AcceptListingResponse, ListingComparison, ListingDetail, ListingStatus, ListingSummary, ListListingsResponse } from '@pc-parts-flipper/shared';
+import type { AcceptListingResponse, ExpectedPartInput, ListingComparison, ListingDetail, ListingStatus, ListingSummary, ListListingsResponse } from '@pc-parts-flipper/shared';
 import {
   countListings,
   createExpectedPart,
@@ -25,6 +25,7 @@ import {
   getListingById,
   listExpectedPartsByListing,
   listListings,
+  promoteReferencePhotos,
   transitionOpenListing,
   updateListing,
   type ExpectedPart,
@@ -67,6 +68,23 @@ function requireOpenListing(listing: Listing): void {
   }
 }
 
+/** Promotes reference photos for any Expected Parts with confirmed brands. */
+export async function promoteReferencesForExpectedParts(
+  listingId: string,
+  photoPaths: readonly string[],
+  expectedParts: ExpectedPartInput[],
+): Promise<void> {
+  for (const part of expectedParts) {
+    if (part.brand) {
+      try {
+        await promoteReferencePhotos(listingId, photoPaths, part.componentCategory, part.brand, part.partNumber ?? null);
+      } catch (err) {
+        logger.error({ err, listingId, part }, 'Failed to promote reference photos for Expected Part');
+      }
+    }
+  }
+}
+
 /**
  * Registers all `/api/listings` routes (plus, via registerListingPhotoRoutes,
  * the photo-upload route) on the given Fastify instance. Called once from
@@ -86,6 +104,8 @@ export async function registerListingsRoutes<
     // Nested Expected Parts are created together with the Listing in this
     // one request (Req 2) — order doesn't matter, so these run concurrently.
     await Promise.all(expectedParts.map((part) => createExpectedPart({ listingId: created.id, ...part })));
+    // Promote reference photos for any Expected Part with a confirmed brand (Req T2)
+    await promoteReferencesForExpectedParts(created.id, created.photoPaths, expectedParts);
     reply.status(201);
     return toDetail(created);
   });
@@ -143,6 +163,8 @@ export async function registerListingsRoutes<
     const existingParts = await listExpectedPartsByListing(id);
     await Promise.all(existingParts.map((part) => deleteExpectedPart(part.id)));
     await Promise.all(expectedParts.map((part) => createExpectedPart({ listingId: id, ...part })));
+    // Promote reference photos for any Expected Part with a confirmed brand (Req T2)
+    await promoteReferencesForExpectedParts(id, updated.photoPaths, expectedParts);
     return toDetail(updated);
   });
 

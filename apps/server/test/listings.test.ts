@@ -6,9 +6,30 @@
 // HTTP routes/validation/db-query code rather than a mock. Deliberately
 // never touches POST /api/listings/:id/accept or /reject — those belong to
 // T7's tester.
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { FastifyInstance } from 'fastify';
 import type { CreateListingInput, ListingDetail, ListListingsResponse } from '@pc-parts-flipper/shared';
+import type * as DbModule from '../src/db/index.js';
+import type * as ClientModule from '../src/db/client.js';
+import type * as ReferencePhotosModule from '../src/db/queries/referencePhotos.js';
+import type * as LoggerModule from '../src/logger.js';
 import { getJson, postJson, startTestServer, type JsonResponse, type TestServer } from './helpers.js';
+
+// Mocks only the leaf module backing promoteReferencePhotos (re-exported from
+// the db barrel, db/index.ts), wrapping the real implementation in a vi.fn so
+// every test below gets genuine promotion behavior by default — only the one
+// test that calls mockImplementationOnce actually overrides it, to prove the
+// catch/log-Error path (standing check) without faking a real DB failure.
+// Scoped to this file's own module graph; the spawned child-process server
+// the describe block above uses runs in a separate OS process and is
+// entirely unaffected by this.
+vi.mock('../src/db/queries/referencePhotos.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof ReferencePhotosModule>();
+  return { ...actual, promoteReferencePhotos: vi.fn(actual.promoteReferencePhotos) };
+});
 
 // Arbitrary high port distinct from concurrency.test.ts's 34_591 so this
 // suite can run standalone or alongside it without a port collision.
@@ -269,3 +290,151 @@ describe('Listing CRUD + Expected Parts + Req-3 comparison (T6)', () => {
     expect(fetched.body.expectedParts[0].description).toBe('GTX 1660');
   });
 });
+
+// T2 proof (promotion hooks wired into listings.ts, Requirements 2 & 4, plus
+// the thrown-promotion-failure standing check): the describe block above
+// exercises these same routes against the real HTTP contract via a spawned
+// child-process server (helpers.ts), which has no way to directly inspect
+// part_reference_photos — DuckDB only allows one process to hold this file
+// open at a time. This block instead boots registerListingsRoutes in-process
+// (Fastify() + registerErrorHandler, the same pattern as scan.test.ts /
+// identifyPartsRoute.test.ts), specifically so it can (a) run raw SQL against
+// the exact connection the routes use to verify real row state, and (b)
+// force promoteReferencePhotos to throw via vi.mock, to prove the
+// catch/log-Error path without faking an actual DB failure.
+describe('Reference photo promotion hook — DB-verified (T2)', () => {
+  const HOOK_PORT = 34_631;
+  const HOOK_BASE_URL = `http://127.0.0.1:${HOOK_PORT}`;
+  let hookDataDir: string;
+  let hookDb: typeof DbModule;
+  let hookGetConnection: typeof ClientModule.getConnection;
+  let referencePhotosModule: typeof ReferencePhotosModule;
+  let hookLogger: typeof LoggerModule.logger;
+  let hookApp: FastifyInstance;
+  let hookSourceId: string;
+
+  beforeAll(async () => {
+    hookDataDir = await mkdtemp(path.join(tmpdir(), 'pc-parts-flipper-listings-hook-test-'));
+    process.env.DUCKDB_DATA_DIR = hookDataDir;
+    // Dynamic import (same exception as db.test.ts/scan.test.ts): client.ts's
+    // DATA_DIR is computed once, at module-evaluation time, from
+    // DUCKDB_DATA_DIR — a static top-of-file import would evaluate before
+    // this beforeAll sets the env var.
+    hookDb = await import('../src/db/index.js');
+    ({ getConnection: hookGetConnection } = await import('../src/db/client.js'));
+    referencePhotosModule = await import('../src/db/queries/referencePhotos.js');
+    ({ logger: hookLogger } = await import('../src/logger.js'));
+    const { registerListingsRoutes: registerHookRoutes } = await import('../src/routes/listings.js');
+    const { registerErrorHandler } = await import('../src/error-handler.js');
+    const Fastify = (await import('fastify')).default;
+    hookApp = Fastify();
+    registerErrorHandler(hookApp);
+    await registerHookRoutes(hookApp);
+    await hookApp.listen({ port: HOOK_PORT, host: '127.0.0.1' });
+    const source = await hookDb.createSource({ name: 'T2 Hook Source', platformType: 'ebay', url: null, notes: null, connectorConfig: null });
+    hookSourceId = source.id;
+  }, 30_000);
+
+  afterAll(async () => {
+    await hookApp.close();
+    delete process.env.DUCKDB_DATA_DIR;
+    await rm(hookDataDir, { recursive: true, force: true });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Creates a Listing with zero Expected Parts via the real HTTP route, then
+  // injects `photoPaths` directly via db.updateListing — bypassing the
+  // separate photo-upload route (already covered by listingPhotos.test.ts) —
+  // so the Listing has real, non-empty photos for a subsequent PUT to
+  // promote.
+  async function createListingWithPhotos(photoPaths: string[]): Promise<ListingDetail> {
+    const created = await postJson<ListingDetail>(`${HOOK_BASE_URL}/api/listings`, listingBody(hookSourceId, { expectedParts: [] }));
+    expect(created.status, `listing creation failed: ${JSON.stringify(created.body)}`).toBe(201);
+    await hookDb.updateListing(created.body.id, { photoPaths });
+    return { ...created.body, photoPaths };
+  }
+
+  // Counts real rows in part_reference_photos for one Listing, via the exact
+  // connection the routes themselves use — proof the hook's effect actually
+  // landed in the database, not just that the HTTP response looked right.
+  async function countReferencePhotoRows(listingId: string): Promise<number> {
+    const connection = await hookGetConnection();
+    const reader = await connection.runAndReadAll(
+      `SELECT COUNT(*) as cnt FROM part_reference_photos WHERE listing_id = $listing_id`,
+      { listing_id: listingId },
+    );
+    return Number(reader.getRowObjectsJson()[0].cnt);
+  }
+
+  it('PUT with a non-null-brand Expected Part promotes every one of the Listing\'s photos (Req 2)', async () => {
+    const listing = await createListingWithPhotos(['photos/hook-promote-1.jpg', 'photos/hook-promote-2.jpg']);
+
+    const updated = await putJson<ListingDetail>(
+      `${HOOK_BASE_URL}/api/listings/${listing.id}`,
+      listingBody(hookSourceId, {
+        expectedParts: [{ componentCategory: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 4080', description: 'Reference card', estimatedResaleValue: 300 }],
+      }),
+    );
+    expect(updated.status, `PUT failed: ${JSON.stringify(updated.body)}`).toBe(200);
+
+    const connection = await hookGetConnection();
+    const reader = await connection.runAndReadAll(
+      `SELECT photo_path, category, brand, part_number, source FROM part_reference_photos WHERE listing_id = $listing_id ORDER BY photo_path`,
+      { listing_id: listing.id },
+    );
+    const rows = reader.getRowObjectsJson();
+    expect(rows).toHaveLength(2);
+    expect(rows[0].photo_path).toBe('photos/hook-promote-1.jpg');
+    expect(rows[1].photo_path).toBe('photos/hook-promote-2.jpg');
+    for (const row of rows) {
+      expect(row.category).toBe('GPU');
+      expect(row.brand).toBe('NVIDIA');
+      expect(row.part_number).toBe('RTX 4080');
+      expect(row.source).toBe('confirmed_listing');
+    }
+  });
+
+  it('re-saving the same Listing with the same Expected Part never duplicates the reference-photo row (Req 4)', async () => {
+    const listing = await createListingWithPhotos(['photos/hook-dedup-1.jpg']);
+    const body = listingBody(hookSourceId, {
+      expectedParts: [{ componentCategory: 'Storage', brand: 'Samsung', partNumber: '980 Pro', description: 'NVMe', estimatedResaleValue: 80 }],
+    });
+
+    const firstPut = await putJson<ListingDetail>(`${HOOK_BASE_URL}/api/listings/${listing.id}`, body);
+    expect(firstPut.status, `first PUT failed: ${JSON.stringify(firstPut.body)}`).toBe(200);
+    expect(await countReferencePhotoRows(listing.id)).toBe(1);
+
+    // Re-save: full-replace deletes and recreates the Expected Part with the
+    // SAME brand/category/partNumber, calling promoteReferencePhotos a second
+    // time for the SAME photo/category/brand/partNumber combination.
+    const secondPut = await putJson<ListingDetail>(`${HOOK_BASE_URL}/api/listings/${listing.id}`, body);
+    expect(secondPut.status, `second PUT failed: ${JSON.stringify(secondPut.body)}`).toBe(200);
+    expect(await countReferencePhotoRows(listing.id)).toBe(1);
+  });
+
+  it('a thrown promotion failure during PUT is logged at Error and never fails the request (standing check)', async () => {
+    const listing = await createListingWithPhotos(['photos/hook-throws-1.jpg']);
+    const errorSpy = vi.spyOn(hookLogger, 'error');
+    vi.mocked(referencePhotosModule.promoteReferencePhotos).mockImplementationOnce(() => {
+      throw new Error('Simulated promotion failure');
+    });
+
+    const updated = await putJson<ListingDetail>(
+      `${HOOK_BASE_URL}/api/listings/${listing.id}`,
+      listingBody(hookSourceId, {
+        expectedParts: [{ componentCategory: 'CPU', brand: 'Intel', partNumber: 'i9-14900K', description: 'Boxed', estimatedResaleValue: 200 }],
+      }),
+    );
+    expect(updated.status, `PUT unexpectedly failed: ${JSON.stringify(updated.body)}`).toBe(200);
+    expect(updated.body.expectedParts[0].brand).toBe('Intel');
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.objectContaining({ message: 'Simulated promotion failure' }) }),
+      'Failed to promote reference photos for Expected Part',
+    );
+  });
+});
+

@@ -143,6 +143,18 @@ export interface Part {
   updatedAt: string;
 }
 
+/** A reference photo of a part, used for AI visual identification training data. */
+export interface ReferencePhoto {
+  id: string;
+  category: ComponentCategory;
+  brand: string;
+  partNumber: string | null;
+  photoPath: string;
+  source: 'seed' | 'confirmed_listing';
+  listingId: string | null;
+  createdAt: string;
+}
+
 /** A draft/posted marketplace listing for one ready_to_list Part (Req 8). */
 export interface SaleListing {
   id: string;

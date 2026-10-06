@@ -138,10 +138,20 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'created_at',
     'updated_at',
   ],
+  part_reference_photos: [
+    'id',
+    'category',
+    'brand',
+    'part_number',
+    'photo_path',
+    'source',
+    'listing_id',
+    'created_at',
+  ],
 };
 
 describe('migrations create every table with the correct columns', () => {
-  it('creates exactly the 8 tables named in the Requirements', async () => {
+  it('creates exactly the 9 tables named in the Requirements plus part_reference_photos (ai-visual-identification)', async () => {
     const connection = await getConnection();
     const reader = await connection.runAndReadAll(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'main' ORDER BY table_name`,
