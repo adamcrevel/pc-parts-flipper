@@ -1,0 +1,171 @@
+<title>Feature</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--radius:8px}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:18px}
+.panel{background:var(--panel);border:1px solid var(--line);
+border-radius:var(--radius);padding:18px}
+h1{margin:0 0 4px;font-size:20px;letter-spacing:-.01em}
+h2{margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.totals{display:flex;gap:32px;flex-wrap:wrap;margin:12px 0}
+.total .n{font-size:26px;font-variant-numeric:tabular-nums}
+.total .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+details{margin-top:8px}summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;
+border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--good);border-color:var(--good);color:var(--panel)}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.good .dot,.dot.good{background:var(--good)}.bad .dot,.dot.bad{background:var(--bad)}
+.neutral .dot,.dot.neutral{background:var(--muted)}
+.sub td{border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);padding-top:0}
+.desc{max-width:38ch;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.desc.open{white-space:normal;overflow:visible}
+.more{font:inherit;font-size:11px;border:none;background:none;color:var(--muted);cursor:pointer}
+.tag{display:inline-block;padding:0 6px;border:1px solid var(--line);
+border-radius:999px;font-size:11px}
+.banner{border-left:3px solid var(--bad);padding:10px 14px;background:var(--panel);
+border-radius:var(--radius);margin-bottom:14px}
+.fail{background:rgba(163,49,42,.09);padding:6px 9px;border-radius:6px;margin-top:6px}
+ul{margin:6px 0;padding-left:20px}li{margin:2px 0}
+.note{font-size:12px;color:var(--muted)}
+</style>
+<main>
+<section class="panel">
+<h1>Feature</h1>
+<p class="note">Status building &middot; cycle 0 of 3</p>
+<h2>Goal</h2><p>Today, `identify-parts`&#x27;s second pass only compares against reference photos already sitting in
+`part_reference_photos` — if a part&#x27;s own brand and model are both known but nothing in the library
+matches that exact identity, the second pass simply has nothing to compare against for it. This
+feature closes that gap: when an eligible part&#x27;s own claimed brand *and* model aren&#x27;t yet represented
+in the library, the system attempts, synchronously and before that part&#x27;s second pass runs, to find
+and add one real photo of that exact product from the manufacturer&#x27;s own official site — using the
+`omp` CLI&#x27;s own web-browsing capability (dropping `--no-tools` for this one call) rather than a new
+paid search API — so the same `identify-parts` request that triggered the gap is the one that benefits
+from closing it. A separate ask this session (comparing a part&#x27;s claimed model against other models of
+the same brand already in the library, to catch a mislabeled model number) turns out to already work
+today — the existing lookup matches on brand alone when a part isn&#x27;t fully settled, with no partNumber
+requirement — and stays exactly as it is; this feature does not touch it.</p>
+<h2>Requirements</h2><pre>1. For an eligible part (unchanged from the existing rule: `brand` null, OR `partNumber` null, OR
+   `identityCandidates` non-empty) whose own `brand` *and* `partNumber` are **both** non-null — a
+   specific, nameable product, not a bare brand or an unresolved candidate — and no
+   `part_reference_photos` row exists for that exact `(category, brand, partNumber)` combination,
+   the system attempts live sourcing for that part before building its second-pass reference set. A
+   part with only a brand (no model) never triggers sourcing — there is nothing specific enough to
+   search for and verify.
+2. Sourcing is a dedicated `omp` invocation with tools enabled (no `--no-tools`), given the part&#x27;s
+   category/brand/partNumber, instructed to find exactly one real, direct image URL of that specific
+   product from the manufacturer&#x27;s own official website only — never a reseller, retailer,
+   marketplace, or aggregator site — and to answer with raw JSON only, naming the URL it found (or
+   that it found nothing).
+3. The server never trusts the model&#x27;s own claim that a URL is real or correct. It downloads the URL
+   itself and confirms the response is a genuine, decodable image before anything is added to the
+   library — reusing the same real-bytes verification this feature&#x27;s seed data already uses, not a
+   new, weaker check. A URL that fails to download, isn&#x27;t a real image, or that the model reports
+   finding nothing for, is a failed sourcing attempt; `identify-parts` then proceeds exactly as if
+   sourcing had never been attempted — it never blocks or fails the request.
+4. A photo added by live sourcing is tagged with its own distinct value in `part_reference_photos`&#x27;s
+   `source` column (`&#x27;auto_sourced&#x27;`) — never conflated with the existing `&#x27;seed&#x27;` (manually curated)
+   or `&#x27;confirmed_listing&#x27;` (the user&#x27;s own real inventory) values, so the data keeps recording where
+   each reference actually came from.
+5. When sourcing succeeds within an `identify-parts` call, that same call&#x27;s second pass uses the
+   newly-added photo — a user never has to click Identify Parts a second time to benefit from a
+   sourcing attempt that happened during their first click.
+6. Once sourcing has been attempted for a specific `(category, brand, partNumber)` combination —
+   whether it succeeded or failed — it is never attempted again for that same combination on a later
+   `identify-parts` call. A brand/model with no accessible manufacturer photo must not be re-searched,
+   at real cost, on every future listing that happens to name it.
+7. The number of live-sourcing attempts made within one `identify-parts` call is capped at a small
+   fixed number, so a listing with several simultaneously-unseeded parts never chains an unbounded
+   run of slow, tools-enabled `omp` calls before its second pass can even start.
+8. A sourcing call that runs past its own timeout is treated as a failed attempt (Requirement 3/6),
+   never left to hang the whole `identify-parts` request indefinitely. This timeout is independent of
+   the existing no-tools identification calls&#x27; timeout, since a browsing-enabled call is expected to
+   take meaningfully longer.</pre>
+<p><a href=".claude/feature/ai-reference-autosourcing/dashboard.html (local file — no hosted-publish capability on this host, so there is no live URL)">Prototype</a></p>
+<div class="totals">
+<div class="total"><div class="n" data-since="2026-10-06T04:03:28Z">&mdash;</div><div class="l">total time</div></div>
+<div class="total"><div class="n">0</div><div class="l">total tokens</div></div>
+</div>
+<details><summary>Where that token figure comes from</summary><p class="note">null</p><p class="note">Most of a long conversation's token count is cache-read: the accumulated context is resent on every turn and billed at a fraction of the normal rate. A high total reflects the turn count over time, not necessarily a large bill.</p></details>
+</section>
+<nav class="tabs">
+<button data-cycle-tab="0" aria-selected="true" onclick="showCycle(0)">Cycle 0</button>
+</nav>
+<section class="panel" data-cycle-panel="0">
+<h2>Cycle 0</h2>
+<p><strong>Trigger.</strong> initial</p>
+<p><span class="neutral"><span class="dot"></span>UAT not run.</span></p>
+<p class="note">13 task(s). Estimated 235 min. Actual tokens 0, estimated 163,400. This never includes the driving conversation's own tokens, which cannot honestly be split by cycle.
+<div class="scroll"><table><thead><tr><th></th><th>Id</th><th>Description</th><th>Duration (Estimate)</th><th>Started At (Estimate)</th></tr></thead><tbody><tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td>T2</td><td><span class="desc">New `apps/server/src/ai/ompSourcingRunner.ts`, a sibling to `ompRunner.ts` kept separate per the Standing Checks&#x27; line-count note: `runOmpImageSourcing(promptText: string, options?: OmpRunOptions): Promise&lt;string&gt;` — same spawn/timeout/kill-process-group machinery as `runOmpIdentification` (reuse its internals via a small shared helper rather than copy-pasting the whole function), but builds its argv *without* `--no-tools` (tools enabled, so the model can browse) and with **no** `@&lt;path&gt;` image arguments at all — this call never attaches a photo, it searches the web. Give it its own default timeout constant, `DEFAULT_OMP_SOURCING_TIMEOUT_MS`, longer than the existing `DEFAULT_OMP_TIMEOUT_MS` (Requirement 8 — a browsing call is expected to run longer than a no-tools analysis call). Add the matching test seam: `setOmpSourcingRunnerOverride`/`getOmpSourcingRunner`, mirroring `ompRunner.ts`&#x27;s existing pair exactly, so the suite never makes a real call here either (Standing Check).</span></td><td><span data-at="2026-10-06T04:36:50Z" hidden></span>2026-10-06T04:36:50Z (20)</td><td><span data-at="2026-10-06T04:20:44Z">2026-10-06T04:20:44Z</span> (2026-10-06T04:39:20Z)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens 29700 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>In progress.</span></td><td>T4</td><td><span class="desc">Download-and-insert logic for a sourced photo (Requirement 3-4). Extract `seedReferencePhotos.ts`&#x27;s existing `downloadFile` into an exported, reusable function (its own small module, or exported directly from `seedReferencePhotos.ts` and imported from there — either way, one real implementation, not two) so this feature&#x27;s new code reuses the exact same real-bytes-verified download logic instead of a second copy (the Standing Checks call this out explicitly). New `insertSourcedReferencePhoto(category: ComponentCategory, brand: string, partNumber: string, url: string): Promise&lt;{inserted: boolean}&gt;` in `apps/server/src/db/queries/referencePhotos.ts` (reusing the existing `insertReferencePhotoRow` helper with `source: &#x27;auto_sourced&#x27;`, `listingId: null`) that downloads the given URL to a collision-safe filename under `data/reference-photos/auto-sourced/` (new subdirectory, same `DATA_DIR`-relative convention as `reference-photos/seed/`), verifies the download is a real decodable image, and only then inserts the row — returns `{inserted: false}` without inserting anything when the download fails or isn&#x27;t a real image, never partially committing a broken reference. MUST FIX (cycle 0 retry 1): `imageSignature.ts`&#x27;s `isDecodableImage()` detects four formats (JPEG/PNG/GIF/WebP) but the automated suite only exercises the JPEG branch (plus one &quot;matches nothing&quot; negative) — a repo-wide grep found zero tests touching any of the PNG/GIF/WebP magic-byte checks. Today&#x27;s four byte sequences are correct, but nothing would catch a regression (e.g. a typo&#x27;d `GIF89a`, an off-by-one in the WebP `RIFF`/`WEBP` offset check) in any of the three untested branches — a broken check would either silently reject a real manufacturer photo (defeating Requirement 1) or silently accept a non-image as &quot;verified&quot; (defeating Requirement 3), with `npm test` staying 100% green either way. Add tests (mirroring the existing `JPEG_BYTES`/`GARBAGE_BYTES` pattern already in `referencePhotos.test.ts`) for at least one valid PNG header, one valid GIF87a/GIF89a header, and one valid RIFF/WEBP header, each proving `isDecodableImage()` accepts it and a one-byte-corrupted version of each is rejected.</span></td><td><span data-since="2026-10-06T05:49:42Z">&mdash;</span> (20)</td><td><span data-at="2026-10-06T05:49:42Z">2026-10-06T05:49:42Z</span> (2026-10-06T05:14:20Z)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td>T5</td><td><span class="desc">Orchestration (Requirements 1, 5-8): new `apps/server/src/ai/referenceSourcingOrchestrator.ts` exporting one function, `sourceMissingReferenceIfNeeded(part): Promise&lt;void&gt;`-shaped (exact signature to the builder — it needs the part&#x27;s category/brand/partNumber and must be callable once per eligible part), that: checks Requirement 1&#x27;s trigger (own brand and partNumber both non-null, no matching `part_reference_photos` row); checks T1&#x27;s `hasSourcingBeenAttempted` (Requirement 6) and the per-call attempt counter against a new `MAX_SOURCING_ATTEMPTS_PER_CALL` constant (Requirement 7) before doing anything; when eligible, calls T2&#x27;s sourcing runner with T3&#x27;s prompt (own `DEFAULT_OMP_SOURCING_TIMEOUT_MS`, Requirement 8), parses with T3&#x27;s parser, and on a found+verified result calls T4&#x27;s insert function; records the attempt&#x27;s outcome via T1&#x27;s `recordSourcingAttempt` regardless of success or failure. Wire this into `apps/server/src/ai/partIdentification.ts`&#x27;s `identifyListingParts`: call it for each eligible part *before* that part&#x27;s `findReferencePhotosForLeads` lookup runs, so a just-inserted photo is picked up by the very same call&#x27;s second pass (Requirement 5) — this is the one, small call site `identifyListingParts` gains; the rest of the new sequence lives in the new file per the Standing Checks&#x27; line-count note.</span></td><td><span data-at="2026-10-06T05:03:54Z" hidden></span>2026-10-06T05:03:54Z (25)</td><td><span data-at="2026-10-06T04:51:31Z">2026-10-06T04:51:31Z</span> (2026-10-06T05:34:20Z)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens 22500 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td>T1-review</td><td><span class="desc">Review T1 (`part_reference_sourcing_attempts` table, schema.ts, types.ts, db/index.ts barrel, `sourcingAttempts.ts`&#x27;s `hasSourcingBeenAttempted`/`recordSourcingAttempt`) against Requirements 4/6 and the Standing Checks (unique-index dedup mechanism, Info logging on both record and skip branches, DuckDB access confined to `db/queries`).</span></td><td><span data-at="2026-10-06T05:45:16Z" hidden></span>2026-10-06T05:45:16Z (10)</td><td><span data-at="2026-10-06T05:11:14Z">2026-10-06T05:11:14Z</span> (2026-10-06T05:11:14Z)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 9000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td>T1-test</td><td><span class="desc">Test T1&#x27;s `sourcingAttempts.ts` against Requirement 6 and its Standing Check: unique-index dedup under genuine concurrency (real concurrent `recordSourcingAttempt` calls for the identical combo via `Promise.all`, proven never to produce two rows or an unhandled error — the same proof style `referencePhotos.test.ts` uses for `part_reference_photos`), plus `hasSourcingBeenAttempted` correctness.</span></td><td><span data-at="2026-10-06T05:45:16Z" hidden></span>2026-10-06T05:45:16Z (20)</td><td><span data-at="2026-10-06T05:11:14Z">2026-10-06T05:11:14Z</span> (2026-10-06T05:11:14Z)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 9000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td>T2-review</td><td><span class="desc">Review T2 (`ompRunner.ts`&#x27;s `runOmpProcess` extraction and `runOmpIdentification` thin wrapper, new `ompSourcingRunner.ts`) against Requirement 8 and the Standing Checks&#x27; line-count note — independently verify whether `ompRunner.ts`&#x27;s growth to 204 lines is genuinely attributable to doc comments as the builder claimed, or to the new `runOmpIdentification` wrapper function&#x27;s real logic, and whether the shared-helper split the task called for was done without duplicating the original spawn/timeout/kill machinery.</span></td><td><span data-at="2026-10-06T05:45:16Z" hidden></span>2026-10-06T05:45:16Z (15)</td><td><span data-at="2026-10-06T05:11:14Z">2026-10-06T05:11:14Z</span> (2026-10-06T05:11:14Z)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 7300 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td>T2-test</td><td><span class="desc">Test T2&#x27;s `ompSourcingRunner.ts` (`runOmpImageSourcing`, `buildOmpSourcingArgs`, timeout/kill/ENOENT/exit-code handling, `setOmpSourcingRunnerOverride`/`getOmpSourcingRunner` seam) and confirm no test in the suite invokes the real `omp` binary.</span></td><td><span data-at="2026-10-06T05:45:16Z" hidden></span>2026-10-06T05:45:16Z (20)</td><td><span data-at="2026-10-06T05:11:14Z">2026-10-06T05:11:14Z</span> (2026-10-06T05:11:14Z)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 13500 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td>T3-review</td><td><span class="desc">Review T3 (`imageSourcingPrompt.ts`&#x27;s `buildImageSourcingPrompt`, `imageSourcingParser.ts`&#x27;s `parseImageSourcingResponse`) against Requirement 2 (manufacturer-site-only instruction, raw-JSON-only) and Requirement 3/the Warn-logging Standing Check (malformed `url` coerced and logged at Warn, never trusted as-is).</span></td><td><span data-at="2026-10-06T05:45:16Z" hidden></span>2026-10-06T05:45:16Z (10)</td><td><span data-at="2026-10-06T05:11:14Z">2026-10-06T05:11:14Z</span> (2026-10-06T05:11:14Z)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 8400 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td>T3-test</td><td><span class="desc">Test T3&#x27;s prompt builder and response parser: prompt names the exact category/brand/partNumber and the manufacturer-only/raw-JSON instructions; parser handles well-formed, malformed (`found` missing → fatal; bad `url` with `found:true` → coerced to `{found:false,url:null}` with a Warn), and non-JSON input.</span></td><td><span data-at="2026-10-06T05:45:16Z" hidden></span>2026-10-06T05:45:16Z (15)</td><td><span data-at="2026-10-06T05:11:14Z">2026-10-06T05:11:14Z</span> (2026-10-06T05:11:14Z)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 11000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td>T4-review</td><td><span class="desc">Review T4 (`downloadFile` extraction into `db/download.ts`, `db/imageSignature.ts`&#x27;s magic-byte sniffing with PNG/GIF/WebP now test-covered, `insertSourcedReferencePhoto` in `referencePhotos.ts`, `seedReferencePhotos.ts`&#x27;s refactor to reuse it) against Requirement 3/4 and the Standing Checks&#x27; no-duplicate-download-logic rule.</span></td><td>&mdash; (15)</td><td>&mdash; (—)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td>T4-test</td><td><span class="desc">Test T4&#x27;s `insertSourcedReferencePhoto` including the new PNG/GIF/WebP fixture coverage (each format&#x27;s valid header accepted, a one-byte-corrupted version of each rejected) and that `seedReferencePhotos.ts` still seeds correctly after the `downloadFile` extraction.</span></td><td>&mdash; (20)</td><td>&mdash; (—)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td>T5-review</td><td><span class="desc">Review T5 (`referenceSourcingOrchestrator.ts`&#x27;s `sourceMissingReferenceIfNeeded`/`createReferenceSourcer`, the one call site added to `partIdentification.ts`&#x27;s `identifyListingParts`, `referencePhotoLookup.ts`&#x27;s new `hasReferencePhotoForExactMatch`) against Requirements 1/5/6/7/8 and the Standing Checks — confirm the per-call attempt counter (A16&#x27;s closure-scoped `attemptsUsed`) cannot leak across concurrent `identify-parts` requests, and that a just-sourced photo is genuinely picked up by that same call&#x27;s second pass (Requirement 5).</span></td><td><span data-at="2026-10-06T05:45:16Z" hidden></span>2026-10-06T05:45:16Z (20)</td><td><span data-at="2026-10-06T05:11:14Z">2026-10-06T05:11:14Z</span> (2026-10-06T05:11:14Z)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 15000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td>T5-test</td><td><span class="desc">Test T5&#x27;s orchestrator and wiring: Requirement 1&#x27;s trigger conditions (brand-only/partNumber-only parts never trigger; both-known-and-unseeded does), Requirement 6&#x27;s already-attempted skip, Requirement 7&#x27;s `MAX_SOURCING_ATTEMPTS_PER_CALL` cap (and that a separate call gets its own full budget per A16), Requirement 5&#x27;s same-call second-pass pickup, and that `partIdentification.test.ts`&#x27;s default `setOmpSourcingRunnerOverride` (A17) genuinely prevents every existing test from reaching the real sourcing path.</span></td><td><span data-at="2026-10-06T05:45:16Z" hidden></span>2026-10-06T05:45:16Z (25)</td><td><span data-at="2026-10-06T05:11:14Z">2026-10-06T05:11:14Z</span> (2026-10-06T05:11:14Z)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 38000 &middot; Actual tokens null</td></tr></tbody></table></div>
+<h2>Assumptions</h2><ul><li>A1 (cycle 0): Sourcing only ever triggers off a part&#x27;s own primary `brand`/`partNumber` — never off</li><li>A2 (cycle 0): A failed sourcing attempt is never retried later (no expiry/TTL on</li><li>A3 (cycle 0): The server can independently verify that a sourced URL is a real, decodable image</li><li>A4 (cycle 0): `MAX_SOURCING_ATTEMPTS_PER_CALL` and `DEFAULT_OMP_SOURCING_TIMEOUT_MS`&#x27;s exact values</li><li>A5 (cycle 0): Mislabel detection (comparing a part&#x27;s claimed model against other models of the same</li></ul>
+</section>
+</main><script>
+// One redraw every five minutes carries a republish to anyone already looking.
+setTimeout(function(){location.reload();}, 300000);
+
+// Durations count up client-side, so an in-progress row does not freeze between
+// publishes, and every timestamp reads in the viewer's own zone rather than one
+// chosen when the page was written.
+function fmt(ms){var s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),
+m=Math.floor(s%3600/60);return h?h+'h '+m+'m':m+'m';}
+function tick(){
+  var now=Date.now();
+  document.querySelectorAll('[data-since]').forEach(function(el){
+    el.textContent=fmt(now-Date.parse(el.dataset.since));});
+}
+document.querySelectorAll('[data-at]').forEach(function(el){
+  var d=new Date(el.dataset.at);
+  var today=new Date().toDateString()===d.toDateString();
+  el.textContent=today?d.toLocaleTimeString():d.toLocaleString();});
+tick(); setInterval(tick,1000);
+
+// A description gets an expand control only when it truly does not fit.
+document.querySelectorAll('.desc').forEach(function(el){
+  if(el.scrollWidth<=el.clientWidth) return;
+  var b=document.createElement('button');b.className='more';b.textContent='more';
+  b.onclick=function(){el.classList.toggle('open');
+    b.textContent=el.classList.contains('open')?'less':'more';};
+  el.parentNode.appendChild(b);});
+
+function showCycle(n){
+  document.querySelectorAll('[data-cycle-panel]').forEach(function(p){
+    p.hidden=(p.dataset.cyclePanel!==String(n));});
+  document.querySelectorAll('[data-cycle-tab]').forEach(function(t){
+    t.setAttribute('aria-selected',t.dataset.cycleTab===String(n));});
+}
+</script>

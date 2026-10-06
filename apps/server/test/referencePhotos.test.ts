@@ -1,11 +1,12 @@
 // Tests for apps/server/src/db/queries/referencePhotos.ts (ai-visual-identification feature T1).
 import type * as DbModule from '../src/db/index.js';
 import type * as ClientModule from '../src/db/client.js';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
+import { isDecodableImage } from '../src/db/imageSignature.js';
 
 let dataDir: string;
 let db: typeof DbModule;
@@ -409,5 +410,81 @@ describe('Reference Photos — findReferencePhotosForLeads', () => {
 
     expect(results).toHaveLength(1);
     expect(results[0].brand).toBe('ZBrand');
+  });
+});
+
+describe('Reference Photos — isDecodableImage format coverage', () => {
+  // Direct unit tests for isDecodableImage's PNG, GIF, and WebP branches (Requirement 3).
+  // The existing test suite exercises JPEG validation via real-HTTP-response paths,
+  // but PNG, GIF, and WebP branches are untested; this block adds minimal unit tests that
+  // write magic-byte fixtures to temp files and verify acceptance/rejection, mirroring the
+  // pattern of byte-buffer verification used elsewhere in this suite.
+
+
+
+  const isDecodableImageDir = (): string => path.join(dataDir, 'isDecodableImage-fixtures');
+
+  // PNG: fixed 8-byte magic-byte signature from imageSignature.ts.
+  const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  // PNG with first byte corrupted (changed from 0x89 to 0x00).
+  const PNG_BYTES_CORRUPTED = Buffer.from([0x00, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+  // GIF: ASCII "GIF89a" header.
+  const GIF_BYTES = Buffer.from('GIF89a', 'ascii');
+  // GIF with last byte corrupted (changed from 'a' to 'b').
+  const GIF_BYTES_CORRUPTED = Buffer.from('GIF89b', 'ascii');
+
+  // WebP: "RIFF" + 4 size bytes (arbitrary) + "WEBP".
+  const WEBP_BYTES = Buffer.concat([
+    Buffer.from('RIFF', 'ascii'),
+    Buffer.from([0x00, 0x00, 0x00, 0x00]),
+    Buffer.from('WEBP', 'ascii'),
+  ]);
+  // WebP with first byte of "RIFF" corrupted (changed to 'X').
+  const WEBP_BYTES_CORRUPTED = Buffer.concat([
+    Buffer.from('XIFF', 'ascii'),
+    Buffer.from([0x00, 0x00, 0x00, 0x00]),
+    Buffer.from('WEBP', 'ascii'),
+  ]);
+
+  beforeAll(async () => {
+    // Ensure test fixture directory exists.
+    await mkdir(isDecodableImageDir(), { recursive: true });
+  });
+
+  it('accepts a valid PNG header', async () => {
+    const filePath = path.join(isDecodableImageDir(), 'valid.png');
+    await writeFile(filePath, PNG_BYTES);
+    expect(await isDecodableImage(filePath)).toBe(true);
+  });
+
+  it('rejects a one-byte-corrupted PNG header', async () => {
+    const filePath = path.join(isDecodableImageDir(), 'corrupted.png');
+    await writeFile(filePath, PNG_BYTES_CORRUPTED);
+    expect(await isDecodableImage(filePath)).toBe(false);
+  });
+
+  it('accepts a valid GIF header', async () => {
+    const filePath = path.join(isDecodableImageDir(), 'valid.gif');
+    await writeFile(filePath, GIF_BYTES);
+    expect(await isDecodableImage(filePath)).toBe(true);
+  });
+
+  it('rejects a one-byte-corrupted GIF header', async () => {
+    const filePath = path.join(isDecodableImageDir(), 'corrupted.gif');
+    await writeFile(filePath, GIF_BYTES_CORRUPTED);
+    expect(await isDecodableImage(filePath)).toBe(false);
+  });
+
+  it('accepts a valid WebP header', async () => {
+    const filePath = path.join(isDecodableImageDir(), 'valid.webp');
+    await writeFile(filePath, WEBP_BYTES);
+    expect(await isDecodableImage(filePath)).toBe(true);
+  });
+
+  it('rejects a one-byte-corrupted WebP header', async () => {
+    const filePath = path.join(isDecodableImageDir(), 'corrupted.webp');
+    await writeFile(filePath, WEBP_BYTES_CORRUPTED);
+    expect(await isDecodableImage(filePath)).toBe(false);
   });
 });

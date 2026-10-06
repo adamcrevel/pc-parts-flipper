@@ -150,9 +150,19 @@ export interface ReferencePhoto {
   brand: string;
   partNumber: string | null;
   photoPath: string;
-  source: 'seed' | 'confirmed_listing';
+  source: 'seed' | 'confirmed_listing' | 'auto_sourced';
   listingId: string | null;
   createdAt: string;
+}
+
+/** One attempt (successful or not) to auto-source a reference photo for a (category, brand, partNumber) combo. */
+export interface SourcingAttempt {
+  id: string;
+  category: ComponentCategory;
+  brand: string;
+  partNumber: string;
+  attemptedAt: string;
+  succeeded: boolean;
 }
 
 /** A draft/posted marketplace listing for one ready_to_list Part (Req 8). */

@@ -22,6 +22,7 @@ import { buildIdentificationPrompt } from './identificationPrompt.js';
 import { parseIdentificationResponse } from './identificationParser.js';
 import { buildVisualComparisonPrompt } from './visualComparisonPrompt.js';
 import { parseVisualComparisonResponse } from './visualComparisonParser.js';
+import { createReferenceSourcer } from './referenceSourcingOrchestrator.js';
 import { getOmpRunner, type OmpRunOptions } from './ompRunner.js';
 
 /** Maximum reference photos to fetch per eligible part. */
@@ -126,10 +127,17 @@ export async function identifyListingParts(listing: Listing, options?: OmpRunOpt
       return response;
     }
 
-    // Look up reference photos for each eligible part.
+    // Look up reference photos for each eligible part. The sourcer is built
+    // once per identifyListingParts call so its Requirement 7 attempt budget
+    // is private to this request (never shared with a concurrent one).
+    const sourceMissingReferenceIfNeeded = createReferenceSourcer();
     const referencesByPart = new Map<number, ReferencePhoto[]>();
     for (const partIndex of eligibleIndices) {
       const part = response.parts[partIndex];
+      // Attempted before this part's own lookup, so a photo sourced here is
+      // already in the library when findReferencePhotosForLeads runs below
+      // and therefore benefits this same call's second pass (Requirement 5).
+      await sourceMissingReferenceIfNeeded(part);
       const leads = [
         { brand: part.brand, partNumber: part.partNumber },
         ...part.identityCandidates,

@@ -28,6 +28,7 @@ import type * as ErrorModule from '../src/error-handler.js';
 import type * as LoggerModule from '../src/logger.js';
 import type * as DbModule from '../src/db/index.js';
 import type * as ClientModule from '../src/db/client.js';
+import type * as SourcingRunnerModule from '../src/ai/ompSourcingRunner.js';
 import { runMigrations } from '../src/db/migrate.js';
 
 let dataDir: string;
@@ -41,6 +42,7 @@ let AppError: typeof ErrorModule.AppError;
 let logger: typeof LoggerModule.logger;
 let db: typeof DbModule;
 let getConnection: typeof ClientModule.getConnection;
+let sourcingRunner: typeof SourcingRunnerModule;
 
 // Builds a Listing fixture; only the fields identification actually reads
 // (title, description, photoPaths, id) matter, the rest are filler.
@@ -128,8 +130,20 @@ beforeAll(async () => {
   ({ logger } = await import('../src/logger.js'));
   db = await import('../src/db/index.js');
   ({ getConnection } = await import('../src/db/client.js'));
+  sourcingRunner = await import('../src/ai/ompSourcingRunner.js');
   await runMigrations(await getConnection());
+  // Safety net, not an assertion target: identifyListingParts now attempts
+  // reference-photo sourcing for an eligible part whose brand and partNumber
+  // are both known, and the real runner would spawn the `omp` binary. Every
+  // test here answers "not found" instead, so this suite still never makes a
+  // real omp call and the behavior these tests assert is unchanged.
+  installNoSourcingOverride();
 });
+
+// Reinstalled after each test, since afterEach clears the overrides.
+function installNoSourcingOverride(): void {
+  sourcingRunner.setOmpSourcingRunnerOverride(async () => '{"found":false,"url":null}');
+}
 
 afterAll(async () => {
   await rm(dataDir, { recursive: true, force: true });
@@ -137,6 +151,7 @@ afterAll(async () => {
 
 afterEach(() => {
   runner.setOmpRunnerOverride(null);
+  installNoSourcingOverride();
   delete process.env.AI_IDENTIFY_MODEL;
   delete process.env.AI_IDENTIFY_API_KEY;
   vi.useRealTimers();

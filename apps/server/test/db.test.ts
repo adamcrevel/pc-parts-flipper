@@ -148,10 +148,21 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'listing_id',
     'created_at',
   ],
+  // (ai-reference-autosourcing feature T1): one row per (category, brand,
+  // part_number) combo ever attempted, so a repeat identify-parts pass
+  // skips a combo already attempted (Req 6) rather than re-sourcing it.
+  part_reference_sourcing_attempts: [
+    'id',
+    'category',
+    'brand',
+    'part_number',
+    'attempted_at',
+    'succeeded',
+  ],
 };
 
 describe('migrations create every table with the correct columns', () => {
-  it('creates exactly the 9 tables named in the Requirements plus part_reference_photos (ai-visual-identification)', async () => {
+  it('creates exactly the 9 tables named in the Requirements plus part_reference_photos (ai-visual-identification) and part_reference_sourcing_attempts (ai-reference-autosourcing)', async () => {
     const connection = await getConnection();
     const reader = await connection.runAndReadAll(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'main' ORDER BY table_name`,

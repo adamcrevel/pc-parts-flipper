@@ -64,6 +64,14 @@ export const TABLE_STATEMENTS: readonly string[] = [
     listing_id UUID REFERENCES listings(id),
     created_at TIMESTAMP NOT NULL DEFAULT current_timestamp
   )`,
+  `CREATE TABLE IF NOT EXISTS part_reference_sourcing_attempts (
+    id UUID PRIMARY KEY,
+    category component_category NOT NULL,
+    brand VARCHAR NOT NULL,
+    part_number VARCHAR NOT NULL,
+    attempted_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    succeeded BOOLEAN NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS expected_parts (
     id UUID PRIMARY KEY,
     listing_id UUID NOT NULL REFERENCES listings(id),
@@ -203,5 +211,10 @@ export const INDEX_STATEMENTS: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS idx_sales_part_id ON sales(part_id)`,
   `CREATE INDEX IF NOT EXISTS idx_reference_photos_category_brand ON part_reference_photos(category, brand)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_reference_photos_dedup ON part_reference_photos(category, brand, part_number, photo_path)`,
+  // part_number is NOT NULL on this table, so this unique index alone
+  // prevents a duplicate attempt row for the same combo (Req 6's
+  // already-attempted skip) — no NULL-distinctness workaround needed, unlike
+  // part_reference_photos's own dedup index above.
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_sourcing_attempts_dedup ON part_reference_sourcing_attempts(category, brand, part_number)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_listings_source_external_item ON listings(source_id, external_item_id)`,
 ];

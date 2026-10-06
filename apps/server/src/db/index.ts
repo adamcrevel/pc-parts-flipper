@@ -13,5 +13,6 @@ export * from './queries/parts.js';
 export * from './queries/saleListings.js';
 export * from './queries/profit.js';
 export * from './queries/referencePhotos.js';
+export * from './queries/sourcingAttempts.js';
 export * from './queries/referencePhotoLookup.js';
 export * from './queries/sales.js';

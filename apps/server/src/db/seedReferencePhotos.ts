@@ -32,8 +32,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import https from 'node:https';
-import http from 'node:http';
+import { downloadFile } from './download.js';
 import { insertSeedReferencePhoto } from './queries/referencePhotos.js';
 import { logger } from '../logger.js';
 import { SEED_PHOTOS } from './seedReferencePhotosData.js';
@@ -45,51 +44,6 @@ const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 // never into the real shared data/ directory.
 const DATA_DIR = process.env.DUCKDB_DATA_DIR ?? path.resolve(moduleDir, '../../../../data');
 const SEED_DIR = path.join(DATA_DIR, 'reference-photos', 'seed');
-
-/**
- * Downloads a file from the given URL and saves it to the target path.
- * Uses event-based I/O with callback-based promise. Logs at Info on success,
- * Warn on failure. Returns true if successful.
- */
-async function downloadFile(url: string, targetPath: string): Promise<boolean> {
-  return new Promise(resolve => {
-    const client = url.startsWith('https') ? https : http;
-
-    client
-      .get(url, { timeout: 10000, headers: { 'User-Agent': 'pc-parts-flipper-reference-seed/1.0 (internal personal-use tool; local)' } }, response => {
-        if (response.statusCode === 200) {
-          const file = fs.createWriteStream(targetPath);
-          response.pipe(file);
-          file.on('finish', () => {
-            file.close();
-            logger.info({ url, targetPath }, 'Downloaded reference photo');
-            resolve(true);
-          });
-          file.on('error', err => {
-            fs.unlink(targetPath, () => {});
-            logger.warn(
-              { url, targetPath, error: (err as Error).message },
-              'Failed to save reference photo',
-            );
-            resolve(false);
-          });
-        } else {
-          logger.warn(
-            { url, statusCode: response.statusCode },
-            'Reference photo download returned non-200 status',
-          );
-          resolve(false);
-        }
-      })
-      .on('error', err => {
-        logger.warn(
-          { url, error: (err as Error).message },
-          'Failed to download reference photo',
-        );
-        resolve(false);
-      });
-  });
-}
 
 /**
  * Main seed operation: for each photo spec, download if missing,

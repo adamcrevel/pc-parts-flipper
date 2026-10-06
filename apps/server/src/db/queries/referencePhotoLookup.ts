@@ -29,6 +29,30 @@ export interface Lead {
 }
 
 /**
+ * Reports whether at least one `part_reference_photos` row already exists for
+ * this exact (category, brand, partNumber) combo. Distinct from
+ * findReferencePhotosForLeads below: that one ranks loosely-matching rows for
+ * the visual-comparison pass (brand-only matches included), while this is the
+ * strict "is this exact product already in the library?" test the reference
+ * auto-sourcing trigger needs (Requirement 5) — a brand match with a
+ * different (or null) part number must NOT count as present here.
+ */
+export async function hasReferencePhotoForExactMatch(
+  category: ComponentCategory,
+  brand: string,
+  partNumber: string,
+): Promise<boolean> {
+  const connection = await getConnection();
+  const reader = await connection.runAndReadAll(
+    `SELECT 1 FROM part_reference_photos
+     WHERE category = $category AND brand = $brand AND part_number = $part_number
+     LIMIT 1`,
+    { category, brand, part_number: partNumber },
+  );
+  return reader.getRowObjectsJson().length > 0;
+}
+
+/**
  * Queries reference photos for a category, preferring rows matching one of the
  * provided leads' brand/partNumber pairs (partNumber match optional) when at
  * least one lead has a non-null brand; otherwise returns any rows in that

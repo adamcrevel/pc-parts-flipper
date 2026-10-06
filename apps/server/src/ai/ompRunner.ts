@@ -97,21 +97,18 @@ function killProcessGroup(child: ChildProcess): void {
 }
 
 /**
- * Spawns `omp`, collects its stdout, and resolves with it. Rejects with an
- * AppError carrying a real, user-facing message for every failure mode:
- * binary missing / not on PATH (ENOENT), non-zero exit (typically not logged
- * in), or exceeding the timeout — in which case the child is killed rather
- * than left running after the request has already failed.
+ * Spawns `omp` with the given argv, collects its stdout, and resolves with it.
+ * Rejects with an AppError for every failure mode: binary missing / not on
+ * PATH (ENOENT), non-zero exit, or exceeding the timeout (child killed
+ * first). `errorContext` (e.g. "AI part identification", "AI reference
+ * image sourcing") is interpolated into rejection messages, letting
+ * runOmpIdentification and ompSourcingRunner.ts's runOmpImageSourcing share
+ * this machinery without duplicating it.
  */
-export async function runOmpIdentification(
-  promptText: string,
-  imagePaths: readonly string[],
-  options: OmpRunOptions = {},
-): Promise<string> {
+export async function runOmpProcess(args: string[], options: OmpRunOptions, errorContext: string): Promise<string> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_OMP_TIMEOUT_MS;
   const spawnFn = options.spawnFn ?? spawn;
-  const args = buildOmpArgs(promptText, imagePaths);
-  logger.debug({ imageCount: imagePaths.length, timeoutMs, argCount: args.length }, 'Spawning omp for part identification');
+  logger.debug({ timeoutMs, argCount: args.length, errorContext }, 'Spawning omp');
 
   return new Promise<string>((resolve, reject) => {
     // stdin is not used; stderr is discarded at the OS level (it carries only
@@ -145,7 +142,7 @@ export async function runOmpIdentification(
         // needs the child to shut down cleanly. Group-wide, so a descendant
         // cannot outlive the call that started it.
         killProcessGroup(child);
-        reject(new AppError(`AI part identification timed out after ${timeoutMs}ms`, 504));
+        reject(new AppError(`${errorContext} timed out after ${timeoutMs}ms`, 504));
       });
     }, timeoutMs);
 
@@ -157,8 +154,8 @@ export async function runOmpIdentification(
       finish(() => {
         const message =
           err.code === 'ENOENT'
-            ? `AI part identification requires the '${OMP_BINARY}' CLI on PATH, but it was not found`
-            : `Failed to run '${OMP_BINARY}' for AI part identification: ${err.message}`;
+            ? `${errorContext} requires the '${OMP_BINARY}' CLI on PATH, but it was not found`
+            : `Failed to run '${OMP_BINARY}' for ${errorContext}: ${err.message}`;
         reject(new AppError(message, 502));
       });
     });
@@ -169,10 +166,24 @@ export async function runOmpIdentification(
           resolve(stdout);
           return;
         }
-        reject(new AppError(`'${OMP_BINARY}' exited with code ${String(code)} during AI part identification (is it installed and logged in?)`, 502));
+        reject(new AppError(`'${OMP_BINARY}' exited with code ${String(code)} during ${errorContext} (is it installed and logged in?)`, 502));
       });
     });
   });
+}
+
+/**
+ * Thin wrapper: builds the identification argv (prompt plus `@<path>` per
+ * photo, `--no-tools`) and runs it via runOmpProcess. The seam
+ * identifyListingParts' getOmpRunner() falls back to.
+ */
+export async function runOmpIdentification(
+  promptText: string,
+  imagePaths: readonly string[],
+  options: OmpRunOptions = {},
+): Promise<string> {
+  const args = buildOmpArgs(promptText, imagePaths);
+  return runOmpProcess(args, options, 'AI part identification');
 }
 
 // Test seam. The automated suite must never invoke the real omp binary (it
