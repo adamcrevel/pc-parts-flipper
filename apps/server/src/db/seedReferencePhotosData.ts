@@ -13,9 +13,13 @@ export interface SeedPhotoSpec {
 }
 
 /**
- * Curated set of 10 real photos, each individually verified against
- * Wikimedia Commons before being added here. Categories: GPU (3), Case (3),
- * Cooler (4).
+ * Curated set of 14 real photos. 12 individually verified against Wikimedia
+ * Commons (explicitly freely licensed); 2 sourced directly from the
+ * respective manufacturer's own official site (Montech, Apevia — neither
+ * has Commons coverage), each a single real product photo pulled for
+ * internal comparison use only, never redistributed — see T3's plan notes
+ * for the license distinction between the two sourcing methods. Categories:
+ * GPU (4), Case (4), Cooler (4), Motherboard (1), PSU (1).
  */
 export const SEED_PHOTOS: readonly SeedPhotoSpec[] = [
   // GPUs
@@ -40,6 +44,13 @@ export const SEED_PHOTOS: readonly SeedPhotoSpec[] = [
     brand: 'MSI',
     partNumber: 'GeForce RTX 3070 Ventus 3X OC',
   },
+  {
+    url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/1/13/EVGA_GeForce_GTX_1050_Superclocked%2C_front.jpg/960px-EVGA_GeForce_GTX_1050_Superclocked%2C_front.jpg',
+    filename: 'evga-gtx1050-superclocked.jpg',
+    category: 'GPU',
+    brand: 'EVGA',
+    partNumber: 'GeForce GTX 1050 Superclocked',
+  },
   // Cases
   {
     url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/1/18/NZXT_H500i_case_empty_10-13-2018.jpg/960px-NZXT_H500i_case_empty_10-13-2018.jpg',
@@ -61,6 +72,13 @@ export const SEED_PHOTOS: readonly SeedPhotoSpec[] = [
     category: 'Case',
     brand: 'Fractal Design',
     partNumber: 'Focus G',
+  },
+  {
+    url: 'https://www.montechpc.com/images/375589?stamp=1734688166',
+    filename: 'montech-air903max.webp',
+    category: 'Case',
+    brand: 'Montech',
+    partNumber: 'AIR 903 MAX',
   },
   // Coolers
   {
@@ -90,5 +108,21 @@ export const SEED_PHOTOS: readonly SeedPhotoSpec[] = [
     category: 'Cooler',
     brand: 'Noctua',
     partNumber: 'NH-D15',
+  },
+  // Motherboards
+  {
+    url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7b/Asus-ROG-Strix-Z390-F-Gaming-Motherboard_20201120_DSC6025.jpg/960px-Asus-ROG-Strix-Z390-F-Gaming-Motherboard_20201120_DSC6025.jpg',
+    filename: 'asus-rog-strix-z390-f-gaming.jpg',
+    category: 'Motherboard',
+    brand: 'ASUS',
+    partNumber: 'ROG Strix Z390-F Gaming',
+  },
+  // PSUs
+  {
+    url: 'https://cdn.prod.website-files.com/5ced3cdc3850586f0800b1a0/605271de1eb69bda18fe4e7e_ATX-ES600-WH-1.jpg',
+    filename: 'apevia-atx-es600-wh.jpg',
+    category: 'PSU',
+    brand: 'Apevia',
+    partNumber: 'ATX-ES600-WH',
   },
 ];
