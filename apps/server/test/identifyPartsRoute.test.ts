@@ -12,12 +12,13 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { IdentifyPartsResponse } from '@pc-parts-flipper/shared';
 import type * as DbModule from '../src/db/index.js';
 import type { Listing, Source } from '../src/db/index.js';
 import type * as RunnerModule from '../src/ai/ompRunner.js';
+import type * as SourcingRunnerModule from '../src/ai/ompSourcingRunner.js';
 import type * as IdentifyRoutesModule from '../src/routes/identifyParts.js';
 import type * as ErrorHandlerModule from '../src/error-handler.js';
 
@@ -30,6 +31,7 @@ const BASE_URL = `http://127.0.0.1:${TEST_PORT}`;
 let dataDir: string;
 let db: typeof DbModule;
 let runner: typeof RunnerModule;
+let sourcingRunner: typeof SourcingRunnerModule;
 let app: FastifyInstance;
 
 interface ErrorResponse {
@@ -65,6 +67,7 @@ beforeAll(async () => {
   // static import would open the shared development database instead.
   db = await import('../src/db/index.js');
   runner = await import('../src/ai/ompRunner.js');
+  sourcingRunner = await import('../src/ai/ompSourcingRunner.js');
   const { registerIdentifyPartsRoutes }: typeof IdentifyRoutesModule = await import('../src/routes/identifyParts.js');
   const { registerErrorHandler }: typeof ErrorHandlerModule = await import('../src/error-handler.js');
   const Fastify = (await import('fastify')).default;
@@ -82,6 +85,18 @@ afterAll(async () => {
 
 afterEach(() => {
   runner.setOmpRunnerOverride(null);
+  sourcingRunner.setOmpSourcingRunnerOverride(null);
+});
+
+// This file proves the identify-parts ROUTE, not reference-photo sourcing
+// behavior — but a fixture part with a known brand and no model number
+// (used below) now legitimately triggers catalog-mode sourcing
+// (ai-catalog-sourcing feature). Without this default stub, that call would
+// reach the real `omp` binary and hang the test. Answers both the
+// single-product and catalog-mode response shapes so either sourcing path
+// resolves immediately as "nothing found".
+beforeEach(() => {
+  sourcingRunner.setOmpSourcingRunnerOverride(async () => '{"found":false,"url":null,"products":[]}');
 });
 
 describe('POST /api/listings/:id/identify-parts', () => {

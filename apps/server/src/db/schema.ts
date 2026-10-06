@@ -72,6 +72,14 @@ export const TABLE_STATEMENTS: readonly string[] = [
     attempted_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
     succeeded BOOLEAN NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS part_catalog_sourcing_attempts (
+    id UUID PRIMARY KEY,
+    category component_category NOT NULL,
+    brand VARCHAR NOT NULL,
+    attempted_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    succeeded BOOLEAN NOT NULL,
+    products_found INTEGER NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS expected_parts (
     id UUID PRIMARY KEY,
     listing_id UUID NOT NULL REFERENCES listings(id),
@@ -216,5 +224,10 @@ export const INDEX_STATEMENTS: readonly string[] = [
   // already-attempted skip) — no NULL-distinctness workaround needed, unlike
   // part_reference_photos's own dedup index above.
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_sourcing_attempts_dedup ON part_reference_sourcing_attempts(category, brand, part_number)`,
+  // Both columns are NOT NULL on this table (ai-catalog-sourcing feature
+  // T1), so this unique index alone prevents a duplicate attempt row for the
+  // same (category, brand) combo — same no-NULL-distinctness-workaround-
+  // needed reasoning as idx_sourcing_attempts_dedup just above.
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_catalog_sourcing_attempts_dedup ON part_catalog_sourcing_attempts(category, brand)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_listings_source_external_item ON listings(source_id, external_item_id)`,
 ];

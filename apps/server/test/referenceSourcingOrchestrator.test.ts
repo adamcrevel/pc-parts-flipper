@@ -151,6 +151,21 @@ function eligibleKnownPart(brand: string, partNumber: string): Record<string, un
   };
 }
 
+// One first-pass part that is eligible for the second pass because its own
+// partNumber is null (Requirement 1's brand-only trigger shape) — brand is
+// known, model is not.
+function eligibleBrandOnlyPart(brand: string, category = 'Case'): Record<string, unknown> {
+  return {
+    category,
+    brand,
+    partNumber: null,
+    description: 'Component, model unknown',
+    confidence: 'low',
+    source: 'image',
+    identityCandidates: [],
+  };
+}
+
 // Installs an identification runner whose first pass returns `parts` and whose
 // second pass applies no updates, recording the image list of every call.
 function recordIdentificationCalls(parts: Record<string, unknown>[]): Array<readonly string[]> {
@@ -174,12 +189,15 @@ describe('createReferenceSourcer — trigger conditions', () => {
     expect(prompts).toEqual([]);
   });
 
-  it('never attempts sourcing when the part has no part number (Requirement 1)', async () => {
-    const prompts = recordSourcingCalls(async () => '{"found":false,"url":null}');
+  it('attempts catalog sourcing (not single-product sourcing) when the part has a brand but no part number (Requirement 1)', async () => {
+    const prompts = recordSourcingCalls(async () => '{"products":[]}');
 
     await orchestrator.createReferenceSourcer()({ category: 'GPU', brand: 'NoPartNumberBrand', partNumber: null });
 
-    expect(prompts).toEqual([]);
+    // Exactly one catalog-shaped call, not a single-product-shaped one.
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain('NoPartNumberBrand');
+    expect(prompts[0]).toContain('"products"');
   });
 
   it('never attempts sourcing when a reference photo already exists for that exact combo', async () => {
@@ -377,5 +395,202 @@ describe('identifyListingParts reference sourcing', () => {
     await identification.identifyListingParts(listingFixture());
 
     expect(prompts).toEqual([]);
+  });
+});
+
+describe('createReferenceSourcer — catalog-mode trigger conditions (ai-catalog-sourcing feature)', () => {
+  it('inserts every verified candidate from a multi-product catalog response, each under its own part number', async () => {
+    const { server: server1, url: url1 } = await startFixtureServer(200, JPEG_BYTES);
+    const { server: server2, url: url2 } = await startFixtureServer(200, JPEG_BYTES);
+    try {
+      recordSourcingCalls(async () =>
+        JSON.stringify({
+          products: [
+            { partNumber: 'CAT-100', url: url1 },
+            { partNumber: 'CAT-200', url: url2 },
+          ],
+        }),
+      );
+
+      await orchestrator.createReferenceSourcer()({ category: 'Case', brand: 'CatalogBrand', partNumber: null });
+
+      expect(await countPhotoRows('Case', 'CatalogBrand', 'CAT-100')).toBe(1);
+      expect(await countPhotoRows('Case', 'CatalogBrand', 'CAT-200')).toBe(1);
+      expect(await db.hasCatalogSourcingBeenAttempted('Case', 'CatalogBrand')).toBe(true);
+    } finally {
+      await stopFixtureServer(server1);
+      await stopFixtureServer(server2);
+    }
+  });
+
+  it('does not duplicate a candidate that already has a part_reference_photos row from a different source (Requirement 6)', async () => {
+    const { server, url } = await startFixtureServer(200, JPEG_BYTES);
+    try {
+      // Pre-seed the exact (category, brand, partNumber) a catalog
+      // candidate below will also report, as single-product sourcing (or a
+      // confirmed real listing) would have — downloading the SAME bytes so
+      // the content-hashed photo_path collides, which is what the existing
+      // unique index actually keys on.
+      const preseed = await db.insertSourcedReferencePhoto('Cooler', 'DedupBrand', 'DUP-1', url);
+      expect(preseed.inserted).toBe(true);
+      expect(await countPhotoRows('Cooler', 'DedupBrand', 'DUP-1')).toBe(1);
+
+      recordSourcingCalls(async () =>
+        JSON.stringify({
+          products: [
+            { partNumber: 'DUP-1', url }, // already exists
+            { partNumber: 'NEW-1', url }, // genuinely new partNumber, same bytes
+          ],
+        }),
+      );
+
+      await orchestrator.createReferenceSourcer()({ category: 'Cooler', brand: 'DedupBrand', partNumber: null });
+
+      // The pre-existing combo is still exactly one row, not two.
+      expect(await countPhotoRows('Cooler', 'DedupBrand', 'DUP-1')).toBe(1);
+      // The genuinely new partNumber DID get its own new row.
+      expect(await countPhotoRows('Cooler', 'DedupBrand', 'NEW-1')).toBe(1);
+
+      // The attempt record reflects only the one genuinely new insert, not
+      // both candidates the model reported.
+      const connection = await getConnection();
+      const reader = await connection.runAndReadAll(
+        `SELECT succeeded, products_found FROM part_catalog_sourcing_attempts WHERE category = 'Cooler' AND brand = 'DedupBrand'`,
+      );
+      const row = reader.getRowObjectsJson()[0];
+      expect(row.succeeded).toBe(true);
+      expect(Number(row.products_found)).toBe(1);
+    } finally {
+      await stopFixtureServer(server);
+    }
+  });
+
+  it('records succeeded=false and products_found=0 for an empty catalog response, and inserts nothing', async () => {
+    recordSourcingCalls(async () => '{"products":[]}');
+
+    await orchestrator.createReferenceSourcer()({ category: 'Case', brand: 'EmptyCatalogBrand', partNumber: null });
+
+    expect(await db.hasCatalogSourcingBeenAttempted('Case', 'EmptyCatalogBrand')).toBe(true);
+    const connection = await getConnection();
+    const reader = await connection.runAndReadAll(
+      `SELECT succeeded, products_found FROM part_catalog_sourcing_attempts WHERE category = 'Case' AND brand = 'EmptyCatalogBrand'`,
+    );
+    const row = reader.getRowObjectsJson()[0];
+    expect(row.succeeded).toBe(false);
+    expect(Number(row.products_found)).toBe(0);
+  });
+
+  it('drops a candidate that fails download verification but still inserts and counts the rest', async () => {
+    const { server: goodServer, url: goodUrl } = await startFixtureServer(200, JPEG_BYTES);
+    const { server: badServer, url: badUrl } = await startFixtureServer(404, Buffer.from('nope'));
+    try {
+      recordSourcingCalls(async () =>
+        JSON.stringify({
+          products: [
+            { partNumber: 'GOOD-1', url: goodUrl },
+            { partNumber: 'BAD-1', url: badUrl },
+          ],
+        }),
+      );
+
+      await orchestrator.createReferenceSourcer()({ category: 'PSU', brand: 'MixedBrand', partNumber: null });
+
+      expect(await countPhotoRows('PSU', 'MixedBrand', 'GOOD-1')).toBe(1);
+      expect(await countPhotoRows('PSU', 'MixedBrand', 'BAD-1')).toBe(0);
+
+      const connection = await getConnection();
+      const reader = await connection.runAndReadAll(
+        `SELECT succeeded, products_found FROM part_catalog_sourcing_attempts WHERE category = 'PSU' AND brand = 'MixedBrand'`,
+      );
+      const row = reader.getRowObjectsJson()[0];
+      expect(row.succeeded).toBe(true);
+      expect(Number(row.products_found)).toBe(1);
+    } finally {
+      await stopFixtureServer(goodServer);
+      await stopFixtureServer(badServer);
+    }
+  });
+
+  it('never re-attempts a brand whose catalog was already sourced (Requirement 5)', async () => {
+    const prompts = recordSourcingCalls(async () => '{"products":[]}');
+
+    await orchestrator.createReferenceSourcer()({ category: 'Cooler', brand: 'OnceOnlyCatalogBrand', partNumber: null });
+    expect(prompts).toHaveLength(1);
+
+    // A fresh sourcer (i.e. a later identify-parts call) must not retry it.
+    await orchestrator.createReferenceSourcer()({ category: 'Cooler', brand: 'OnceOnlyCatalogBrand', partNumber: null });
+    expect(prompts).toHaveLength(1);
+  });
+
+  it('single-product sourcing for a later-resolved model of the same brand is unaffected by a prior catalog attempt (separate tables)', async () => {
+    const prompts = recordSourcingCalls(async (callIndex) =>
+      // First call: catalog-mode (brand only). Second call: single-product mode.
+      callIndex === 0 ? '{"products":[]}' : '{"found":false,"url":null}',
+    );
+    const sourcer = orchestrator.createReferenceSourcer();
+
+    await sourcer({ category: 'RAM', brand: 'DualModeBrand', partNumber: null });
+    await sourcer({ category: 'RAM', brand: 'DualModeBrand', partNumber: 'DM-1' });
+
+    // Both attempted — the catalog-mode attempt record for the brand does not
+    // make hasSourcingBeenAttempted (the separate per-product table) report
+    // true for a specific model of that same brand.
+    expect(prompts).toHaveLength(2);
+  });
+
+  it('catalog-mode sourcing counts against the same per-call budget as single-product sourcing (Requirement 7)', async () => {
+    const prompts = recordSourcingCalls(async () => '{"found":false,"url":null,"products":[]}');
+    const sourcer = orchestrator.createReferenceSourcer();
+
+    // Two single-product attempts, then one catalog attempt: 3 total, exactly at the cap.
+    await sourcer({ category: 'GPU', brand: 'BudgetBrandA', partNumber: 'BA-1' });
+    await sourcer({ category: 'GPU', brand: 'BudgetBrandB', partNumber: 'BB-1' });
+    await sourcer({ category: 'GPU', brand: 'BudgetBrandC', partNumber: null });
+    expect(prompts).toHaveLength(3);
+
+    // A fourth call, of either kind, must be rejected by the now-exhausted budget.
+    await sourcer({ category: 'GPU', brand: 'BudgetBrandD', partNumber: null });
+    expect(prompts).toHaveLength(3);
+    expect(await db.hasCatalogSourcingBeenAttempted('GPU', 'BudgetBrandD')).toBe(false);
+  });
+});
+
+describe('identifyListingParts catalog-mode reference sourcing (ai-catalog-sourcing feature, integration)', () => {
+  it('uses a catalog-sourced photo in this same call\'s second pass for a brand-only part (Requirement 1, integration)', async () => {
+    const { server, url } = await startFixtureServer(200, JPEG_BYTES);
+    try {
+      recordSourcingCalls(async () => JSON.stringify({ products: [{ partNumber: 'CATSEC-1', url }] }));
+      const images = recordIdentificationCalls([eligibleBrandOnlyPart('CatalogIntegrationBrand')]);
+
+      await identification.identifyListingParts(listingFixture());
+
+      // Two identification calls means the second pass actually ran, and it
+      // ran on the photo catalog-sourced moments earlier in this same call.
+      expect(images).toHaveLength(2);
+      const sourcedPhotos = images[1].filter(imagePath =>
+        imagePath.includes(path.join('reference-photos', 'auto-sourced')),
+      );
+      expect(sourcedPhotos).toHaveLength(1);
+      expect(sourcedPhotos[0].startsWith(dataDir)).toBe(true);
+      expect(await countPhotoRows('Case', 'CatalogIntegrationBrand', 'CATSEC-1')).toBe(1);
+    } finally {
+      await stopFixtureServer(server);
+    }
+  });
+
+  it('completes normally when catalog sourcing fails, exactly as if it had never been attempted (Requirement 3)', async () => {
+    recordSourcingCalls(async () => {
+      throw new Error('AI catalog sourcing timed out after 600000ms');
+    });
+    const images = recordIdentificationCalls([eligibleBrandOnlyPart('FailCatalogBrand')]);
+
+    const result = await identification.identifyListingParts(listingFixture());
+
+    // No reference photo exists for this brand, so the second pass is
+    // skipped — the same outcome as a run with no sourcing at all.
+    expect(images).toHaveLength(1);
+    expect(result.parts[0].brand).toBe('FailCatalogBrand');
+    expect(result.parts[0].partNumber).toBeNull();
+    expect(await db.hasCatalogSourcingBeenAttempted('Case', 'FailCatalogBrand')).toBe(true);
   });
 });

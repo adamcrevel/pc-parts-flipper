@@ -159,10 +159,21 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'attempted_at',
     'succeeded',
   ],
+  // (ai-catalog-sourcing feature T1): one row per (category, brand) combo
+  // ever catalog-sourced, so a repeat identify-parts pass skips a brand
+  // whose catalog was already browsed (Req 5) rather than re-browsing it.
+  part_catalog_sourcing_attempts: [
+    'id',
+    'category',
+    'brand',
+    'attempted_at',
+    'succeeded',
+    'products_found',
+  ],
 };
 
 describe('migrations create every table with the correct columns', () => {
-  it('creates exactly the 9 tables named in the Requirements plus part_reference_photos (ai-visual-identification) and part_reference_sourcing_attempts (ai-reference-autosourcing)', async () => {
+  it('creates exactly the 9 tables named in the Requirements plus part_reference_photos (ai-visual-identification), part_reference_sourcing_attempts (ai-reference-autosourcing), and part_catalog_sourcing_attempts (ai-catalog-sourcing)', async () => {
     const connection = await getConnection();
     const reader = await connection.runAndReadAll(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'main' ORDER BY table_name`,

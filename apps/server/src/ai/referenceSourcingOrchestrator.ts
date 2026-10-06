@@ -16,6 +16,7 @@
 // Info, recorded as a failed attempt, and never propagated to the caller.
 import type { AiIdentifiedPart } from '@pc-parts-flipper/shared';
 import {
+  hasCatalogSourcingBeenAttempted,
   hasReferencePhotoForExactMatch,
   hasSourcingBeenAttempted,
   insertSourcedReferencePhoto,
@@ -23,6 +24,7 @@ import {
 } from '../db/index.js';
 import type { ComponentCategory } from '../db/index.js';
 import { logger } from '../logger.js';
+import { sourceCatalogIfNeeded } from './catalogSourcingOrchestrator.js';
 import { buildImageSourcingPrompt } from './imageSourcingPrompt.js';
 import { parseImageSourcingResponse } from './imageSourcingParser.js';
 import { DEFAULT_OMP_SOURCING_TIMEOUT_MS, getOmpSourcingRunner } from './ompSourcingRunner.js';
@@ -92,12 +94,19 @@ async function attemptSourcing(
  * must each get their own full budget, which a module-level counter would
  * silently share (and never reset).
  *
- * The returned function sources a reference photo for `part` only when all of
- * these hold: the part's own brand AND partNumber are both known
- * (Requirement 1 — a brand-only part is not specific enough to search for),
- * no part_reference_photos row exists for that exact combo already, no
- * sourcing attempt has ever been recorded for it (Requirement 6), and this
- * call's budget is not yet spent. It resolves without throwing in every case.
+ * The returned function sources a reference photo for `part` in one of two
+ * mutually-exclusive ways (Requirement 1): when brand AND partNumber are both
+ * known, it single-product-sources that exact product (unchanged from
+ * ai-reference-autosourcing) when no photo and no prior attempt exists for
+ * it; when only brand is known (partNumber null), it instead catalog-sources
+ * several of that brand's products in the category, via
+ * catalogSourcingOrchestrator.ts, when no catalog attempt has ever been
+ * recorded for that (category, brand) combo (Requirement 5). A part with no
+ * brand at all triggers neither — there is nothing to search the
+ * manufacturer's site for. Both paths draw from the same Requirement 7
+ * budget below, so a listing with several not-yet-sourceable parts cannot
+ * chain unbounded calls of either kind. It resolves without throwing in
+ * every case.
  */
 export function createReferenceSourcer(): ReferenceSourcer {
   let attemptsUsed = 0;
@@ -105,9 +114,34 @@ export function createReferenceSourcer(): ReferenceSourcer {
   return async function sourceMissingReferenceIfNeeded(part: SourceablePart): Promise<void> {
     const { category, brand, partNumber } = part;
 
-    // Requirement 1: only an exact product (brand AND part number) is
-    // specific enough to search the manufacturer's site for.
-    if (brand === null || partNumber === null) {
+    // Neither sourcing mode can search without at least a brand name.
+    if (brand === null) {
+      return;
+    }
+
+    if (partNumber === null) {
+      // Requirement 1: brand known, model not — catalog-mode sourcing
+      // browses the brand's whole category catalog instead of one named
+      // product (catalogSourcingOrchestrator.ts).
+      if (await hasCatalogSourcingBeenAttempted(category, brand)) {
+        logger.info({ category, brand }, 'Catalog sourcing already attempted for this brand, skipping');
+        return;
+      }
+
+      // Requirement 7: budget is spent for this identify-parts call.
+      if (attemptsUsed >= MAX_SOURCING_ATTEMPTS_PER_CALL) {
+        logger.info(
+          { category, brand, maxAttempts: MAX_SOURCING_ATTEMPTS_PER_CALL },
+          'Reference photo sourcing attempt cap reached for this identification call, skipping',
+        );
+        return;
+      }
+
+      // Counted before the call, so a throwing attempt still consumes
+      // budget — same rule the single-product path below follows.
+      attemptsUsed += 1;
+      logger.info({ category, brand, attemptsUsed }, 'Starting catalog sourcing attempt');
+      await sourceCatalogIfNeeded(category, brand);
       return;
     }
 

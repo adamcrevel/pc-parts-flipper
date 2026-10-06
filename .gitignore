@@ -4,10 +4,10 @@ build/
 .env
 .env.*
 !.env.example
-data/*.duckdb
-data/*.duckdb.wal
-data/photos/
-data/reference-photos/
+**/data/*.duckdb
+**/data/*.duckdb.wal
+**/data/photos/
+**/data/reference-photos/
 .DS_Store
 .worktrees/
 *.tsbuildinfo
