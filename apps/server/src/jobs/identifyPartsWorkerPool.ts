@@ -80,7 +80,11 @@ async function pump(): Promise<void> {
  * notice the job finished and submit a save on its behalf. Estimated
  * resale value is always null here: the model is never asked to price
  * parts, and that's a real "not yet priced" state the column accepts
- * (nullable), not a placeholder 0.
+ * (nullable), not a placeholder 0. `aiConfidence`/`aiSource` are carried
+ * straight across from the model's own output: this is the one write path
+ * where they're genuinely known, and persisting them here is what lets
+ * the "AI suggested" badge survive the Listing being reopened later,
+ * instead of only showing for the one poll that saw the job complete.
  */
 async function persistIdentifiedParts(listingId: string, result: IdentifyPartsResponse): Promise<void> {
   await Promise.all(
@@ -93,6 +97,8 @@ async function persistIdentifiedParts(listingId: string, result: IdentifyPartsRe
         description: part.description,
         estimatedResaleValue: null,
         identityCandidates: part.identityCandidates,
+        aiConfidence: part.confidence,
+        aiSource: part.source,
       }),
     ),
   );

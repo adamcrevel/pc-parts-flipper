@@ -4,7 +4,7 @@
 // to the shared package, so apps/web can reuse them over the HTTP API's JSON
 // shapes, is left to the tasks that build the routes/screens on top of this
 // module.
-import type { IdentityCandidate } from '@pc-parts-flipper/shared';
+import type { AiPartConfidence, AiPartSource, IdentityCandidate } from '@pc-parts-flipper/shared';
 
 // -- Enums -------------------------------------------------------------
 
@@ -96,6 +96,9 @@ export interface ExpectedPart {
   estimatedResaleValue: number | null;
   /** Other plausible brand/partNumber pairings the AI identifier considered but did not pick as primary; empty for manually-entered Expected Parts. */
   identityCandidates: IdentityCandidate[];
+  /** Persisted AI-suggestion provenance (see packages/shared/src/listings.ts's ExpectedPart doc comment); both null for a manual or since-edited row. */
+  aiConfidence: AiPartConfidence | null;
+  aiSource: AiPartSource | null;
   createdAt: string;
   updatedAt: string;
 }

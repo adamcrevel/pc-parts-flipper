@@ -217,6 +217,15 @@ export const ALTER_STATEMENTS: readonly string[] = [
   // queries/parts.ts instead.
   `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS identity_candidates VARCHAR DEFAULT '[]'`,
   `ALTER TABLE parts ADD COLUMN IF NOT EXISTS identity_candidates VARCHAR DEFAULT '[]'`,
+  // Persisted provenance for an Expected Part identified by AI, so the
+  // "AI suggested" badge (and its confidence/source caption) survives
+  // reopening the Listing later, not just the one poll that saw the job
+  // complete. Both null for a manually-entered row, or a row the user has
+  // since edited (updateRow in expected-parts-editor.tsx clears the
+  // client-side aiSuggested flag on first touch — persistListing then
+  // sends null here on the next save, same as a row that was never AI's).
+  `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS ai_confidence VARCHAR`,
+  `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS ai_source VARCHAR`,
 ];
 
 // -- Phase 4: indexes ------------------------------------------------------

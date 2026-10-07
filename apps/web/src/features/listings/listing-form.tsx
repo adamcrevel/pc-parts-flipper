@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import type { AiIdentifiedPart, CreateListingInput, ExpectedPart, ExpectedPartInput, ListingDetail, Source } from '@pc-parts-flipper/shared';
+import type { CreateListingInput, ExpectedPart, ExpectedPartInput, ListingDetail, Source } from '@pc-parts-flipper/shared';
 import { Button } from '@/components/ui/button';
 import { ErrorBanner } from '@/components/error-banner';
 import { ApiError } from '@/lib/api-client';
@@ -76,14 +76,20 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
     }
 
     // Field-by-field (never a spread of `row`): ExpectedPartRow carries
-    // client-only draft state (aiSuggested/aiConfidence/aiSource) that must
-    // not reach the backend. Blank brand/part number send as null rather
-    // than '' — "not identified" is an absence, not an empty string. Same
-    // for estimatedResaleValue: blank means "not yet priced" (every AI
-    // suggestion starts this way), sent as null rather than coercing it to 0.
-    // Untouched placeholder rows (Req 10's always-present blank starter,
-    // never typed into) are dropped here, not sent as an empty/invalid
-    // Expected Part — they're UI scaffolding, not this listing's data.
+    // client-only draft state (aiSuggested) that must not reach the
+    // backend as-is. Blank brand/part number send as null rather than ''
+    // — "not identified" is an absence, not an empty string. Same for
+    // estimatedResaleValue: blank means "not yet priced" (every AI
+    // suggestion starts this way), sent as null rather than coercing it
+    // to 0. aiConfidence/aiSource are sent only while the row is still
+    // marked an unreviewed AI suggestion (row.aiSuggested) — null the
+    // instant the user has touched it (updateRow in
+    // expected-parts-editor.tsx clears aiSuggested on first edit), so an
+    // edited row's badge correctly disappears on the next save too, not
+    // just locally. Untouched placeholder rows (Req 10's always-present
+    // blank starter, never typed into) are dropped here, not sent as an
+    // empty/invalid Expected Part — they're UI scaffolding, not this
+    // listing's data.
     const expectedParts: ExpectedPartInput[] = nextRows
       .filter((row) => !isUntouchedExpectedPartRow(row))
       .map((row) => ({
@@ -93,6 +99,8 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
         description: row.description.trim(),
         estimatedResaleValue: row.estimatedResaleValue.trim() === '' ? null : Number(row.estimatedResaleValue),
         identityCandidates: row.identityCandidates,
+        aiConfidence: row.aiSuggested ? (row.aiConfidence ?? null) : null,
+        aiSource: row.aiSuggested ? (row.aiSource ?? null) : null,
       }));
 
     const result = await onSubmit({
@@ -131,14 +139,15 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
   // Re-syncs Expected Parts from the server's authoritative set after an
   // identify-parts job completes. The server already persisted every
   // identified part the instant the job finished — apps/server/src/jobs/
-  // identifyPartsWorkerPool.ts inserts each one directly, independent of
-  // any browser being open — so this reflects what's actually saved
-  // instead of appending a local, not-yet-saved copy and submitting it on
-  // the UI's behalf. `justIdentified` is used only to tag whichever of the
-  // freshly fetched rows this job just added with the "AI suggested"
-  // badge, for review; the data itself is already safe either way.
-  function handlePartsSaved(expectedParts: ExpectedPart[], justIdentified: AiIdentifiedPart[]) {
-    setRows(expectedPartsToRows(expectedParts, justIdentified));
+  // identifyPartsWorkerPool.ts inserts each one directly, aiConfidence/
+  // aiSource included, independent of any browser being open — so this
+  // reflects what's actually saved instead of appending a local,
+  // not-yet-saved copy and submitting it on the UI's behalf. The "AI
+  // suggested" badge comes from that same persisted data (see
+  // listing-form-state.ts's expectedPartsToRows), so it survives this
+  // listing being closed and reopened later, not just this one completion.
+  function handlePartsSaved(expectedParts: ExpectedPart[]) {
+    setRows(expectedPartsToRows(expectedParts));
   }
 
   return (

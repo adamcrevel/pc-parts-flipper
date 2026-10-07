@@ -45,10 +45,21 @@ export async function runMigrations(connection: DuckDBConnection): Promise<void>
  * restores its data. Every step was proven first against a synthetic copy
  * of this exact schema (same columns, same FKs, same UNIQUE constraint).
  *
- * Runs after ALTER_STATEMENTS (brand/part_number/identity_candidates must
- * already exist on expected_parts to carry across) and before
- * INDEX_STATEMENTS (both tables' indexes are IF NOT EXISTS and freshly
- * recreated against the rebuilt tables every boot, same as always).
+ * Runs after ALTER_STATEMENTS (brand/part_number/identity_candidates/
+ * ai_confidence/ai_source must already exist on expected_parts to carry
+ * across) and before INDEX_STATEMENTS (both tables' indexes are IF NOT
+ * EXISTS and freshly recreated against the rebuilt tables every boot, same
+ * as always). Real production DBs already passed this rebuild once (a
+ * no-op on every later boot, see the guard below) and never notice a
+ * missed column here — only a *fresh* database (every test run, any new
+ * deploy environment) runs this path and would silently lose any column
+ * ALTER_STATEMENTS added after this function's own column lists were
+ * written, with a Binder Error surfacing on the first query that touches
+ * it. Add new expected_parts columns to expected_parts_new's CREATE TABLE
+ * and both column lists in the INSERT below too, not just ALTER_STATEMENTS
+ * (confirmed the hard way: ai_confidence/ai_source landed in
+ * ALTER_STATEMENTS without this update first, and every fresh-DB
+ * integration test immediately 500'd on the first Expected Part insert).
  *
  * Guarded by information_schema so the ten-statement sequence runs exactly
  * once, not on every boot like everything else in this file: a second run
@@ -76,11 +87,13 @@ async function migrateExpectedPartsNullablePrice(connection: DuckDBConnection): 
     updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
     brand VARCHAR,
     part_number VARCHAR,
-    identity_candidates VARCHAR DEFAULT '[]'
+    identity_candidates VARCHAR DEFAULT '[]',
+    ai_confidence VARCHAR,
+    ai_source VARCHAR
   )`);
   await connection.run(
-    `INSERT INTO expected_parts_new (id, listing_id, component_category, description, estimated_resale_value, created_at, updated_at, brand, part_number, identity_candidates)
-     SELECT id, listing_id, component_category, description, estimated_resale_value, created_at, updated_at, brand, part_number, identity_candidates FROM expected_parts`,
+    `INSERT INTO expected_parts_new (id, listing_id, component_category, description, estimated_resale_value, created_at, updated_at, brand, part_number, identity_candidates, ai_confidence, ai_source)
+     SELECT id, listing_id, component_category, description, estimated_resale_value, created_at, updated_at, brand, part_number, identity_candidates, ai_confidence, ai_source FROM expected_parts`,
   );
 
   await connection.run(`CREATE TABLE teardown_results_backup (

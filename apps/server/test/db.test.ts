@@ -77,9 +77,10 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'external_source',
     'external_item_id',
   ],
-  // brand/part_number (brand-model feature) were added via ALTER_STATEMENTS
-  // after the original CREATE TABLE, so DuckDB reports them last rather than
-  // beside component_category where the TypeScript row type places them.
+  // brand/part_number (brand-model feature) and ai_confidence/ai_source
+  // (AI-suggestion provenance) were added via ALTER_STATEMENTS after the
+  // original CREATE TABLE, so DuckDB reports them last rather than beside
+  // component_category where the TypeScript row type places them.
   expected_parts: [
     'id',
     'listing_id',
@@ -91,6 +92,8 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'brand',
     'part_number',
     'identity_candidates',
+    'ai_confidence',
+    'ai_source',
   ],
   purchases: ['id', 'listing_id', 'status', 'price_paid', 'purchase_date', 'created_at', 'updated_at'],
   teardown_results: [
@@ -448,6 +451,8 @@ describe('query functions round-trip data through the full lifecycle', () => {
       description: 'Pulled from a working machine',
       estimatedResaleValue: 60,
       identityCandidates: [],
+      aiConfidence: null,
+      aiSource: null,
     });
     expect(expectedPart.estimatedResaleValue).toBe(60);
     // An empty identityCandidates input must persist and round-trip as `[]`
@@ -616,6 +621,8 @@ describe('UNIQUE constraints back the database-level routing guards', () => {
       description: 'i5-8500',
       estimatedResaleValue: 60,
       identityCandidates: [],
+      aiConfidence: null,
+      aiSource: null,
     });
     const purchase = await db.createPurchase({ listingId: listing.id, pricePaid: 100, purchaseDate: '2024-04-02' });
 
@@ -686,6 +693,8 @@ describe('Expected Part brand/part number', () => {
       description: 'Two DDR4 DIMMs, capacity not legible',
       estimatedResaleValue: 30,
       identityCandidates: [],
+      aiConfidence: null,
+      aiSource: null,
     });
     const fetched = await db.getExpectedPartById(created.id);
     expect(fetched?.brand).toBeNull();
@@ -702,6 +711,8 @@ describe('Expected Part brand/part number', () => {
       description: 'Unidentified card',
       estimatedResaleValue: 150,
       identityCandidates: [],
+      aiConfidence: null,
+      aiSource: null,
     });
 
     // Filling the fields in later is the real editing flow: a part the user
@@ -762,6 +773,8 @@ describe('identity_candidates round-trips through expected_parts and parts (T2)'
       description: 'Ambiguous GPU, two plausible SKUs',
       estimatedResaleValue: 200,
       identityCandidates: candidates,
+      aiConfidence: null,
+      aiSource: null,
     });
     expect(created.identityCandidates).toEqual(candidates);
 
@@ -782,6 +795,8 @@ describe('identity_candidates round-trips through expected_parts and parts (T2)'
       description: 'Ambiguous GPU',
       estimatedResaleValue: 200,
       identityCandidates: [{ brand: 'AMD', partNumber: 'RX 6700' }],
+      aiConfidence: null,
+      aiSource: null,
     });
 
     const updated = await db.updateExpectedPart(created.id, { identityCandidates: candidates });

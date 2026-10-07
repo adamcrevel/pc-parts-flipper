@@ -1,12 +1,14 @@
 // Request-body validation for Listing create/update (Req 2, 13). Split out of
 // listings.ts to keep that file under the ~200-line standing check; imported
 // only by listings.ts, never a route-registration entry point itself.
-import type { ComponentCategory, ExpectedPartInput, IdentityCandidate, ListingStatus } from '@pc-parts-flipper/shared';
+import type { AiPartConfidence, AiPartSource, ComponentCategory, ExpectedPartInput, IdentityCandidate, ListingStatus } from '@pc-parts-flipper/shared';
 import { AppError } from '../error-handler.js';
 
 // The only values DuckDB's component_category/listing_status ENUM columns
 // accept; mirrors apps/server/src/db/types.ts's unions (assumption A8, Req 4).
 export const VALID_CATEGORIES: readonly ComponentCategory[] = ['CPU', 'GPU', 'Motherboard', 'RAM', 'Storage', 'PSU', 'Case', 'Cooler', 'Other'];
+const VALID_AI_CONFIDENCES: readonly AiPartConfidence[] = ['high', 'medium', 'low'];
+const VALID_AI_SOURCES: readonly AiPartSource[] = ['text', 'image', 'both'];
 export const VALID_STATUSES: readonly ListingStatus[] = ['open', 'accepted', 'rejected'];
 
 // Loosely-typed shapes of untrusted request input, confirmed by the validate
@@ -18,6 +20,8 @@ interface ExpectedPartRequestBody {
   description?: unknown;
   estimatedResaleValue?: unknown;
   identityCandidates?: unknown;
+  aiConfidence?: unknown;
+  aiSource?: unknown;
 }
 export interface ListingRequestBody {
   sourceId?: unknown;
@@ -80,6 +84,17 @@ function requireNonNegativeNumberOrNull(value: unknown, fieldName: string): numb
     throw new AppError(`${fieldName} must be a non-negative number`, 400);
   }
   return num;
+}
+
+/** Throws AppError(400) unless `value` is null/undefined (meaning "not AI-suggested") or one of `validValues`. Shared by aiConfidence/aiSource below — each has its own small fixed vocabulary. */
+function validateOptionalEnum<T extends string>(value: unknown, validValues: readonly T[], fieldName: string): T | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value === 'string' && (validValues as readonly string[]).includes(value)) {
+    return value as T;
+  }
+  throw new AppError(`${fieldName} must be one of: ${validValues.join(', ')}`, 400);
 }
 
 /** Trims `value` and throws AppError(400) unless it parses as a real date. */
@@ -163,6 +178,8 @@ function validateExpectedPartInput(raw: unknown, index: number): ExpectedPartInp
     description,
     estimatedResaleValue: requireNonNegativeNumberOrNull(body.estimatedResaleValue, `expectedParts[${index}].estimatedResaleValue`),
     identityCandidates: validateIdentityCandidates(body.identityCandidates, index),
+    aiConfidence: validateOptionalEnum(body.aiConfidence, VALID_AI_CONFIDENCES, `expectedParts[${index}].aiConfidence`),
+    aiSource: validateOptionalEnum(body.aiSource, VALID_AI_SOURCES, `expectedParts[${index}].aiSource`),
   };
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AiIdentifiedPart, ExpectedPart, ListingDetail, IdentifyPartsJob, IdentifyPartsJobStage } from '@pc-parts-flipper/shared';
+import type { ExpectedPart, ListingDetail, IdentifyPartsJob, IdentifyPartsJobStage } from '@pc-parts-flipper/shared';
 import { Button } from '@/components/ui/button';
 import { ErrorBanner } from '@/components/error-banner';
 import { InfoBanner } from '@/components/info-banner';
@@ -23,14 +23,14 @@ interface IdentifyPartsButtonProps {
   // `complexity` rule enforces it.
   listing: ListingDetail | undefined;
   // Called once a completed job's parts are confirmed saved server-side
-  // (apps/server/src/jobs/identifyPartsWorkerPool.ts persists them the
-  // instant the job finishes — this component never saves anything
-  // itself). `expectedParts` is the Listing's full, freshly re-fetched
-  // set; `justIdentified` is the same job's own parts, passed alongside
-  // only so the parent can tag which rows are new for review. The parent
-  // re-syncs its own editor rows from `expectedParts` — this component
-  // never owns or replaces those rows directly.
-  onPartsSaved: (expectedParts: ExpectedPart[], justIdentified: AiIdentifiedPart[]) => void;
+  // (apps/server/src/jobs/identifyPartsWorkerPool.ts persists them,
+  // aiConfidence/aiSource included, the instant the job finishes — this
+  // component never saves anything itself). `expectedParts` is the
+  // Listing's full, freshly re-fetched set, already carrying whichever
+  // rows should show the "AI suggested" badge (ExpectedPart.aiConfidence/
+  // aiSource). The parent re-syncs its own editor rows from it — this
+  // component never owns or replaces those rows directly.
+  onPartsSaved: (expectedParts: ExpectedPart[]) => void;
 }
 
 /**
@@ -78,16 +78,17 @@ export function IdentifyPartsButton({ listing, onPartsSaved }: IdentifyPartsButt
 
   // Applies a terminal job result (success or failure) and marks it as
   // delivered. On success, re-fetches the Listing rather than trusting the
-  // job's own copy of the parts: the worker pool already persisted them
-  // (apps/server/src/jobs/identifyPartsWorkerPool.ts), so this is reading
-  // back what's actually saved, not submitting anything itself. Requires a
-  // saved `listing` prop, which is always true here — this function is
-  // only ever reached once the save-first gate below has already passed.
+  // job's own copy of the parts: the worker pool already persisted them,
+  // badge fields included (apps/server/src/jobs/identifyPartsWorkerPool.ts),
+  // so this is reading back what's actually saved, not submitting anything
+  // itself. Requires a saved `listing` prop, which is always true here —
+  // this function is only ever reached once the save-first gate below has
+  // already passed.
   async function applyTerminalJob(terminalJob: IdentifyPartsJob) {
     try {
       if (terminalJob.stage === 'completed' && terminalJob.parts && listing) {
         const refreshed = await fetchListing(listing.id);
-        onPartsSaved(refreshed.expectedParts, terminalJob.parts);
+        onPartsSaved(refreshed.expectedParts);
         if (terminalJob.notes && terminalJob.notes.trim().length > 0) {
           setNotes(terminalJob.notes);
         }

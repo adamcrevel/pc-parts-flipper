@@ -4,7 +4,7 @@
 // and the Req 3 computed comparison the HTTP layer adds on top — this file
 // lives here (not apps/server) because apps/web may never import apps/server
 // directly (standing check).
-import type { IdentityCandidate } from './aiIdentification.js';
+import type { AiPartConfidence, AiPartSource, IdentityCandidate } from './aiIdentification.js';
 
 /** Fixed component category list (assumption A8), not user-configurable. */
 export type ComponentCategory =
@@ -40,6 +40,13 @@ export interface ExpectedPart {
   description: string;
   estimatedResaleValue: number | null;
   identityCandidates: IdentityCandidate[];
+  // Set only for a part identify-parts added and the user hasn't edited
+  // since (apps/server/src/jobs/identifyPartsWorkerPool.ts writes these
+  // the moment a job completes); null for a manually-entered row, or one
+  // the user has since touched. Both present together or both null —
+  // never one without the other.
+  aiConfidence?: AiPartConfidence | null;
+  aiSource?: AiPartSource | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -103,6 +110,15 @@ export interface ExpectedPartInput {
   description: string;
   estimatedResaleValue: number | null;
   identityCandidates: IdentityCandidate[];
+  // Carried through from the row's own aiConfidence/aiSource only while
+  // it's still marked an unreviewed AI suggestion (row.aiSuggested); null
+  // otherwise, including once the user has edited the row — see
+  // ExpectedPart's doc comment above. Required (unlike ExpectedPart's own
+  // optional pair): every writer of this request-body shape is new code
+  // in this same change, so there's no legacy caller to stay compatible
+  // with, and a required field catches a writer that forgot to decide.
+  aiConfidence: AiPartConfidence | null;
+  aiSource: AiPartSource | null;
 }
 
 /**

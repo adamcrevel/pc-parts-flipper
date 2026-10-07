@@ -1,5 +1,5 @@
 // Typed CRUD for the `expected_parts` table (Req 2-3, 6).
-import type { IdentityCandidate } from '@pc-parts-flipper/shared';
+import type { AiPartConfidence, AiPartSource, IdentityCandidate } from '@pc-parts-flipper/shared';
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
 import { buildSetClause, toNullableNumber } from '../sqlHelpers.js';
@@ -9,6 +9,9 @@ import type { ComponentCategory, ExpectedPart } from '../types.js';
  * Fields the caller supplies when adding an Expected Part to a Listing.
  * `brand`/`partNumber` are nullable on purpose: a component the user (or the
  * AI identifier) could not pin down is stored blank, never guessed.
+ * `aiConfidence`/`aiSource` are likewise required-but-nullable: both null
+ * for a manual row, both set for one identify-parts just added (see
+ * ExpectedPart's doc comment in packages/shared/src/listings.ts).
  */
 export interface CreateExpectedPartInput {
   listingId: string;
@@ -18,6 +21,8 @@ export interface CreateExpectedPartInput {
   description: string;
   estimatedResaleValue: number | null;
   identityCandidates: IdentityCandidate[];
+  aiConfidence: AiPartConfidence | null;
+  aiSource: AiPartSource | null;
 }
 
 /** Fields that may be edited on an existing Expected Part; omitted keys are left unchanged. */
@@ -28,6 +33,8 @@ export interface UpdateExpectedPartInput {
   description?: string;
   estimatedResaleValue?: number | null;
   identityCandidates?: IdentityCandidate[];
+  aiConfidence?: AiPartConfidence | null;
+  aiSource?: AiPartSource | null;
 }
 
 // Converts one raw JSON row into the camelCase ExpectedPart shape.
@@ -41,6 +48,8 @@ function mapRow(row: Record<string, unknown>): ExpectedPart {
     description: row.description as string,
     estimatedResaleValue: toNullableNumber(row.estimated_resale_value as string | null),
     identityCandidates: JSON.parse(row.identity_candidates as string) as IdentityCandidate[],
+    aiConfidence: (row.ai_confidence as AiPartConfidence | null) ?? null,
+    aiSource: (row.ai_source as AiPartSource | null) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -50,8 +59,8 @@ function mapRow(row: Record<string, unknown>): ExpectedPart {
 export async function createExpectedPart(input: CreateExpectedPartInput): Promise<ExpectedPart> {
   const connection = await getConnection();
   const reader = await connection.runAndReadAll(
-    `INSERT INTO expected_parts (id, listing_id, component_category, brand, part_number, description, estimated_resale_value, identity_candidates)
-     VALUES ($id, $listing_id, $component_category, $brand, $part_number, $description, $estimated_resale_value, $identity_candidates)
+    `INSERT INTO expected_parts (id, listing_id, component_category, brand, part_number, description, estimated_resale_value, identity_candidates, ai_confidence, ai_source)
+     VALUES ($id, $listing_id, $component_category, $brand, $part_number, $description, $estimated_resale_value, $identity_candidates, $ai_confidence, $ai_source)
      RETURNING *`,
     {
       id: newId(),
@@ -62,6 +71,8 @@ export async function createExpectedPart(input: CreateExpectedPartInput): Promis
       description: input.description,
       estimated_resale_value: input.estimatedResaleValue,
       identity_candidates: JSON.stringify(input.identityCandidates),
+      ai_confidence: input.aiConfidence,
+      ai_source: input.aiSource,
     },
   );
   return mapRow(reader.getRowObjectsJson()[0]);
