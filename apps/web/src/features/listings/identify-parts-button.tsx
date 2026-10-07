@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AiIdentifiedPart, ListingDetail, IdentifyPartsJob, IdentifyPartsJobStage } from '@pc-parts-flipper/shared';
+import type { AiIdentifiedPart, ExpectedPart, ListingDetail, IdentifyPartsJob, IdentifyPartsJobStage } from '@pc-parts-flipper/shared';
 import { Button } from '@/components/ui/button';
 import { ErrorBanner } from '@/components/error-banner';
 import { InfoBanner } from '@/components/info-banner';
@@ -8,6 +8,7 @@ import {
   enqueueIdentifyPartsJob,
   fetchIdentifyPartsJob,
   fetchLatestIdentifyPartsJob,
+  fetchListing,
   ackIdentifyPartsJob,
 } from '@/features/listings/listings-api';
 
@@ -21,29 +22,35 @@ interface IdentifyPartsButtonProps {
   // Keeping it there is a convention this codebase watches by hand; no eslint
   // `complexity` rule enforces it.
   listing: ListingDetail | undefined;
-  // Receives the parts the model proposed, in response order. The parent
-  // appends them to the Expected Parts editor's existing rows — this
-  // component deliberately never owns or replaces those rows.
-  onIdentified: (parts: AiIdentifiedPart[]) => void;
+  // Called once a completed job's parts are confirmed saved server-side
+  // (apps/server/src/jobs/identifyPartsWorkerPool.ts persists them the
+  // instant the job finishes — this component never saves anything
+  // itself). `expectedParts` is the Listing's full, freshly re-fetched
+  // set; `justIdentified` is the same job's own parts, passed alongside
+  // only so the parent can tag which rows are new for review. The parent
+  // re-syncs its own editor rows from `expectedParts` — this component
+  // never owns or replaces those rows directly.
+  onPartsSaved: (expectedParts: ExpectedPart[], justIdentified: AiIdentifiedPart[]) => void;
 }
 
 /**
  * On-demand "Identify Parts" control for an existing Listing: enqueues an
  * async Identify-Parts job via `POST /api/listings/:id/identify-parts`, then
  * polls the job by id every 2 seconds to track its progress through the queue
- * and pipeline stages. When the job completes, applies its results (or error)
- * and hands suggested parts back to ListingForm to append as draft rows.
- * Owns its own job tracking, in-flight/notes/error state the same way
- * PhotoUpload does, and like PhotoUpload it needs a saved Listing (the route
- * reads that Listing's stored photos) — so with no id yet it renders a
- * save-first hint instead.
+ * and pipeline stages. The job's identified parts are saved server-side the
+ * moment it completes — never by this component — so on completion this
+ * only re-fetches the Listing and hands its authoritative Expected Parts
+ * back to ListingForm to display. Owns its own job tracking, in-flight/
+ * notes/error state the same way PhotoUpload does, and like PhotoUpload it
+ * needs a saved Listing (the route reads that Listing's stored photos) — so
+ * with no id yet it renders a save-first hint instead.
  *
  * On mount, resumes any non-terminal job already in progress for this Listing,
  * or applies any terminal job not yet delivered to the caller. The queue
  * ensures only one job runs per Listing at a time; a 409 conflict on enqueue
  * is caught and recovered by fetching the active job instead.
  */
-export function IdentifyPartsButton({ listing, onIdentified }: IdentifyPartsButtonProps) {
+export function IdentifyPartsButton({ listing, onPartsSaved }: IdentifyPartsButtonProps) {
   const [job, setJob] = useState<IdentifyPartsJob | null>(null);
   const [identifyError, setIdentifyError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
@@ -69,11 +76,18 @@ export function IdentifyPartsButton({ listing, onIdentified }: IdentifyPartsButt
     }
   }
 
-  // Applies a terminal job result (success or failure) and marks it as delivered.
+  // Applies a terminal job result (success or failure) and marks it as
+  // delivered. On success, re-fetches the Listing rather than trusting the
+  // job's own copy of the parts: the worker pool already persisted them
+  // (apps/server/src/jobs/identifyPartsWorkerPool.ts), so this is reading
+  // back what's actually saved, not submitting anything itself. Requires a
+  // saved `listing` prop, which is always true here — this function is
+  // only ever reached once the save-first gate below has already passed.
   async function applyTerminalJob(terminalJob: IdentifyPartsJob) {
     try {
-      if (terminalJob.stage === 'completed' && terminalJob.parts) {
-        onIdentified(terminalJob.parts);
+      if (terminalJob.stage === 'completed' && terminalJob.parts && listing) {
+        const refreshed = await fetchListing(listing.id);
+        onPartsSaved(refreshed.expectedParts, terminalJob.parts);
         if (terminalJob.notes && terminalJob.notes.trim().length > 0) {
           setNotes(terminalJob.notes);
         }

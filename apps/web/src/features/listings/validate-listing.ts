@@ -51,11 +51,37 @@ export function validateListingFields(
 }
 
 /**
+ * True for a row that still exactly matches emptyExpectedPartRow()'s shape
+ * — the always-present placeholder every form starts with (Req 10:
+ * rows.length is never 0) or "Add Part" seeds, never actually typed into.
+ * Distinct from a row the user started filling in but left incomplete
+ * (e.g. picked a category, typed nothing else): that one is a real
+ * validation failure and must still surface as one. Only a row nobody
+ * touched at all is skipped, so an unused placeholder never blocks a save
+ * the way a genuinely incomplete row should.
+ */
+export function isUntouchedExpectedPartRow(row: ExpectedPartRow): boolean {
+  return (
+    row.componentCategory === '' &&
+    row.brand.trim() === '' &&
+    row.partNumber.trim() === '' &&
+    row.description.trim() === '' &&
+    row.estimatedResaleValue.trim() === ''
+  );
+}
+
+/**
  * Validates every Expected Parts row (Requirement 13), returning one error
- * object per row (empty object when that row is valid).
+ * object per row (empty object when that row is valid, or when it's a
+ * still-untouched placeholder — see isUntouchedExpectedPartRow). Returns
+ * one entry per input row, in order, so callers can index it against
+ * `rows` directly for display.
  */
 export function validateExpectedPartRows(rows: ExpectedPartRow[]): ExpectedPartRowErrors[] {
   return rows.map((row) => {
+    if (isUntouchedExpectedPartRow(row)) {
+      return {};
+    }
     const errors: ExpectedPartRowErrors = {};
     if (row.componentCategory === '') errors.componentCategory = 'Category is required.';
     if (row.description.trim().length === 0) errors.description = 'Description is required.';

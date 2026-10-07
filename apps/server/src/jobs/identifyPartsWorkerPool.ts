@@ -15,13 +15,14 @@ import { logger } from '../logger.js';
 import {
   claimNextQueuedJob,
   completeJob,
+  createExpectedPart,
   failJob,
   resetOrphanedJobsToQueued,
   updateJobStage,
   getListingById,
 } from '../db/index.js';
 import { identifyListingParts } from '../ai/partIdentification.js';
-import type { IdentifyPartsJob } from '@pc-parts-flipper/shared';
+import type { IdentifyPartsJob, IdentifyPartsResponse } from '@pc-parts-flipper/shared';
 
 /**
  * Maximum number of identify-parts jobs to process concurrently, parsed
@@ -71,13 +72,44 @@ async function pump(): Promise<void> {
 }
 
 /**
+ * Inserts every part `result` identified as a real Expected Part on the
+ * Listing, directly — not routed through any client. Saving an
+ * identify-parts job's result is a server-side side effect of the job
+ * completing, same as any other background job writing its own output;
+ * it must never depend on a browser being open (or ever reopened) to
+ * notice the job finished and submit a save on its behalf. Estimated
+ * resale value is always null here: the model is never asked to price
+ * parts, and that's a real "not yet priced" state the column accepts
+ * (nullable), not a placeholder 0.
+ */
+async function persistIdentifiedParts(listingId: string, result: IdentifyPartsResponse): Promise<void> {
+  await Promise.all(
+    result.parts.map((part) =>
+      createExpectedPart({
+        listingId,
+        componentCategory: part.category,
+        brand: part.brand,
+        partNumber: part.partNumber,
+        description: part.description,
+        estimatedResaleValue: null,
+        identityCandidates: part.identityCandidates,
+      }),
+    ),
+  );
+}
+
+/**
  * Processes a single identify-parts job: looks up its listing, runs the AI
  * identification two-pass flow (with stage callbacks wired to
- * updateJobStage), and either completes the job with the result or fails
- * it with an error message. Always decrements activeCount and calls pump
- * again in a finally block, so a freed slot tries to fill itself
- * immediately. If the listing is deleted (getListingById returns null), fails
- * the job without calling identifyListingParts.
+ * updateJobStage), persists every identified part as a real Expected Part
+ * (persistIdentifiedParts, above — happens here, unconditionally, not left
+ * to the UI), and either completes the job with the result or fails it
+ * with an error message. If persistence itself throws, the job is failed
+ * (not completed) rather than reporting success over data that didn't
+ * actually save. Always decrements activeCount and calls pump again in a
+ * finally block, so a freed slot tries to fill itself immediately. If the
+ * listing is deleted (getListingById returns null), fails the job without
+ * calling identifyListingParts.
  */
 async function processJob(job: IdentifyPartsJob): Promise<void> {
   try {
@@ -90,6 +122,7 @@ async function processJob(job: IdentifyPartsJob): Promise<void> {
     const result = await identifyListingParts(listing, undefined, (stage) =>
       updateJobStage(job.id, stage),
     );
+    await persistIdentifiedParts(job.listingId, result);
     await completeJob(job.id, result);
   } catch (err) {
     // Derive error message the same way other error paths in this codebase

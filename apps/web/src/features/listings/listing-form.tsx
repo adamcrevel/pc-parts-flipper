@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import type { AiIdentifiedPart, CreateListingInput, ExpectedPartInput, ListingDetail, Source } from '@pc-parts-flipper/shared';
+import type { AiIdentifiedPart, CreateListingInput, ExpectedPart, ExpectedPartInput, ListingDetail, Source } from '@pc-parts-flipper/shared';
 import { Button } from '@/components/ui/button';
 import { ErrorBanner } from '@/components/error-banner';
 import { ApiError } from '@/lib/api-client';
@@ -8,9 +8,9 @@ import { ExpectedPartsEditor, type ExpectedPartRow, type ExpectedPartRowErrors }
 import { ListingComparisonSummary } from '@/features/listings/listing-comparison-summary';
 import { ListingFields } from '@/features/listings/listing-fields';
 import { IdentifyPartsButton } from '@/features/listings/identify-parts-button';
-import { aiPartToExpectedPartRow, initialExpectedPartRows, initialListingFormFields } from '@/features/listings/listing-form-state';
+import { expectedPartsToRows, initialExpectedPartRows, initialListingFormFields } from '@/features/listings/listing-form-state';
 import { PhotoUpload } from '@/features/listings/photo-upload';
-import { validateExpectedPartRows, validateListingFields, type ListingFieldErrors } from '@/features/listings/validate-listing';
+import { isUntouchedExpectedPartRow, validateExpectedPartRows, validateListingFields, type ListingFieldErrors } from '@/features/listings/validate-listing';
 
 interface ListingFormProps {
   initialValue?: ListingDetail;
@@ -81,14 +81,19 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
     // than '' — "not identified" is an absence, not an empty string. Same
     // for estimatedResaleValue: blank means "not yet priced" (every AI
     // suggestion starts this way), sent as null rather than coercing it to 0.
-    const expectedParts: ExpectedPartInput[] = nextRows.map((row) => ({
-      componentCategory: row.componentCategory as ExpectedPartInput['componentCategory'],
-      brand: row.brand.trim() || null,
-      partNumber: row.partNumber.trim() || null,
-      description: row.description.trim(),
-      estimatedResaleValue: row.estimatedResaleValue.trim() === '' ? null : Number(row.estimatedResaleValue),
-      identityCandidates: row.identityCandidates,
-    }));
+    // Untouched placeholder rows (Req 10's always-present blank starter,
+    // never typed into) are dropped here, not sent as an empty/invalid
+    // Expected Part — they're UI scaffolding, not this listing's data.
+    const expectedParts: ExpectedPartInput[] = nextRows
+      .filter((row) => !isUntouchedExpectedPartRow(row))
+      .map((row) => ({
+        componentCategory: row.componentCategory as ExpectedPartInput['componentCategory'],
+        brand: row.brand.trim() || null,
+        partNumber: row.partNumber.trim() || null,
+        description: row.description.trim(),
+        estimatedResaleValue: row.estimatedResaleValue.trim() === '' ? null : Number(row.estimatedResaleValue),
+        identityCandidates: row.identityCandidates,
+      }));
 
     const result = await onSubmit({
       sourceId: fields.sourceId,
@@ -123,35 +128,17 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
     onSaved(updated);
   }
 
-  // Appends the AI's suggestions as extra rows, then immediately persists
-  // the Listing the same way an explicit Save would. Identification now
-  // runs on a background queue and can finish long after the user has
-  // moved on to something else, so applying the suggestions to local state
-  // alone (the old behavior) left them silently lost the moment the user
-  // closed the listing without clicking Save by hand. A not-yet-priced
-  // suggested part now saves fine (estimatedResaleValue is nullable), so
-  // this succeeds in the common case, not just when every row happens to
-  // already have a price. Falls back to leaving the suggestions as unsaved
-  // draft rows (the old behavior) only if the listing currently has
-  // genuinely invalid fields/rows (e.g. a blank title mid-edit) — never
-  // saves broken data or silently discards an in-progress edit the user
-  // hasn't submitted themselves.
-  function handlePartsIdentified(parts: AiIdentifiedPart[]) {
-    const nextRows = [...rows, ...parts.map(aiPartToExpectedPartRow)];
-    setRows(nextRows);
-    persistListing(nextRows)
-      .then((ok) => {
-        if (!ok) {
-          setSubmitError('AI-suggested parts were added but could not be auto-saved — the listing has invalid fields. Fix them and click Save.');
-        }
-      })
-      .catch((err) => {
-        setSubmitError(
-          err instanceof ApiError
-            ? `AI-suggested parts were added but auto-save failed: ${err.message}`
-            : 'AI-suggested parts were added but auto-save failed — click Save to retry.',
-        );
-      });
+  // Re-syncs Expected Parts from the server's authoritative set after an
+  // identify-parts job completes. The server already persisted every
+  // identified part the instant the job finished — apps/server/src/jobs/
+  // identifyPartsWorkerPool.ts inserts each one directly, independent of
+  // any browser being open — so this reflects what's actually saved
+  // instead of appending a local, not-yet-saved copy and submitting it on
+  // the UI's behalf. `justIdentified` is used only to tag whichever of the
+  // freshly fetched rows this job just added with the "AI suggested"
+  // badge, for review; the data itself is already safe either way.
+  function handlePartsSaved(expectedParts: ExpectedPart[], justIdentified: AiIdentifiedPart[]) {
+    setRows(expectedPartsToRows(expectedParts, justIdentified));
   }
 
   return (
@@ -182,7 +169,7 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
       <ExpectedPartsEditor rows={rows} rowErrors={rowErrors} onChange={setRows} />
 
       {/* Takes `saved` as-is and renders its own save-first hint while it's undefined, so there's no create/edit branch to carry here. */}
-      <IdentifyPartsButton listing={saved} onIdentified={handlePartsIdentified} />
+      <IdentifyPartsButton listing={saved} onPartsSaved={handlePartsSaved} />
 
       <ListingComparisonSummary
         totalExpectedResaleValue={totalExpectedResaleValue}

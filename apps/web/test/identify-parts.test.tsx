@@ -24,6 +24,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const enqueueIdentifyPartsJobMock = vi.fn();
 const fetchIdentifyPartsJobMock = vi.fn();
 const fetchLatestIdentifyPartsJobMock = vi.fn();
+const fetchListingMock = vi.fn();
 const ackIdentifyPartsJobMock = vi.fn();
 const uploadListingPhotosMock = vi.fn();
 
@@ -31,6 +32,7 @@ vi.mock('@/features/listings/listings-api', () => ({
   enqueueIdentifyPartsJob: (...args: unknown[]) => enqueueIdentifyPartsJobMock(...args),
   fetchIdentifyPartsJob: (...args: unknown[]) => fetchIdentifyPartsJobMock(...args),
   fetchLatestIdentifyPartsJob: (...args: unknown[]) => fetchLatestIdentifyPartsJobMock(...args),
+  fetchListing: (...args: unknown[]) => fetchListingMock(...args),
   ackIdentifyPartsJob: (...args: unknown[]) => ackIdentifyPartsJobMock(...args),
   uploadListingPhotos: (...args: unknown[]) => uploadListingPhotosMock(...args),
 }));
@@ -92,6 +94,43 @@ const twoPartResponse: IdentifyPartsResponse = {
     { category: 'PSU', brand: null, partNumber: null, description: 'Corsair RM750', confidence: 'medium', source: 'text' },
   ],
   notes: 'These look like stock photos, not the actual item.',
+};
+
+// What `fetchListing` returns once the server has already persisted
+// `twoPartResponse.parts` into `expected_parts` — real rows with ids, on
+// top of the pre-existing hand-entered one. The identify-parts flow never
+// submits anything itself; it reads this back after a job completes
+// (apps/server/src/jobs/identifyPartsWorkerPool.ts is what actually wrote
+// these rows, server-side, independent of any client).
+const listingAfterIdentification: ListingDetail = {
+  ...savedListing,
+  expectedParts: [
+    ...savedListing.expectedParts,
+    {
+      id: 'part-2',
+      listingId: 'listing-1',
+      componentCategory: 'GPU',
+      brand: 'NVIDIA',
+      partNumber: 'RTX 3070',
+      description: 'triple-fan cooler visible',
+      estimatedResaleValue: null,
+      identityCandidates: [],
+      createdAt: '2024-01-01',
+      updatedAt: '2024-01-01',
+    },
+    {
+      id: 'part-3',
+      listingId: 'listing-1',
+      componentCategory: 'PSU',
+      brand: null,
+      partNumber: null,
+      description: 'Corsair RM750',
+      estimatedResaleValue: null,
+      identityCandidates: [],
+      createdAt: '2024-01-01',
+      updatedAt: '2024-01-01',
+    },
+  ],
 };
 
 // Sample job at various stages for testing.
@@ -170,6 +209,7 @@ afterEach(() => {
   enqueueIdentifyPartsJobMock.mockReset();
   fetchIdentifyPartsJobMock.mockReset();
   fetchLatestIdentifyPartsJobMock.mockReset();
+  fetchListingMock.mockReset();
   ackIdentifyPartsJobMock.mockReset();
   uploadListingPhotosMock.mockReset();
 });
@@ -336,6 +376,7 @@ describe('Identify Parts results', () => {
     fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
     enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
     fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes));
+    fetchListingMock.mockResolvedValue(listingAfterIdentification);
 
     const el = await mountForm(savedListing);
 
@@ -367,6 +408,7 @@ describe('Identify Parts results', () => {
     fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
     enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
     fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes));
+    fetchListingMock.mockResolvedValue(listingAfterIdentification);
 
     const el = await mountForm(savedListing);
 
@@ -392,6 +434,7 @@ describe('Identify Parts results', () => {
     fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
     enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
     fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes));
+    fetchListingMock.mockResolvedValue(listingAfterIdentification);
 
     const el = await mountForm(savedListing);
 
@@ -414,6 +457,7 @@ describe('Identify Parts results', () => {
     fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
     enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
     fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, ''));
+    fetchListingMock.mockResolvedValue(listingAfterIdentification);
 
     const el = await mountForm(savedListing);
 
@@ -465,6 +509,7 @@ describe('Identify Parts 409 conflict recovery', () => {
     const activeJob = makeIdentifyingJob();
     fetchLatestIdentifyPartsJobMock.mockResolvedValueOnce(activeJob);
     fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes));
+    fetchListingMock.mockResolvedValue(listingAfterIdentification);
 
     const el = await mountForm(savedListing);
     const button = findIdentifyButton(el)!;
@@ -483,7 +528,8 @@ describe('Identify Parts 409 conflict recovery', () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
 
-    // Job should be applied with parts appended.
+    // Job completion re-fetches the Listing and reflects what the server
+    // already saved, not a locally reconstructed copy.
     expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
     expect(ackIdentifyPartsJobMock).toHaveBeenCalledTimes(1);
   });
@@ -494,6 +540,7 @@ describe('Identify Parts mount resume', () => {
     const existingJob = makeIdentifyingJob();
     fetchLatestIdentifyPartsJobMock.mockResolvedValue(existingJob);
     fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes));
+    fetchListingMock.mockResolvedValue(listingAfterIdentification);
 
     const el = await mountForm(savedListing);
 
@@ -505,7 +552,8 @@ describe('Identify Parts mount resume', () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
 
-    // Job should be applied with parts appended.
+    // Job completion re-fetches the Listing and reflects what the server
+    // already saved, not a locally reconstructed copy.
     expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
     expect(ackIdentifyPartsJobMock).toHaveBeenCalledTimes(1);
   });
@@ -513,6 +561,7 @@ describe('Identify Parts mount resume', () => {
   it('applies a terminal undelivered job found on mount without polling', async () => {
     const terminalJob = makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes);
     fetchLatestIdentifyPartsJobMock.mockResolvedValue(terminalJob);
+    fetchListingMock.mockResolvedValue(listingAfterIdentification);
 
     const el = await mountForm(savedListing);
 
@@ -522,61 +571,54 @@ describe('Identify Parts mount resume', () => {
     expect(fetchIdentifyPartsJobMock).not.toHaveBeenCalled();
   });
 
-  it('does not re-apply or re-acknowledge a terminal job already marked delivered (Req 11)', async () => {
+  it('does not re-apply, re-fetch, or re-acknowledge a terminal job already marked delivered (Req 11)', async () => {
     // The job completed and was applied on a prior mount (or the same
     // mount, earlier) — the server already has `delivered: true` for it.
-    // Reopening the listing must not append the same two suggestions
-    // again, and must not ack a job that was already acked.
+    // Reopening the listing must not re-fetch or re-display the same two
+    // suggestions again, and must not ack a job that was already acked.
     const alreadyDeliveredJob = { ...makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes), delivered: true };
     fetchLatestIdentifyPartsJobMock.mockResolvedValue(alreadyDeliveredJob);
 
     const el = await mountForm(savedListing);
 
     // Only the one hand-entered row from before — the two AI suggestions
-    // from this already-delivered job were never appended a second time.
+    // from this already-delivered job were never re-displayed a second time.
     expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X']);
+    expect(fetchListingMock).not.toHaveBeenCalled();
     expect(ackIdentifyPartsJobMock).not.toHaveBeenCalled();
     expect(fetchIdentifyPartsJobMock).not.toHaveBeenCalled();
   });
 });
 
-describe('Identify Parts results reach the backend, with draft-only fields stripped', () => {
-  it('auto-saves the AI-originated rows as plain ExpectedPartInputs the moment the job completes, with no client-only draft fields and no manual submit', async () => {
+describe('Identify Parts results are saved server-side, never via a form submit', () => {
+  it('never calls onSubmit when a job completes — the server already persisted the parts before the UI ever saw "completed"', async () => {
     fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
     enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
     fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes));
+    fetchListingMock.mockResolvedValue(listingAfterIdentification);
 
     const onSubmit = vi.fn(async () => savedListing);
     const el = await mount(<ListingForm initialValue={savedListing} sources={sources} onSubmit={onSubmit} onCancel={() => {}} onSaved={() => {}} />);
 
     await act(async () => findIdentifyButton(el)!.click());
 
-    // Advance to poll and complete the job — the auto-save fires here, with
-    // no form submit and no filling in a price: the AI never prices parts,
-    // and a not-yet-priced row is valid to save (estimatedResaleValue is
-    // nullable), so this is the realistic, common case, not an edge one.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
 
-    expect(onSubmit).toHaveBeenCalledTimes(1);
-    const payload = onSubmit.mock.calls[0][0] as CreateListingInput;
-    // Exact-shape equality, not a key-absence spot check: `aiSuggested`,
-    // `aiConfidence` and `aiSource` are editor-only draft state, and a
-    // spread-based row→input mapping would quietly carry all three into the
-    // request body. toEqual on the whole array is what notices that.
-    // Both brand/partNumber shapes appear here: the GPU row sends the
-    // identified pair, the CPU and PSU rows send null (not '') for fields
-    // nobody filled in — and both AI rows send a null estimatedResaleValue
-    // (not 0, not a validation failure), proving the not-yet-priced state
-    // survives the trip into the request body unchanged.
-    expect(payload.expectedParts).toEqual([
-      { componentCategory: 'CPU', brand: null, partNumber: null, description: 'Ryzen 5 5600X', estimatedResaleValue: 90, identityCandidates: [] },
-      { componentCategory: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3070', description: 'triple-fan cooler visible', estimatedResaleValue: null, identityCandidates: [] },
-      { componentCategory: 'PSU', brand: null, partNumber: null, description: 'Corsair RM750', estimatedResaleValue: null, identityCandidates: [] },
-    ]);
+    // apps/server/src/jobs/identifyPartsWorkerPool.ts inserts every
+    // identified part directly into expected_parts the instant the job
+    // completes — this component only ever reads that back (fetchListing),
+    // it never submits a save of its own. A regression here (going back to
+    // a client-side auto-save) would make onSubmit fire once.
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(fetchListingMock).toHaveBeenCalledWith('listing-1');
+    // The displayed rows still reflect exactly what the server returned.
+    expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
   });
+});
 
+describe('Manual Save still strips client-only draft fields', () => {
   it('sends a hand-typed brand and part number, and null for one left whitespace-only', async () => {
     fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
     const onSubmit = vi.fn(async () => savedListing);
