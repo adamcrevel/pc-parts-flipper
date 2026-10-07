@@ -1,0 +1,303 @@
+// T2 proof: apps/server/src/jobs/identifyPartsWorkerPool.ts (Req 4, 5, 6).
+//
+// This suite isolates the worker pool from both DuckDB and the real AI
+// pipeline by mocking the two modules it imports (db/index.js and
+// ai/partIdentification.js), the same module-under-test isolation
+// scheduler.test.ts uses for scanService.js. That keeps the focus on the
+// pool's own logic — claim/process sequencing, onStage-to-updateJobStage
+// wiring, and the activeCount bookkeeping that frees a slot for the next
+// job — rather than re-proving identifyListingParts or the DB layer, which
+// already have their own direct suites (partIdentification.test.ts,
+// identifyPartsJobs's own callers).
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { IdentifyPartsJob, IdentifyPartsResponse } from '@pc-parts-flipper/shared';
+import { logger } from '../src/logger.js';
+import type { Listing } from '../src/db/index.js';
+
+const claimNextQueuedJob = vi.fn<[], Promise<IdentifyPartsJob | null>>();
+const completeJob = vi.fn<[string, IdentifyPartsResponse], Promise<void>>();
+const failJob = vi.fn<[string, string], Promise<void>>();
+const resetOrphanedJobsToQueued = vi.fn<[], Promise<string[]>>();
+const updateJobStage = vi.fn<[string, 'sourcing_references' | 'comparing'], Promise<void>>();
+const getListingById = vi.fn<[string], Promise<Listing | null>>();
+
+// Mocking the whole db/index.js barrel (rather than the single
+// identifyPartsJobs.ts query file) matches how the worker pool itself
+// imports it (`from '../db/index.js'`), so vi.mock's specifier resolves to
+// the exact module the pool sees. vi.mock is hoisted above this file's
+// imports, so the static import of identifyPartsWorkerPool.ts below
+// already sees these mocks.
+vi.mock('../src/db/index.js', () => ({
+  claimNextQueuedJob: (...args: []) => claimNextQueuedJob(...args),
+  completeJob: (...args: [string, IdentifyPartsResponse]) => completeJob(...args),
+  failJob: (...args: [string, string]) => failJob(...args),
+  resetOrphanedJobsToQueued: (...args: []) => resetOrphanedJobsToQueued(...args),
+  updateJobStage: (...args: [string, 'sourcing_references' | 'comparing']) => updateJobStage(...args),
+  getListingById: (...args: [string]) => getListingById(...args),
+}));
+
+type OnStage = (stage: 'sourcing_references' | 'comparing') => void;
+const identifyListingParts = vi.fn<[Listing, unknown, OnStage | undefined], Promise<IdentifyPartsResponse>>();
+vi.mock('../src/ai/partIdentification.js', () => ({
+  identifyListingParts: (...args: [Listing, unknown, OnStage | undefined]) => identifyListingParts(...args),
+}));
+
+import { startIdentifyPartsWorkerPool } from '../src/jobs/identifyPartsWorkerPool.js';
+
+// Builds a minimal Listing fixture; only `id` matters to the pool itself
+// (it passes the whole Listing through to identifyListingParts, mocked
+// here, so the remaining fields are never read).
+function listingFixture(id: string): Listing {
+  return {
+    id,
+    sourceId: 'source-1',
+    title: 'Test listing',
+    description: null,
+    listingUrl: null,
+    askingPrice: 100,
+    listingDate: '2026-01-01',
+    status: 'active',
+    acquisitionFees: 0,
+    photoPaths: [],
+    externalSource: null,
+    externalItemId: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+}
+
+function jobFixture(id: string, listingId: string): IdentifyPartsJob {
+  return {
+    id,
+    listingId,
+    stage: 'identifying',
+    parts: null,
+    notes: null,
+    errorMessage: null,
+    delivered: false,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    completedAt: null,
+  };
+}
+
+// Every pool handle started by a test is stopped in afterEach, so a test's
+// 1000ms poll interval never outlives the test and leaks into the next one
+// (or leaves vitest's process waiting on an open timer handle).
+let activeHandle: { stop(): void } | null = null;
+
+beforeEach(() => {
+  claimNextQueuedJob.mockReset().mockResolvedValue(null);
+  completeJob.mockReset().mockResolvedValue(undefined);
+  failJob.mockReset().mockResolvedValue(undefined);
+  resetOrphanedJobsToQueued.mockReset().mockResolvedValue([]);
+  updateJobStage.mockReset().mockResolvedValue(undefined);
+  getListingById.mockReset().mockResolvedValue(null);
+  identifyListingParts.mockReset();
+  vi.spyOn(logger, 'info').mockImplementation(() => logger);
+  vi.spyOn(logger, 'error').mockImplementation(() => logger);
+});
+
+afterEach(() => {
+  activeHandle?.stop();
+  activeHandle = null;
+  vi.restoreAllMocks();
+});
+
+describe('startIdentifyPartsWorkerPool (T2, Req 4, 5, 6)', () => {
+  it('resets orphaned jobs to queued on startup before any claim work runs', async () => {
+    resetOrphanedJobsToQueued.mockResolvedValue(['orphan-1', 'orphan-2']);
+
+    activeHandle = startIdentifyPartsWorkerPool();
+
+    await vi.waitFor(() => expect(resetOrphanedJobsToQueued).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(logger.info).toHaveBeenCalledWith(
+        { resetCount: 2 },
+        'Recovered orphaned identify-parts jobs',
+      ),
+    );
+  });
+
+  it("claims a queued job, wires onStage to updateJobStage in order, and completes it with the pipeline's result", async () => {
+    const listing = listingFixture('listing-A');
+    const job = jobFixture('job-A', 'listing-A');
+    const fakeResult: IdentifyPartsResponse = { parts: [], notes: 'done' };
+
+    claimNextQueuedJob.mockResolvedValueOnce(job).mockResolvedValue(null);
+    getListingById.mockResolvedValue(listing);
+    identifyListingParts.mockImplementation(async (_listing, _options, onStage) => {
+      onStage?.('sourcing_references');
+      onStage?.('comparing');
+      return fakeResult;
+    });
+
+    activeHandle = startIdentifyPartsWorkerPool();
+
+    await vi.waitFor(() => expect(completeJob).toHaveBeenCalledTimes(1));
+
+    // identifyListingParts is called with the claimed job's Listing, no
+    // OmpRunOptions (production never passes any), and a stage callback.
+    expect(identifyListingParts).toHaveBeenCalledWith(listing, undefined, expect.any(Function));
+
+    // Both stage transitions reached the DB in the order the pipeline
+    // raised them, scoped to this job's id.
+    expect(updateJobStage).toHaveBeenNthCalledWith(1, 'job-A', 'sourcing_references');
+    expect(updateJobStage).toHaveBeenNthCalledWith(2, 'job-A', 'comparing');
+    expect(updateJobStage).toHaveBeenCalledTimes(2);
+
+    expect(completeJob).toHaveBeenCalledWith('job-A', fakeResult);
+    expect(failJob).not.toHaveBeenCalled();
+  });
+
+  it('never calls updateJobStage when the pipeline never raises a stage transition (e.g. no eligible parts)', async () => {
+    const listing = listingFixture('listing-B');
+    const job = jobFixture('job-B', 'listing-B');
+    const fakeResult: IdentifyPartsResponse = { parts: [], notes: '' };
+
+    claimNextQueuedJob.mockResolvedValueOnce(job).mockResolvedValue(null);
+    getListingById.mockResolvedValue(listing);
+    identifyListingParts.mockResolvedValue(fakeResult);
+
+    activeHandle = startIdentifyPartsWorkerPool();
+
+    await vi.waitFor(() => expect(completeJob).toHaveBeenCalledTimes(1));
+
+    expect(updateJobStage).not.toHaveBeenCalled();
+    expect(completeJob).toHaveBeenCalledWith('job-B', fakeResult);
+  });
+
+  it('fails a job without calling identifyListingParts when its Listing has been deleted', async () => {
+    const job = jobFixture('job-C', 'listing-deleted');
+
+    claimNextQueuedJob.mockResolvedValueOnce(job).mockResolvedValue(null);
+    getListingById.mockResolvedValue(null);
+
+    activeHandle = startIdentifyPartsWorkerPool();
+
+    await vi.waitFor(() => expect(failJob).toHaveBeenCalledTimes(1));
+
+    expect(failJob).toHaveBeenCalledWith('job-C', 'Listing no longer exists');
+    expect(identifyListingParts).not.toHaveBeenCalled();
+    expect(completeJob).not.toHaveBeenCalled();
+  });
+
+  // Proves the pool's own activeCount bookkeeping (the part the
+  // falsification question for this task singles out): with the default
+  // pool size of 1, after the first claimed job finishes (successfully or
+  // not) the slot it held must be freed so the very next pump() call can
+  // claim and process a second job. If the pool never decremented
+  // activeCount on completion, job-2 would never be claimed and
+  // identifyListingParts would be called exactly once instead of twice.
+  it('frees its slot after a job fails, so the pool immediately claims and processes the next queued job', async () => {
+    const listingFailing = listingFixture('listing-fail');
+    const listingOk = listingFixture('listing-ok');
+    const job1 = jobFixture('job-1', 'listing-fail');
+    const job2 = jobFixture('job-2', 'listing-ok');
+    const fakeResult: IdentifyPartsResponse = { parts: [], notes: 'second job' };
+
+    claimNextQueuedJob
+      .mockResolvedValueOnce(job1)
+      .mockResolvedValueOnce(job2)
+      .mockResolvedValue(null);
+    getListingById.mockImplementation(async (id) => (id === 'listing-fail' ? listingFailing : listingOk));
+    identifyListingParts.mockImplementation(async (listing) => {
+      if (listing.id === 'listing-fail') {
+        throw new Error('boom');
+      }
+      return fakeResult;
+    });
+
+    activeHandle = startIdentifyPartsWorkerPool();
+
+    await vi.waitFor(() => expect(completeJob).toHaveBeenCalledTimes(1));
+
+    expect(failJob).toHaveBeenCalledWith('job-1', 'boom');
+    expect(completeJob).toHaveBeenCalledWith('job-2', fakeResult);
+    expect(identifyListingParts).toHaveBeenCalledTimes(2);
+  });
+
+  it('stop() clears the poll interval so no further claim attempt is made', async () => {
+    const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
+
+    activeHandle = startIdentifyPartsWorkerPool();
+    await vi.waitFor(() => expect(claimNextQueuedJob).toHaveBeenCalled());
+
+    activeHandle.stop();
+
+    expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// T2 Cycle-0 fix proof: an empty-string or non-numeric
+// IDENTIFY_PARTS_POOL_SIZE must not silently become POOL_SIZE 0/NaN (which
+// makes pump()'s `activeCount < POOL_SIZE` false forever, so jobs enqueue
+// but are never claimed). process.env.IDENTIFY_PARTS_POOL_SIZE is read
+// once, at module load, into the module-scope POOL_SIZE constant — the
+// static import at the top of this file already evaluated it with
+// whatever the env var was at file-load time, so exercising a *different*
+// raw value here requires setting the env var, clearing vitest's module
+// cache with vi.resetModules(), and re-importing the module so POOL_SIZE
+// is recomputed. vi.mock registrations (db/index.js,
+// ai/partIdentification.js) survive resetModules — only the module cache
+// is cleared, not the mock registry — so the fresh module instance still
+// resolves to this file's same claimNextQueuedJob/completeJob/etc. mock
+// functions. Placed last in the file (after every test using the
+// originally statically-imported startIdentifyPartsWorkerPool) so
+// resetModules here can't affect any earlier test's already-captured
+// import bindings.
+describe('parsePoolSize fallback for IDENTIFY_PARTS_POOL_SIZE (T2 fix)', () => {
+  const originalPoolSize = process.env.IDENTIFY_PARTS_POOL_SIZE;
+
+  afterEach(() => {
+    if (originalPoolSize === undefined) {
+      delete process.env.IDENTIFY_PARTS_POOL_SIZE;
+    } else {
+      process.env.IDENTIFY_PARTS_POOL_SIZE = originalPoolSize;
+    }
+  });
+
+  async function assertPoolStillProcessesAJob(): Promise<void> {
+    vi.resetModules();
+
+    const listing = listingFixture('listing-fallback');
+    const job = jobFixture('job-fallback', 'listing-fallback');
+    const fakeResult: IdentifyPartsResponse = { parts: [], notes: 'fallback' };
+
+    claimNextQueuedJob.mockResolvedValueOnce(job).mockResolvedValue(null);
+    getListingById.mockResolvedValue(listing);
+    identifyListingParts.mockResolvedValue(fakeResult);
+
+    // Exception to static-import preference: this module's POOL_SIZE is a
+    // module-scope constant computed once at import time from
+    // process.env.IDENTIFY_PARTS_POOL_SIZE, so a static top-of-file import
+    // can only ever observe the env var as it was when this test file
+    // first loaded. Proving the fallback for a *different* raw value
+    // requires setting the env var and re-triggering module evaluation at
+    // runtime via vi.resetModules() + a dynamic import — a static import
+    // genuinely cannot do this, matching this rule's own "test cases that
+    // intentionally exercise module loading boundaries" exception.
+    const { startIdentifyPartsWorkerPool: freshStart } = await import(
+      '../src/jobs/identifyPartsWorkerPool.js'
+    );
+    activeHandle = freshStart();
+
+    // If parsePoolSize had let POOL_SIZE become 0 (empty string via the old
+    // `Number(raw ?? 1)`) or NaN (non-numeric string), pump()'s
+    // `activeCount < POOL_SIZE` comparison is false on every call, so
+    // claimNextQueuedJob is never invoked and completeJob never fires —
+    // this wait would time out and fail the test instead of resolving.
+    await vi.waitFor(() => expect(completeJob).toHaveBeenCalledTimes(1));
+    expect(completeJob).toHaveBeenCalledWith('job-fallback', fakeResult);
+  }
+
+  it('falls back to POOL_SIZE 1 and still claims+completes a queued job when IDENTIFY_PARTS_POOL_SIZE is an empty string', async () => {
+    process.env.IDENTIFY_PARTS_POOL_SIZE = '';
+    await assertPoolStillProcessesAJob();
+  });
+
+  it('falls back to POOL_SIZE 1 and still claims+completes a queued job when IDENTIFY_PARTS_POOL_SIZE is a non-numeric string', async () => {
+    process.env.IDENTIFY_PARTS_POOL_SIZE = 'not-a-number';
+    await assertPoolStillProcessesAJob();
+  });
+});

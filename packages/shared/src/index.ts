@@ -14,4 +14,5 @@ export * from './saleListings.js';
 export * from './profit.js';
 export * from './connectors.js';
 export * from './aiIdentification.js';
+export * from './identifyPartsJob.js';
 export * from './partIdentity.js';

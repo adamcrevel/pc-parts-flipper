@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { IdentifyPartsJob } from '@pc-parts-flipper/shared';
 import { apiClient, ApiError, buildPhotoUrl } from '../src/lib/api-client';
-import { identifyListingParts } from '../src/features/listings/listings-api';
+import {
+  enqueueIdentifyPartsJob,
+  fetchIdentifyPartsJob,
+  fetchLatestIdentifyPartsJob,
+  ackIdentifyPartsJob,
+} from '../src/features/listings/listings-api';
 
 // Proves api-client.ts's error path (T4): a non-2xx response from the
 // backend must reject with an ApiError carrying the HTTP status and a
@@ -83,26 +89,93 @@ describe('buildPhotoUrl', () => {
   });
 });
 
-// Pins the one piece of identifyListingParts() that every other test in this
-// workspace mocks away: the exact route it posts to. The component tests stub
-// the whole listings-api module, so a wrong path or verb there would go
-// unnoticed by all of them while breaking against the real backend, whose
-// route (`POST /api/listings/:id/identify-parts`) is a contract agreed with
-// apps/server.
-describe('identifyListingParts request shape', () => {
+// Pins the one piece of listings-api.ts's identify-parts job wrappers
+// (enqueueIdentifyPartsJob/fetchIdentifyPartsJob/fetchLatestIdentifyPartsJob/
+// ackIdentifyPartsJob) that every other test in this workspace mocks away:
+// the exact routes and verbs they call. The component tests
+// (identify-parts.test.tsx) stub the whole listings-api module, so a wrong
+// path or verb here would go unnoticed by all of them while breaking
+// against the real backend, whose routes (T3's identify-parts-queue) are a
+// contract agreed with apps/server (see identifyPartsRoute.test.ts and
+// identifyPartsJobsRoute.test.ts there).
+describe('identify-parts job wrapper request shapes', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('POSTs to /api/listings/:id/identify-parts and resolves with the parsed body', async () => {
-    const body = { parts: [{ category: 'GPU', description: 'RTX 3070', confidence: 'high', source: 'image' }], notes: '' };
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }));
+  const job: IdentifyPartsJob = {
+    id: 'job-1',
+    listingId: 'listing-1',
+    stage: 'queued',
+    parts: null,
+    notes: null,
+    errorMessage: null,
+    delivered: false,
+    createdAt: '2024-01-01T00:00:00.000Z',
+    startedAt: null,
+    completedAt: null,
+  };
+
+  it('enqueueIdentifyPartsJob POSTs to /api/listings/:id/identify-parts and resolves with the parsed job', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(job), { status: 201, headers: { 'content-type': 'application/json' } }),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(identifyListingParts('listing-1')).resolves.toEqual(body);
+    await expect(enqueueIdentifyPartsJob('listing-1')).resolves.toEqual(job);
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('http://localhost:3001/api/listings/listing-1/identify-parts');
     expect(init.method).toBe('POST');
   });
+
+  it('fetchIdentifyPartsJob GETs /api/identify-parts-jobs/:id and resolves with the parsed job', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(job), { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchIdentifyPartsJob('job-1')).resolves.toEqual(job);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://localhost:3001/api/identify-parts-jobs/job-1');
+    expect(init.method).toBe('GET');
+  });
+
+  it('fetchLatestIdentifyPartsJob GETs /api/listings/:id/identify-parts-jobs/latest and resolves with the parsed job', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(job), { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchLatestIdentifyPartsJob('listing-1')).resolves.toEqual(job);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://localhost:3001/api/listings/listing-1/identify-parts-jobs/latest');
+    expect(init.method).toBe('GET');
+  });
+
+  it('fetchLatestIdentifyPartsJob resolves with null instead of throwing when the backend has no job yet (404)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: 'No identify-parts job for this listing', statusCode: 404 } }), {
+        status: 404,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchLatestIdentifyPartsJob('listing-1')).resolves.toBeNull();
+  });
+
+  it('ackIdentifyPartsJob POSTs to /api/identify-parts-jobs/:id/ack', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await ackIdentifyPartsJob('job-1');
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://localhost:3001/api/identify-parts-jobs/job-1/ack');
+    expect(init.method).toBe('POST');
+  });
 });
+

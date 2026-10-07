@@ -1,13 +1,13 @@
 import type {
   AcceptListingResponse,
   CreateListingInput,
-  IdentifyPartsResponse,
+  IdentifyPartsJob,
   ListingDetail,
   ListingStatus,
   ListListingsResponse,
   UpdateListingInput,
 } from '@pc-parts-flipper/shared';
-import { apiClient } from '@/lib/api-client';
+import { ApiError, apiClient } from '@/lib/api-client';
 
 // Thin resource-specific wrapper around apiClient (T4) for the `/api/listings`
 // endpoints (apps/server/src/routes/listings.ts). Keeps the route paths and
@@ -67,7 +67,29 @@ export function rejectListing(id: string): Promise<ListingDetail> {
   return apiClient.post<ListingDetail>(`/api/listings/${id}/reject`);
 }
 
-/** Asks the AI vision model to suggest Expected Parts from an existing Listing's text and photos (on-demand only; can take 30s+). */
-export function identifyListingParts(id: string): Promise<IdentifyPartsResponse> {
-  return apiClient.post<IdentifyPartsResponse>(`/api/listings/${id}/identify-parts`);
+/** Enqueues a new Identify-Parts job for the given Listing (201 on success; 409 if a job is already active for this listing). */
+export function enqueueIdentifyPartsJob(listingId: string): Promise<IdentifyPartsJob> {
+  return apiClient.post<IdentifyPartsJob>(`/api/listings/${listingId}/identify-parts`);
+}
+
+/** Fetches an Identify-Parts job by id to check its current stage and results. */
+export function fetchIdentifyPartsJob(jobId: string): Promise<IdentifyPartsJob> {
+  return apiClient.get<IdentifyPartsJob>(`/api/identify-parts-jobs/${jobId}`);
+}
+
+/** Fetches the latest Identify-Parts job for a given Listing, or null if none exists (catches 404). */
+export async function fetchLatestIdentifyPartsJob(listingId: string): Promise<IdentifyPartsJob | null> {
+  try {
+    return await apiClient.get<IdentifyPartsJob>(`/api/listings/${listingId}/identify-parts-jobs/latest`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+/** Marks an Identify-Parts job as delivered so its result is not repeated to the caller. */
+export async function ackIdentifyPartsJob(jobId: string): Promise<void> {
+  await apiClient.post<void>(`/api/identify-parts-jobs/${jobId}/ack`);
 }

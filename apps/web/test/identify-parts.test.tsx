@@ -1,33 +1,37 @@
 // @vitest-environment jsdom
 //
-// Proof for on-demand AI part identification in the Listing form
+// Proof for async on-demand AI part identification in the Listing form
 // (identify-parts-button.tsx + listing-form.tsx): the control is gated on a
-// saved Listing id the same way photo upload is, the round trip is visibly
-// in-flight while it runs (it really can take 30s+, so a silent wait would
-// read as a dead button), suggestions are *appended* to whatever rows the
-// user already has, run-level `notes` surface as a dismissible banner only
-// when non-empty, and a failure shows the backend's real message rather than
-// an empty result standing in for it.
+// saved Listing id the same way photo upload is, the enqueue is visibly
+// in-flight and shows per-stage progress while it runs, suggestions are
+// *appended* to whatever rows the user already has, run-level `notes` surface
+// as a dismissible banner only when non-empty, a failure shows the backend's
+// real message, 409 conflicts on enqueue are recovered by resuming the active
+// job, and mount resumes any existing non-terminal job.
 //
-// listings-api is mocked in every test — nothing here touches the network,
-// and the mocked identifyListingParts is driven through a manually-resolved
-// promise so the "working" state can be observed mid-flight rather than
-// inferred. Mounts the real ListingForm with react-dom/client + act(),
-// following listings-page.test.tsx's pattern (no RTL in this workspace).
-import { afterEach, describe, expect, it, vi } from 'vitest';
+// listings-api is mocked in every test — nothing here touches the network.
+// Mounts the real ListingForm with react-dom/client + act(), following
+// listings-page.test.tsx's pattern (no RTL in this workspace).
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
-import type { CreateListingInput, IdentifyPartsResponse, ListingDetail, Source } from '@pc-parts-flipper/shared';
+import type { CreateListingInput, IdentifyPartsJob, IdentifyPartsResponse, ListingDetail, Source } from '@pc-parts-flipper/shared';
 import { ApiError } from '../src/lib/api-client';
 import { ListingForm } from '../src/features/listings/listing-form';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const identifyListingPartsMock = vi.fn();
+const enqueueIdentifyPartsJobMock = vi.fn();
+const fetchIdentifyPartsJobMock = vi.fn();
+const fetchLatestIdentifyPartsJobMock = vi.fn();
+const ackIdentifyPartsJobMock = vi.fn();
 const uploadListingPhotosMock = vi.fn();
 
 vi.mock('@/features/listings/listings-api', () => ({
-  identifyListingParts: (...args: unknown[]) => identifyListingPartsMock(...args),
+  enqueueIdentifyPartsJob: (...args: unknown[]) => enqueueIdentifyPartsJobMock(...args),
+  fetchIdentifyPartsJob: (...args: unknown[]) => fetchIdentifyPartsJobMock(...args),
+  fetchLatestIdentifyPartsJob: (...args: unknown[]) => fetchLatestIdentifyPartsJobMock(...args),
+  ackIdentifyPartsJob: (...args: unknown[]) => ackIdentifyPartsJobMock(...args),
   uploadListingPhotos: (...args: unknown[]) => uploadListingPhotosMock(...args),
 }));
 
@@ -90,17 +94,83 @@ const twoPartResponse: IdentifyPartsResponse = {
   notes: 'These look like stock photos, not the actual item.',
 };
 
+// Sample job at various stages for testing.
+function makeQueuedJob(): IdentifyPartsJob {
+  return {
+    id: 'job-1',
+    listingId: 'listing-1',
+    stage: 'queued',
+    parts: null,
+    notes: null,
+    errorMessage: null,
+    delivered: false,
+    createdAt: '2024-01-01T12:00:00Z',
+    startedAt: null,
+    completedAt: null,
+  };
+}
+
+function makeIdentifyingJob(): IdentifyPartsJob {
+  return { ...makeQueuedJob(), stage: 'identifying', startedAt: '2024-01-01T12:00:01Z' };
+}
+
+function makeSourcingReferencesJob(): IdentifyPartsJob {
+  return { ...makeQueuedJob(), stage: 'sourcing_references', startedAt: '2024-01-01T12:00:01Z' };
+}
+
+function makeComparingJob(): IdentifyPartsJob {
+  return { ...makeQueuedJob(), stage: 'comparing', startedAt: '2024-01-01T12:00:01Z' };
+}
+
+function makeCompletedJob(parts: typeof twoPartResponse.parts = [], notes: string = ''): IdentifyPartsJob {
+  return {
+    id: 'job-1',
+    listingId: 'listing-1',
+    stage: 'completed',
+    parts,
+    notes: notes.length > 0 ? notes : null,
+    errorMessage: null,
+    delivered: false,
+    createdAt: '2024-01-01T12:00:00Z',
+    startedAt: '2024-01-01T12:00:01Z',
+    completedAt: '2024-01-01T12:00:30Z',
+  };
+}
+
+function makeFailedJob(errorMessage: string = 'Job failed'): IdentifyPartsJob {
+  return {
+    id: 'job-1',
+    listingId: 'listing-1',
+    stage: 'failed',
+    parts: null,
+    notes: null,
+    errorMessage,
+    delivered: false,
+    createdAt: '2024-01-01T12:00:00Z',
+    startedAt: '2024-01-01T12:00:01Z',
+    completedAt: '2024-01-01T12:00:30Z',
+  };
+}
+
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
 
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   act(() => {
     root?.unmount();
   });
   container?.remove();
   container = null;
   root = null;
-  identifyListingPartsMock.mockReset();
+  enqueueIdentifyPartsJobMock.mockReset();
+  fetchIdentifyPartsJobMock.mockReset();
+  fetchLatestIdentifyPartsJobMock.mockReset();
+  ackIdentifyPartsJobMock.mockReset();
   uploadListingPhotosMock.mockReset();
 });
 
@@ -123,6 +193,7 @@ function setValue(input: HTMLInputElement | HTMLSelectElement, value: string) {
   input.dispatchEvent(new Event('input', { bubbles: true }));
   input.dispatchEvent(new Event('change', { bubbles: true }));
 }
+
 /** Mounts ListingForm in edit mode (saved Listing) or create mode (`undefined`). */
 async function mountForm(initialValue?: ListingDetail): Promise<HTMLDivElement> {
   return mount(
@@ -163,14 +234,16 @@ function partNumberValues(el: HTMLElement): string[] {
 
 describe('Identify Parts gating on a saved Listing', () => {
   it('offers no Identify Parts control in create mode, showing the save-first hint instead', async () => {
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
     const el = await mountForm(undefined);
 
     expect(findIdentifyButton(el)).toBeUndefined();
     expect(el.textContent).toContain('Save the listing to identify parts with AI.');
-    expect(identifyListingPartsMock).not.toHaveBeenCalled();
+    expect(enqueueIdentifyPartsJobMock).not.toHaveBeenCalled();
   });
 
   it('offers the Identify Parts button in edit mode, where a Listing id exists', async () => {
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
     const el = await mountForm(savedListing);
 
     expect(findIdentifyButton(el)).toBeDefined();
@@ -179,13 +252,10 @@ describe('Identify Parts gating on a saved Listing', () => {
 });
 
 describe('Identify Parts in-flight state', () => {
-  it('disables the button and says it is working until the (slow) call resolves', async () => {
-    let resolveCall: (value: IdentifyPartsResponse) => void = () => {};
-    identifyListingPartsMock.mockReturnValue(
-      new Promise<IdentifyPartsResponse>((resolve) => {
-        resolveCall = resolve;
-      }),
-    );
+  it('disables the button and shows per-stage progress messages until the job completes', async () => {
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
+    enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeIdentifyingJob());
 
     const el = await mountForm(savedListing);
     const button = findIdentifyButton(el)!;
@@ -193,32 +263,90 @@ describe('Identify Parts in-flight state', () => {
 
     await act(async () => button.click());
 
-    expect(identifyListingPartsMock).toHaveBeenCalledWith('listing-1');
-    const working = findIdentifyButton(el)!;
-    expect(working.disabled).toBe(true);
-    expect(working.textContent).toBe('Identifying parts…');
-    expect(el.textContent).toContain('this can take 30 seconds or more');
+    expect(enqueueIdentifyPartsJobMock).toHaveBeenCalledWith('listing-1');
+    const workingButton = findIdentifyButton(el)!;
+    expect(workingButton.disabled).toBe(true);
+    expect(workingButton.textContent).toBe('Identifying parts…');
+    // The queued job's message should be visible.
+    expect(el.textContent).toContain('Waiting to run…');
 
+    // Advance past the first poll (2000ms) to get the identifying stage update.
     await act(async () => {
-      resolveCall({ parts: [], notes: '' });
+      await vi.advanceTimersByTimeAsync(2000);
     });
 
-    // Re-enabled with its resting label once the round trip finishes, so a
-    // second identification is possible.
+    // Now the identifying message should be visible.
+    expect(el.textContent).toContain('Reading the listing text and photos with AI…');
+
+    // Move to completion.
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    // Button should be re-enabled once the job completes.
     const settled = findIdentifyButton(el)!;
     expect(settled.disabled).toBe(false);
     expect(settled.textContent).toBe('Identify Parts');
+    expect(ackIdentifyPartsJobMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders distinct, stage-specific copy for each of the four non-terminal stages, never a generic "in progress" message (Req 9)', async () => {
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
+    enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeIdentifyingJob());
+
+    const el = await mountForm(savedListing);
+    await act(async () => findIdentifyButton(el)!.click());
+
+    // queued: shown immediately on enqueue, before any poll has fired.
+    expect(el.textContent).toContain('Waiting to run…');
+    expect(el.textContent).not.toContain('Reading the listing text and photos with AI…');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    // identifying: its own message replaces queued's, not alongside it.
+    expect(el.textContent).toContain('Reading the listing text and photos with AI…');
+    expect(el.textContent).not.toContain('Waiting to run…');
+    expect(el.textContent).not.toContain('Sourcing reference photos from manufacturer sites…');
+
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeSourcingReferencesJob());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    // sourcing_references: a case this suite had never exercised before.
+    expect(el.textContent).toContain('Sourcing reference photos from manufacturer sites…');
+    expect(el.textContent).not.toContain('Reading the listing text and photos with AI…');
+    expect(el.textContent).not.toContain('Comparing photos against reference images…');
+
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeComparingJob());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    // comparing: likewise never exercised before, and distinct from its neighbor.
+    expect(el.textContent).toContain('Comparing photos against reference images…');
+    expect(el.textContent).not.toContain('Sourcing reference photos from manufacturer sites…');
   });
 });
 
 describe('Identify Parts results', () => {
   it('appends one AI-suggested row per returned part, keeping the rows that were already there', async () => {
-    identifyListingPartsMock.mockResolvedValue(twoPartResponse);
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
+    enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes));
+
     const el = await mountForm(savedListing);
 
     expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X']);
 
     await act(async () => findIdentifyButton(el)!.click());
+
+    // Advance to poll and complete the job.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
 
     // The pre-existing row stays first and intact; the two suggestions are
     // added after it with the categories the response named.
@@ -236,10 +364,17 @@ describe('Identify Parts results', () => {
   });
 
   it('fills each suggested row\'s brand and part number from those response fields, not from its description', async () => {
-    identifyListingPartsMock.mockResolvedValue(twoPartResponse);
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
+    enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes));
+
     const el = await mountForm(savedListing);
 
     await act(async () => findIdentifyButton(el)!.click());
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
 
     // Row 1 is the pre-existing hand-entered part (null/null -> blank).
     // Row 2 carries the identified pair verbatim and, crucially, its brand
@@ -254,10 +389,17 @@ describe('Identify Parts results', () => {
   });
 
   it('renders non-empty notes as a dismissible banner that the user can clear', async () => {
-    identifyListingPartsMock.mockResolvedValue(twoPartResponse);
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
+    enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes));
+
     const el = await mountForm(savedListing);
 
     await act(async () => findIdentifyButton(el)!.click());
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
 
     const banner = el.querySelector('[role="status"]');
     expect(banner).not.toBeNull();
@@ -269,10 +411,17 @@ describe('Identify Parts results', () => {
   });
 
   it('renders no notes banner when the response notes are empty', async () => {
-    identifyListingPartsMock.mockResolvedValue({ parts: twoPartResponse.parts, notes: '' });
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
+    enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, ''));
+
     const el = await mountForm(savedListing);
 
     await act(async () => findIdentifyButton(el)!.click());
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
 
     // Rows still arrived — this is the empty-notes case, not a failed call.
     expect(descriptionValues(el)).toHaveLength(3);
@@ -282,10 +431,17 @@ describe('Identify Parts results', () => {
 
 describe('Identify Parts failure', () => {
   it('shows the backend error message in an ErrorBanner and adds no rows', async () => {
-    identifyListingPartsMock.mockRejectedValue(new ApiError(500, null, 'omp CLI is not logged in'));
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
+    enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeFailedJob('omp CLI is not logged in'));
+
     const el = await mountForm(savedListing);
 
     await act(async () => findIdentifyButton(el)!.click());
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
 
     const alerts = Array.from(el.querySelectorAll('[role="alert"]'));
     // Asserts on the message, not merely that *an* alert exists: the form
@@ -294,16 +450,110 @@ describe('Identify Parts failure', () => {
     expect(alerts.some((alert) => alert.textContent === 'omp CLI is not logged in')).toBe(true);
     expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X']);
     expect(findIdentifyButton(el)!.disabled).toBe(false);
+    expect(ackIdentifyPartsJobMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Identify Parts 409 conflict recovery', () => {
+  it('fetches and resumes the active job when enqueue returns 409', async () => {
+    // Mount's own resume lookup must see no active job (call #1 = null);
+    // only the post-409 recovery lookup (call #2) should find the active
+    // job — two chained `mockResolvedValueOnce`s pin that order explicitly,
+    // rather than a bare default that the mount call would consume first.
+    fetchLatestIdentifyPartsJobMock.mockResolvedValueOnce(null);
+    enqueueIdentifyPartsJobMock.mockRejectedValue(new ApiError(409, null, 'A job is already active for this listing'));
+    const activeJob = makeIdentifyingJob();
+    fetchLatestIdentifyPartsJobMock.mockResolvedValueOnce(activeJob);
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes));
+
+    const el = await mountForm(savedListing);
+    const button = findIdentifyButton(el)!;
+
+    await act(async () => button.click());
+
+    // Should show the info message about already identifying.
+    expect(el.textContent).toContain('Already identifying this listing\'s parts');
+    // Req 14: the button must be disabled the moment a 409 reveals an
+    // active job, not only once that job is later found via mount or just
+    // enqueued by this same click.
+    expect(findIdentifyButton(el)!.disabled).toBe(true);
+
+    // Advance to poll and complete.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    // Job should be applied with parts appended.
+    expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
+    expect(ackIdentifyPartsJobMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Identify Parts mount resume', () => {
+  it('resumes polling a non-terminal job found on mount', async () => {
+    const existingJob = makeIdentifyingJob();
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(existingJob);
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes));
+
+    const el = await mountForm(savedListing);
+
+    // Button should be disabled immediately because there's a non-terminal job.
+    expect(findIdentifyButton(el)!.disabled).toBe(true);
+
+    // Advance to poll and complete.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    // Job should be applied with parts appended.
+    expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
+    expect(ackIdentifyPartsJobMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies a terminal undelivered job found on mount without polling', async () => {
+    const terminalJob = makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes);
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(terminalJob);
+
+    const el = await mountForm(savedListing);
+
+    // Should apply immediately without needing to poll.
+    expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
+    expect(ackIdentifyPartsJobMock).toHaveBeenCalledTimes(1);
+    expect(fetchIdentifyPartsJobMock).not.toHaveBeenCalled();
+  });
+
+  it('does not re-apply or re-acknowledge a terminal job already marked delivered (Req 11)', async () => {
+    // The job completed and was applied on a prior mount (or the same
+    // mount, earlier) — the server already has `delivered: true` for it.
+    // Reopening the listing must not append the same two suggestions
+    // again, and must not ack a job that was already acked.
+    const alreadyDeliveredJob = { ...makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes), delivered: true };
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(alreadyDeliveredJob);
+
+    const el = await mountForm(savedListing);
+
+    // Only the one hand-entered row from before — the two AI suggestions
+    // from this already-delivered job were never appended a second time.
+    expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X']);
+    expect(ackIdentifyPartsJobMock).not.toHaveBeenCalled();
+    expect(fetchIdentifyPartsJobMock).not.toHaveBeenCalled();
   });
 });
 
 describe('Identify Parts draft state never reaches the backend', () => {
   it('submits the AI-originated rows as plain ExpectedPartInputs, with no client-only draft fields', async () => {
-    identifyListingPartsMock.mockResolvedValue(twoPartResponse);
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
+    enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes));
+
     const onSubmit = vi.fn(async () => savedListing);
     const el = await mount(<ListingForm initialValue={savedListing} sources={sources} onSubmit={onSubmit} onCancel={() => {}} onSaved={() => {}} />);
 
     await act(async () => findIdentifyButton(el)!.click());
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
 
     // The AI is not asked to price parts, so the user must supply the two
     // appended rows' values before the form will validate — which is also
@@ -336,6 +586,7 @@ describe('Identify Parts draft state never reaches the backend', () => {
   });
 
   it('sends a hand-typed brand and part number, and null for one left whitespace-only', async () => {
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
     const onSubmit = vi.fn(async () => savedListing);
     const el = await mount(<ListingForm initialValue={savedListing} sources={sources} onSubmit={onSubmit} onCancel={() => {}} onSaved={() => {}} />);
 

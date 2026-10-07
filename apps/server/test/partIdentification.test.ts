@@ -867,6 +867,94 @@ describe('identifyListingParts', () => {
     expect(result.parts[0].partNumber).toBe('RTX 3060');
   });
 
+  it('never calls onStage when every part is fully settled (no eligible parts, no second pass)', async () => {
+    runner.setOmpRunnerOverride(async () => JSON.stringify({
+      parts: [
+        {
+          category: 'Storage',
+          brand: 'Samsung',
+          partNumber: '980 PRO',
+          description: '1TB',
+          confidence: 'high',
+          source: 'text',
+          identityCandidates: [],
+        },
+      ],
+      notes: '',
+    }));
+
+    const stages: string[] = [];
+    await identification.identifyListingParts(listingFixture(), undefined, (stage) => stages.push(stage));
+
+    expect(stages).toEqual([]);
+  });
+
+  it("calls onStage('sourcing_references') once, and never 'comparing', when an eligible part exists but no references are found", async () => {
+    // Category 'Other' is deliberately never seeded by any other test in
+    // this file/DB (unlike 'GPU' etc., which several tests seed): a
+    // null-brand lead matches ANY row in its category
+    // (findReferencePhotosForLeads), so a shared category here would pick
+    // up an unrelated test's seeded reference and spuriously trigger the
+    // second pass this test asserts never runs.
+    const ompCalls: Array<{ prompt: string; images: readonly string[] }> = [];
+    runner.setOmpRunnerOverride(async (promptText, imagePaths) => {
+      ompCalls.push({ prompt: promptText, images: imagePaths });
+      return JSON.stringify({
+        parts: [
+          {
+            category: 'Other',
+            brand: null,
+            partNumber: null,
+            description: 'Unidentifiable component',
+            confidence: 'low',
+            source: 'image',
+            identityCandidates: [],
+          },
+        ],
+        notes: '',
+      });
+    });
+
+    const stages: string[] = [];
+    await identification.identifyListingParts(listingFixture(), undefined, (stage) => stages.push(stage));
+
+    expect(ompCalls).toHaveLength(1);
+    expect(stages).toEqual(['sourcing_references']);
+  });
+
+  it("calls onStage with 'sourcing_references' then 'comparing', in that order and exactly once each, when the second pass actually runs", async () => {
+    await seedReferencePhoto('GPU', 'NVIDIA', 'RTX 3060');
+    const ompCalls: Array<{ prompt: string; images: readonly string[] }> = [];
+    runner.setOmpRunnerOverride(async (promptText, imagePaths) => {
+      ompCalls.push({ prompt: promptText, images: imagePaths });
+      if (ompCalls.length === 1) {
+        return JSON.stringify({
+          parts: [
+            {
+              category: 'GPU',
+              brand: null,
+              partNumber: null,
+              description: 'NVIDIA graphics card',
+              confidence: 'low',
+              source: 'image',
+              identityCandidates: [],
+            },
+          ],
+          notes: '',
+        });
+      }
+      return JSON.stringify([
+        { partIndex: 0, brand: 'NVIDIA', partNumber: 'RTX 3060', identityCandidates: [] },
+      ]);
+    });
+
+    const stages: string[] = [];
+    await identification.identifyListingParts(listingFixture(), undefined, (stage) => stages.push(stage));
+
+    expect(ompCalls).toHaveLength(2);
+    expect(stages).toEqual(['sourcing_references', 'comparing']);
+  });
+
   it('applies per-part reference photo cap (MAX_REFERENCE_PHOTOS_PER_PART)', async () => {
     // Seed 4 distinct CPU references — one more than the per-part cap of 3 —
     // so the cap, not just "some references exist", is what's under test.

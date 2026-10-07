@@ -1,0 +1,286 @@
+<title>Feature</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--radius:8px}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74}}
+*{box-sizing:border-box;overflow-wrap:break-word}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+/* Grid tracks default to fitting their content's full, unbroken width -- a single
+   long token (a file path, a backtick-quoted identifier) anywhere in a panel would
+   otherwise stretch the whole page past max-width, no matter how long the gap or how
+   small every other panel is. min-width:0 is what lets a grid item shrink below that
+   and actually wrap instead. Confirmed live: this is what was making every real plan
+   (which is full of exactly these long tokens) render many times wider than the
+   viewport, independent of the DOCTYPE/viewport fix. */
+main{max-width:1000px;margin:0 auto;padding:24px;display:grid;gap:20px}
+main>*{min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);
+border-radius:var(--radius);padding:20px 22px}
+h1{margin:0 0 4px;font-size:21px;letter-spacing:-.01em}
+h2{margin:22px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+h2:first-of-type{margin-top:14px}
+.panel>p{line-height:1.65;margin:0 0 4px}
+.totals{display:flex;gap:32px;flex-wrap:wrap;margin:12px 0}
+.total .n{font-size:26px;font-variant-numeric:tabular-nums}
+.total .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+details{margin-top:8px}summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;
+border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--good);border-color:var(--good);color:var(--panel)}
+.scroll{overflow-x:auto}
+/* table-layout:auto (the default) sizes a column from its content's own natural
+   width -- for a nowrap+ellipsis cell, that is the FULL unwrapped text, which is
+   exactly the width ellipsis is meant to avoid ever reaching. It is a well-known
+   gap in the auto algorithm, not a quirk of this page: the standard fix is
+   table-layout:fixed, with every narrow column given an explicit width so the
+   description column (the one left unset) absorbs the rest and actually holds
+   .desc to it. Confirmed live: without this, a single real task description
+   dragged the whole table into a wide horizontal scrollbar regardless of how
+   short every other column's content was. */
+table{width:100%;border-collapse:collapse;font-size:14px;table-layout:fixed}
+/* The status column's own text ("In progress &middot; running long.") is real
+   prose, not a single short token -- 28px forced it to wrap, and the page's own
+   global overflow-wrap:break-word (needed elsewhere, see main>* above) then broke
+   it mid-word instead of at a space. Wide enough for the longest badge on two
+   lines, with normal word-wrapping restored just for this column. */
+th:first-child,td:first-child{width:112px;overflow-wrap:normal}
+th:nth-child(2),td:nth-child(2){width:52px}
+th:nth-child(4),td:nth-child(4){width:130px}
+th:nth-child(5),td:nth-child(5){width:150px}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.good .dot,.dot.good{background:var(--good)}.bad .dot,.dot.bad{background:var(--bad)}
+.neutral .dot,.dot.neutral{background:var(--muted)}
+.sub td{border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);padding-top:0}
+/* .desc is a <span> -- inline by default, and width/overflow/text-overflow are all
+   spec-ignored on a plain inline box, so none of this ever actually truncated
+   anything on its own. display:block (now that its <td> has a real fixed width to
+   fill, from table-layout:fixed above) is what makes the rest of this rule do
+   anything at all. */
+.desc{display:block;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.desc.open{white-space:normal;overflow:visible}
+.more{font:inherit;font-size:11px;border:none;background:none;color:var(--muted);cursor:pointer}
+.tag{display:inline-block;padding:0 6px;margin-right:4px;border:1px solid var(--line);
+border-radius:999px;font-size:11px;font-variant-numeric:tabular-nums}
+.banner{border-left:3px solid var(--bad);padding:10px 14px;background:var(--panel);
+border-radius:var(--radius);margin-bottom:14px}
+.fail{background:rgba(163,49,42,.09);padding:6px 9px;border-radius:6px;margin-top:6px}
+ul,ol{margin:8px 0;padding-left:24px}
+li{margin:8px 0;line-height:1.6}
+/* Requirements and Assumptions are both "one short id, one longer text" --
+   the same shape a table row has, so they get the same row-grid treatment
+   the task table already uses (a border between rows, an aligned label
+   column), instead of reading as a looser bulleted paragraph. Plain bullet
+   lists (Findings, UAT checks) keep the plainer rule above. The id badge
+   reuses .tag -- the exact same pill the task table's own id column uses now
+   -- so a reader learns one visual language for "this is an id" instead of
+   three different ones. */
+.items{list-style:none;margin:8px 0;padding:0;display:grid;gap:0}
+.items li{margin:0;display:grid;grid-template-columns:34px 1fr;gap:10px;
+padding:10px 2px;border-bottom:1px solid var(--line);line-height:1.6}
+.items li:last-child{border-bottom:none}
+/* A grid item's own display:inline-block is not enough to stop it stretching
+   to fill its whole cell -- CSS Grid stretches an item's box to its area by
+   default regardless, so the pill's border was being drawn around the full
+   34px-by-row-height cell instead of snugly around "A1". justify/align-self
+   opt back out of that stretch. */
+.items li>:first-child{justify-self:start;align-self:start}
+.note{font-size:12px;color:var(--muted)}
+pre{font-family:inherit;white-space:pre-wrap;word-break:break-word;margin:0;line-height:1.65}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9em;
+background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+</style>
+<main>
+<section class="panel">
+<h1>Feature</h1>
+<p class="note">Status done &middot; cycle 0 of 3 &middot; refreshes in <span data-refresh-in>5m 0s</span></p>
+<h2>Goal</h2><p>Today, Identify Parts on a Listing runs the whole AI pipeline synchronously inside the HTTP request, blocking the UI for 15-45+ seconds behind a disabled button and static text. This feature moves the pipeline onto a database-backed job queue: a request enqueues a persistent job row instead of running inline, a single-worker pool (size 1, built to support more later) picks up queued jobs in the background and runs the existing identification pipeline, and the UI polls for status instead of blocking on one long request. The UI shows the job&#x27;s real stage as it progresses (queued/waiting to run, identifying, sourcing reference photos, comparing photos), not a generic &quot;in progress&quot; spinner. Because the queue is DB-backed, an in-flight or queued job survives a server restart instead of being lost.</p>
+<h2>Requirements</h2><ul class="items"><li><span class="tag">1</span><span><code>POST /api/listings/:id/identify-parts</code> no longer runs the identification pipeline inline. It enqueues an <code>identify_parts_jobs</code> row (stage <code>queued</code>) and returns immediately (201) instead of waiting for the AI calls to finish.</span></li><li><span class="tag">2</span><span>The job row is persisted in DuckDB (<code>identify_parts_jobs</code> table), not held only in server memory, so a running or queued job survives an <code>npm run dev</code>/server restart.</span></li><li><span class="tag">3</span><span>On server startup, any job left in a non-terminal, already-started stage (<code>identifying</code>, <code>sourcing_references</code>, <code>comparing</code>) from a previous process life is reset to <code>queued</code> so it gets reprocessed from the start, instead of being silently abandoned.</span></li><li><span class="tag">4</span><span>A single background worker pool, implemented as an async concurrency-limited loop (not OS <code>worker_threads</code>), pulls <code>queued</code> jobs and runs <code>identifyListingParts</code> for each.</span></li><li><span class="tag">5</span><span>The worker pool&#x27;s concurrency limit is a named constant/env override (<code>IDENTIFY_PARTS_POOL_SIZE</code>), defaulting to 1. The claim step is a single atomic SQL statement, so the mechanism already works correctly for a future limit greater than 1 rather than being hardcoded to exactly one concurrent job.</span></li><li><span class="tag">6</span><span>While a job runs, its <code>stage</code> column is updated at each pipeline transition to one of exactly: <code>queued</code>, <code>identifying</code>, <code>sourcing_references</code> (only when at least one identified part triggers reference/catalog sourcing or lookup), <code>comparing</code> (only when a second AI pass actually runs), <code>completed</code>, or <code>failed</code>.</span></li><li><span class="tag">7</span><span><code>GET /api/identify-parts-jobs/:jobId</code> returns that job&#x27;s current stage, plus its result once <code>completed</code> or its error once <code>failed</code>, so the UI can poll it.</span></li><li><span class="tag">8</span><span><code>GET /api/listings/:id/identify-parts-jobs/latest</code> returns the most recent job for a listing (404 if none ever existed), so reopening or reloading the listing&#x27;s page resumes showing the right state instead of losing track of an in-flight or just-finished job.</span></li><li><span class="tag">9</span><span>The Identify Parts UI shows the job&#x27;s current stage with distinct, human-readable copy for each stage: <code>queued</code> → &quot;Waiting to run…&quot;, <code>identifying</code> → &quot;Reading the listing text and photos with AI…&quot;, <code>sourcing_references</code> → &quot;Sourcing reference photos from manufacturer sites…&quot;, <code>comparing</code> → &quot;Comparing photos against reference images…&quot; — never one generic &quot;in progress&quot; message for all of them.</span></li><li><span class="tag">10</span><span>Once a job reaches <code>completed</code>, the UI automatically applies its suggested parts to the Expected Parts editor (same <code>onIdentified</code> behavior as today), with no extra click needed.</span></li><li><span class="tag">11</span><span>A job&#x27;s result is applied at most once: the server tracks a <code>delivered</code> flag per job (via <code>POST /api/identify-parts-jobs/:jobId/ack</code>), so reopening a listing whose job already completed and was applied doesn&#x27;t re-append the same suggested parts a second time.</span></li><li><span class="tag">12</span><span>If a listing already has an active (non-<code>completed</code>, non-<code>failed</code>) job, <code>POST /api/listings/:id/identify-parts</code> rejects the duplicate request with 409 instead of enqueueing a second job for the same listing.</span></li><li><span class="tag">13</span><span>This 409 rejection is race-free under real concurrent requests: the enqueue is one atomic <code>INSERT ... WHERE NOT EXISTS</code> statement, not a separate check-then-insert pair of queries. This is proven by a test that fires genuinely concurrent HTTP requests (not sequential calls) at the same listing and asserts exactly one job was created.</span></li><li><span class="tag">14</span><span>The Identify Parts button is disabled whenever its listing already has an active job — whether just-enqueued by this click, found via the 409 response, or discovered on page load via the latest-job lookup — and is never clickable while a job is in flight.</span></li></ul>
+<p><a href="https://gist.githack.com/adamcrevel/887ac296dacd8b9610858b361484f551/raw/prototype-t4.html">Prototype</a></p>
+<p><a href="https://gist.githack.com/adamcrevel/490b6d73e472a2b9ed18ce2bc1e02a2c/raw/walkthrough.html">Walkthrough</a></p>
+<div class="totals">
+<div class="total"><div class="n" data-since="2026-10-06T08:08:13Z">&mdash;</div><div class="l">total time</div></div>
+<div class="total"><div class="n">415,357</div><div class="l">total tokens</div></div>
+</div>
+<details><summary>Where that token figure comes from</summary><p class="note">output 58,609 + cache-write 101,808 + cache-read 207,240, across 72 turns</p><p class="note">Most of a long conversation's token count is cache-read: the accumulated context is resent on every turn and billed at a fraction of the normal rate. A high total reflects the turn count over time, not necessarily a large bill.</p></details>
+<h2>Retrospective</h2><pre># Retrospective
+
+## What happened
+
+This was a clean, single-cycle run: Cycle 0 only, no cycle increment. The four builders (T1-T4),
+eight paired reviewer/tester rows (R1-TE4), and UAT (U0) all completed in one pass each. The
+&quot;four in-place retries&quot; were not a second cycle — they were must_fix items from validate-lead&#x27;s
+*first* standing-gate pass, folded back into T1-T4&#x27;s own rows and fixed without re-dispatching a
+new task id. That folding is itself worth flagging (see Proposals): because the retry text was
+merged into the original row rather than logged as a delta, the table&#x27;s <code>actual_tokens</code> and
+<code>started_at</code>/<code>completed_at</code> for T1-T4 cannot be cleanly split into &quot;first pass&quot; vs. &quot;fix pass&quot; —
+this retrospective can only report the combined figure per task, not the retry&#x27;s isolated cost.
+
+- **The single biggest finding**: all four must_fix items were things no reviewer or tester caught,
+  and all four were caught only by validate-lead&#x27;s own standing-gate run, not by any task&#x27;s R/TE
+  pair. Two were cross-file breakage outside the task&#x27;s own named scope: T1 added
+  <code>identify_parts_jobs</code> to <code>schema.ts</code> but didn&#x27;t update <code>apps/server/test/db.test.ts</code>&#x27;s hardcoded
+  <code>EXPECTED_COLUMNS</code>/table-count fixture (A13); T4 deleted <code>identifyListingParts</code> from
+  <code>listings-api.ts</code> but didn&#x27;t update <code>apps/web/test/api-client.test.ts</code>, which still called it and
+  failed with a deterministic <code>TypeError</code> (A13). The other two were logic bugs inside scope but of a
+  kind <code>vitest</code> (what every tester ran) cannot see: T2&#x27;s <code>Number(process.env.IDENTIFY_PARTS_POOL_SIZE
+  ?? 1)</code> silently resolves to <code>0</code>/<code>NaN</code> on an empty-string or non-numeric env value, stalling the
+  whole queue with no error logged; T4&#x27;s build broke outright (<code>tsc</code> exit 2, TS18048) because the
+  outer <code>if (listing === undefined) return;</code> guard in the mount effect didn&#x27;t narrow into the nested
+  async <code>resumeJob</code> closure (A14) — nobody ran <code>npm run build</code>/<code>tsc -b</code> before validate-lead did.
+
+- **Token-cost pattern across T1-T4**: the two tasks whose Cycle-0 fix was a substantive logic/type
+  change (T2: defensive env parsing; T4: TS-narrowing fix + unused-import removal + rewriting a
+  whole stale test block) ran roughly 2x over their <code>estimated_tokens</code> (T2: 5,200 estimated → 10,900
+  actual; T4: 12,500 estimated → 24,500 actual). The two tasks whose fix was a pure
+  addition/deletion (T1: add one table name to a fixture list; T3: delete one unused, discarded
+  <code>getActiveJobForListing</code> call) ran well *under* estimate (T1: 48,000 → 9,500; T3: 18,500 → 2,800).
+  The size of the required fix tracked the token overrun almost exactly.
+
+- **No reviewer/tester token cost is measurable from this run at all**: every one of the eight R/TE
+  rows (R1, TE1, R2, TE2, R3, TE3, R4, TE4) shows <code>actual_tokens: null</code>. Per Assumption A19, this is
+  a confirmed, systematic tooling failure — <code>measure-child-cost.py child-cost --tag &lt;name&gt;</code> found no
+  <code>AGENT_TAG</code> marker for any of the 8 children when queried by their exact dispatch name, and a
+  looser guessed tag returned numbers that are contamination from unrelated historical sessions
+  elsewhere under <code>~/.omp/agent/sessions</code>. This isn&#x27;t a finding about the feature&#x27;s execution; it&#x27;s
+  a gap in the harness itself that halves what any retrospective on this feature&#x27;s cost can see.
+
+- **A process risk surfaced and was caught mid-cycle, not a cost**: A12 records a sub-agent&#x27;s bare
+  relative path silently resolving against the main repo checkout instead of this feature&#x27;s
+  worktree, leaking an uncommitted diff of T3&#x27;s <code>identifyParts.ts</code> rewrite into the main repo. It was
+  caught via <code>git status --short</code> and reverted before it could contaminate anything, and every
+  subsequent dispatch in the cycle was told to set <code>cwd</code> to the worktree explicitly. No feature cost
+  resulted, but it is a real failure mode worth closing at the source rather than relying on manual
+  <code>git status</code> checks to catch it each time.
+
+- No task overran its <code>expected_minutes</code> by a flake-free, attributable margin beyond what&#x27;s already
+  explained above; no <code>context_split</code> is visible in the digest history (each T1-T4/R/TE row maps to
+  exactly one builder/reviewer/tester dispatch, one file set); no <code>model</code> escalation occurred (every
+  row ran on the default model; the &quot;peter-gibbons&quot; value in several rows is a dispatch-session
+  label, not a model field, and is consistent across the batch). Assumptions A1-A12 were plan
+  choices made once up front and never contradicted or corrected later — only A13-A19 are
+  validate-time findings, and all are accounted for above.
+
+## Proposals
+
+- **Make <code>npm run build</code> (or each workspace&#x27;s own <code>tsc -b</code>) part of every reviewer&#x27;s or tester&#x27;s own
+  checklist, not only validate-lead&#x27;s final standing gate.** <code>vitest</code> does not type-check, so a
+  build-breaking type error (T4, TS18048) reached the last gate in the pipeline before being caught.
+  Running the one-line build command per task is cheap relative to the cost of a cross-cutting fix
+  landing at validate time.
+
+- **When a task deletes or renames an exported function/table/column, require its own reviewer or
+  tester to grep the whole test tree for the old identifier before marking the task complete**, not
+  just the files named in the task&#x27;s own scope. Both deterministic Cycle-0 regressions (T1&#x27;s
+  <code>db.test.ts</code> fixture, T4&#x27;s <code>api-client.test.ts</code>) were exactly this shape — a rename/add/delete
+  whose blast radius crossed into a test file the task&#x27;s reviewer/tester scope didn&#x27;t name. A
+  one-line <code>grep -r &lt;old-identifier&gt;</code> catches this class before it reaches validate-lead.
+
+- **Log in-place retry cost as an explicit delta in the Cycle Log (tokens and minutes spent on the
+  fix alone), rather than folding the fix description into the original task row and leaving
+  <code>actual_tokens</code>/<code>started_at</code>/<code>completed_at</code> as the combined, unsplit figure.** As written, this
+  plan.md makes it impossible to say how much of T1-T4&#x27;s reported cost was the original build vs.
+  the Cycle-0 fix — which is exactly the kind of number a retrospective exists to extract.
+
+- **Fix <code>measure-child-cost.py</code>&#x27;s tag-matching so a sub-agent&#x27;s own dispatch name reliably resolves
+  to that sub-agent&#x27;s transcript**, since it returned <code>null</code> for all 8 reviewer/tester children in
+  this run (A19) and a looser guess returns contaminated numbers from unrelated sessions. Until
+  fixed, no retrospective on any feature can measure reviewer/tester cost at all — only builder cost
+  survives in the table.
+
+- **Have the dispatcher set each sub-agent&#x27;s shell <code>cwd</code> to the worktree path directly (not just
+  mention it in the prompt), and have the sub-agent verify with <code>git status --short</code> in that <code>cwd</code>
+  before its first edit.** A12 shows a bare relative path can silently resolve against the main repo
+  checkout instead of the worktree; this time it was caught, but catching it relied on a human
+  noticing a stray diff rather than on the dispatch mechanism preventing it.
+
+---
+This report cost approximately 12,300 tokens (self-reported estimate) /
+not available tokens (measured). Not counted in the feature&#x27;s own total —
+this analysis happened after the feature was already done.
+</pre>
+</section>
+<nav class="tabs">
+<button data-cycle-tab="0" aria-selected="true" onclick="showCycle(0)">Cycle 0</button>
+</nav>
+<section class="panel" data-cycle-panel="0">
+<h2>Cycle 0</h2>
+<p><strong>Trigger.</strong> initial</p>
+<p><strong>Findings.</strong></p><ul><li>apps/web/src/features/listings/identify-parts-button.tsx:129 — `npm run build` fails (TS18048, &#x27;listing&#x27; is possibly &#x27;undefined&#x27;): the outer `if (listing === undefined) return;` guard in the mount effect doesn&#x27;t narrow across the nested async `resumeJob` closure.</li><li>apps/server/src/jobs/identifyPartsWorkerPool.ts:27 — `Number(process.env.IDENTIFY_PARTS_POOL_SIZE ?? 1)` treats an empty-string/non-numeric env value as 0/NaN, silently stalling the whole queue with no error logged.</li><li>apps/server/src/routes/identifyParts.ts:66 — dead code: `const active = await getActiveJobForListing(id);` is computed and discarded before the 409 throw, wasting a DB round-trip and triggering a new `no-unused-vars` lint warning.</li><li>apps/web/src/features/listings/listings-api.ts:4 — unused `IdentifyPartsResponse` import, a new lint warning.</li><li>apps/server/test/db.test.ts — table-list assertion wasn&#x27;t updated for the new `identify_parts_jobs` table T1 added to schema.ts; fails deterministically (3/3 runs).</li><li>apps/web/test/api-client.test.ts — still imports/calls `identifyListingParts`, which T4&#x27;s rewrite deleted from listings-api.ts; fails deterministically (2/2 runs).</li></ul>
+<p><span class="good"><span class="dot"></span>UAT passed.</span></p>
+<ul><li>Enqueued listing via direct POST and measured HTTP_STATUS=201 with TIME_TOTAL=0.023223s — confirms the route returns 201 immediately, not after the 15-45s AI pipeline (Requirement 1).</li><li>Read the POST handler: it calls insertQueuedJobIfNoneActive and returns 201 with the job row before any AI call runs; the AI pipeline is only invoked later by the background worker pool, never inline in the request handler (Requirement 1).</li><li>Killed the running apps/server process while a job was mid-flight in stage &#x27;sourcing_references&#x27; (non-terminal).</li><li>While the server was down, queried the DuckDB file directly and found the job&#x27;s row still present with its in-flight stage and started_at populated — proves job state lives in DuckDB, not only server memory (Requirement 2).</li><li>Restarted apps/server pointed at the same data/ directory; server log printed a recovered-orphaned-jobs count of 1 on startup.</li><li>Fetched the job shortly after restart and found it reset to &#x27;identifying&#x27; with a brand-new started_at timestamp — confirms the orphaned non-terminal job was reset to &#x27;queued&#x27; and reprocessed from the start, not resumed mid-step and not silently lost (Requirement 3).</li><li>Read resetOrphanedJobsToQueued: a single UPDATE ... WHERE stage IN (&#x27;identifying&#x27;,&#x27;sourcing_references&#x27;,&#x27;comparing&#x27;) SET stage=&#x27;queued&#x27; statement, called once at pool startup before the first pump() — matches the observed live behavior exactly (Requirement 3).</li><li>Read the worker pool module: a plain async pump()/processJob() loop using claimNextQueuedJob() and a setInterval poll, with zero references to node:worker_threads anywhere — confirms an async concurrency-limited loop, not an OS thread pool (Requirement 4).</li><li>Read the POOL_SIZE constant: driven by an env override (IDENTIFY_PARTS_POOL_SIZE), defaulting to 1 (Requirement 5, first half).</li><li>Read claimNextQueuedJob: a single UPDATE ... WHERE id = (SELECT ... ORDER BY created_at LIMIT 1) RETURNING * statement — the pick-and-claim is one atomic SQL statement, not a separate SELECT then UPDATE (Requirement 5, second half).</li><li>Enqueued a second listing while the pool (size 1) was busy with the first job and confirmed it stayed &#x27;queued&#x27; (not claimed) until the first job&#x27;s slot freed — the pool size genuinely gates concurrency.</li><li>Restarted the server with IDENTIFY_PARTS_POOL_SIZE=4 and enqueued 3 more listings; within 3s, 4 of 5 active jobs were simultaneously in non-queued stages while the 5th stayed queued — confirms the pool size is honored for a value greater than 1, not hardcoded to 1 (Requirement 5).</li><li>Live UI observed the stage copy &#x27;Waiting to run…&#x27; immediately after clicking Identify Parts, before any server work had progressed — matches the &#x27;queued&#x27; stage (Requirement 9).</li><li>Live UI observed the stage copy &#x27;Reading the listing text and photos with AI…&#x27; replacing the queued-stage text — matches the &#x27;identifying&#x27; stage (Requirement 9).</li><li>Live UI observed the stage copy &#x27;Sourcing reference photos from manufacturer sites…&#x27; replacing the identifying-stage text, only after the first-pass identification found eligible parts — matches the &#x27;sourcing_references&#x27; stage and Requirement 6&#x27;s conditional placement.</li><li>Read identifyListingParts: onStage(&#x27;sourcing_references&#x27;) is called immediately before the eligible-parts loop and only reached when there are eligible parts — exact placement matches Requirement 6.</li><li>Read the same file: onStage(&#x27;comparing&#x27;) is called immediately before the second AI call and only reached when references were actually found after trimming — exact placement matches Requirement 6.</li><li>Observed a real job reach stage=&#x27;comparing&#x27; live via server log and GET, before terminating in &#x27;failed&#x27; — confirms &#x27;comparing&#x27; is a real, reachable stage, not dead code.</li><li>Observed a second, different job progress sourcing_references → comparing → completed — confirms the full non-terminal stage chain can reach a successful terminal state, and that stage reads back correctly via GET (Requirements 6, 7).</li><li>Observed two jobs terminate in stage=&#x27;failed&#x27; with a populated errorMessage field retrievable via GET — confirms the &#x27;failed&#x27; terminal stage and its error surface (Requirements 6, 7).</li><li>GET /api/identify-parts-jobs/:jobId, used throughout the session, always returned the job&#x27;s current stage, and returned parts/notes only once completed and errorMessage only once failed — confirms Requirement 7&#x27;s contract precisely.</li><li>GET /api/listings/:id/identify-parts-jobs/latest returned the correct, most-recent job for a listing throughout polling and reload tests, and 404&#x27;d before any job existed — Requirement 8.</li><li>Live UI test: reloaded a page with a job still &#x27;queued&#x27; and reopened its row; the button immediately showed disabled with &#x27;Waiting to run…&#x27;, no click — confirms the latest-job lookup resumes live status on reload (Requirements 8, 14).</li><li>Live UI test: on first open of a listing whose job was already &#x27;completed&#x27; and undelivered, the Expected Parts editor showed the identified parts and the AI&#x27;s notes banner, with zero clicks — confirms auto-apply on completion with no extra click (Requirement 10).</li><li>Live UI test on a second, independent listing whose job took the full sourcing+comparing path: same zero-click auto-apply result — second confirmation of Requirement 10.</li><li>Confirmed server-side that a job&#x27;s delivered flag flipped from false to true immediately after the UI&#x27;s first open, right after the ack call observed in server logs — Requirement 11, server-side half.</li><li>Live UI test: counted the applied part&#x27;s occurrences in the rendered page before vs. after a full reload + reopen — unchanged, not doubled — confirms the delivered flag prevents re-applying suggested parts a second time (Requirement 11, client-visible half).</li><li>Repeated the same before/after-reload non-duplication check on a second, independently-completed job — same result.</li><li>Direct POST to a listing with an already-active job returned HTTP 409 with a message naming the listing — Requirement 12, server-side.</li><li>Read insertQueuedJobIfNoneActive: a single INSERT ... SELECT ... WHERE NOT EXISTS statement — the existence check and insert are one atomic SQL statement, not a separate check-then-insert pair (Requirement 13).</li><li>Read the dedicated concurrency test: it boots a real server and fires 10 genuinely concurrent POST requests at the same listing, then asserts exactly one 201 and nine 409s, all converging on the same job id — the named proof technique for Requirement 13&#x27;s second half; cited from this cycle&#x27;s standing gate rather than re-run.</li><li>Live UI test: clicked Identify Parts, then immediately re-read the button and found it disabled with &#x27;Identifying parts…&#x27; text — the button becomes un-clickable the instant the user&#x27;s own click enqueues a job (Requirement 14, case 1).</li><li>Live UI test: on a listing already showing an active job via mount-discovery, the button rendered disabled immediately, with no click ever issued — confirms Requirement 14, case 3 (discovered via the latest-job lookup on page load).</li><li>Read the 409-catch branch: on a 409 it fetches the real active job and starts polling it, which drives the same disabled-button state — confirms Requirement 14, case 2 (discovered via the 409 response) by source inspection, corroborated by the live 409 response exercised separately.</li><li>Cited feature-validate-lead&#x27;s standing gate (Standing check 1): whole suite run, 529 effective (478 baseline + 51 new), two pre-existing/flake failures excluded and documented (one confirmed pre-existing via git-stash-to-base-commit comparison, one matching the documented sandbox flake and passing on rerun) — not re-run.</li><li>Cited feature-validate-lead&#x27;s standing gate (Standing check 1, coverage floor): test count 529 against BaselineTests 478 — coverage did not shrink.</li><li>Ran `npm run lint` directly (Standing check 2): exited clean with zero output, no new violations.</li><li>Spot-checked every new public function/class read during this session (Standing check 3): each carries a block comment in the same JSDoc-with-dashes style already used throughout the codebase.</li><li>Grepped the web-side files touched by this feature (Standing check 4): both import only from the shared package and the api-client, never a relative path into apps/server; the dedicated eslint import-boundary test also covers this at the lint-rule level.</li><li>Grepped every new/changed server file touched by this feature for the DuckDB package import (Standing check 5): zero matches outside db/**; all reach the database only through its exported query functions.</li><li>Measured every new/rewritten file&#x27;s line count (Standing check 6): the largest (identify-parts-button.tsx) is 211 lines — not a meaningful overshoot of the ~200-line convention; every other file is well under.</li><li>Cited the same dedicated concurrency test (Standing check 7): proves at most one active job can exist per listing under real concurrent requests, not merely sequential calls — the named proof technique this check requires.</li><li>Cleanup: stopped both dev processes started for this UAT run and confirmed nothing is left listening on their ports.</li></ul>
+<p class="note">13 task(s). Estimated 290 min. Actual tokens 47,700, estimated 275,700. This never includes the driving conversation's own tokens, which cannot honestly be split by cycle.
+<div class="scroll"><table><thead><tr><th></th><th>Id</th><th>Description</th><th>Duration (Estimate)</th><th>Started At (Estimate)</th></tr></thead><tbody><tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T1</span></td><td><span class="desc">Schema + query layer + shared types. Fix (Cycle 0 review): apps/server/test/db.test.ts&#x27;s EXPECTED_COLUMNS fixture (and its &quot;creates exactly N tables&quot; assertion) was not updated for the new <code>identify_parts_jobs</code> table this task added to schema.ts — add it to that fixture&#x27;s expected table list so the test passes deterministically.</span></td><td><span data-at="2026-10-06T12:02:37Z" hidden></span>2026-10-06T12:02:37Z (30 min)</td><td><span data-at="2026-10-06T11:54:44Z">2026-10-06T11:54:44Z</span> (2026-10-06T10:11:53Z)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens 48000 &middot; Actual tokens 9500</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T2</span></td><td><span class="desc">Pipeline stage hooks + worker pool: add an optional third parameter to <code>identifyListingParts</code> in apps/server/src/ai/partIdentification.ts — <code>onStage?: (stage: &#x27;sourcing_references&#x27; | &#x27;comparing&#x27;) =&gt; void</code> — called once right before the eligible-parts loop starts (only when <code>eligibleIndices.length &gt; 0</code>) with <code>&#x27;sourcing_references&#x27;</code>, and once right before the second-pass <code>getOmpRunner()</code> call with <code>&#x27;comparing&#x27;</code> (only reached when <code>referencesByPart.size &gt; 0</code> after trimming); no other pipeline logic changes. Create apps/server/src/jobs/identifyPartsWorkerPool.ts (split into a companion file if it would exceed ~200 lines) exporting <code>startIdentifyPartsWorkerPool(): { stop(): void }</code>: <code>POOL_SIZE = Number(process.env.IDENTIFY_PARTS_POOL_SIZE ?? 1)</code>, an <code>activeCount</code> counter, a <code>pump()</code> that while <code>activeCount &lt; POOL_SIZE</code> calls <code>claimNextQueuedJob()</code> and for each claimed job increments <code>activeCount</code> and starts (without awaiting) <code>processJob(job)</code>: loads the listing via <code>getListingById</code>, calls <code>identifyListingParts(listing, undefined, (stage) =&gt; updateJobStage(job.id, stage))</code>, calls <code>completeJob</code>/<code>failJob</code> on settle, decrements <code>activeCount</code>, calls <code>pump()</code> again; if the listing is missing, calls <code>failJob</code> immediately (&#x27;Listing no longer exists&#x27;) instead of calling <code>identifyListingParts</code>. On startup: <code>resetOrphanedJobsToQueued()</code> (log the count at Info) then <code>pump()</code> once; <code>setInterval(pump, 1000)</code> drives subsequent polling; the returned <code>stop()</code> clears that interval (mirrors <code>node-cron</code>&#x27;s <code>ScheduledTask.stop()</code> used by scheduler.ts). Wire into apps/server/src/index.ts: call <code>startIdentifyPartsWorkerPool()</code> alongside <code>startScheduler()</code>, capture the handle, call its <code>.stop()</code> inside <code>gracefulShutdown</code> alongside <code>scheduledTask.stop()</code>, before <code>server.close()</code>. Fix (Cycle 0 review): apps/server/src/jobs/identifyPartsWorkerPool.ts:27&#x27;s <code>const POOL_SIZE = Number(process.env.IDENTIFY_PARTS_POOL_SIZE ?? 1);</code> only falls back on strictly-nullish via <code>??</code> — an empty-string env value yields <code>Number(&#x27;&#x27;) === 0</code> and a non-numeric value yields <code>NaN</code>, either way making <code>pump()</code>&#x27;s <code>activeCount &lt; POOL_SIZE</code> always false so jobs enqueue but silently never process, with no error logged. Parse defensively: treat a missing, empty, or non-finite/non-positive value as the default of 1.</span></td><td><span data-at="2026-10-06T12:02:37Z" hidden></span>2026-10-06T12:02:37Z (35 min)</td><td><span data-at="2026-10-06T11:54:44Z">2026-10-06T11:54:44Z</span> (2026-10-06T10:36:53Z)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens 5200 &middot; Actual tokens 10900</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T3</span></td><td><span class="desc">Routes + concurrency proof: rewrite apps/server/src/routes/identifyParts.ts — <code>POST /api/listings/:id/identify-parts</code>: existing 404 check, then <code>insertQueuedJobIfNoneActive(id)</code>; row returned → <code>reply.status(201)</code> + mapped <code>IdentifyPartsJob</code>; null returned → <code>getActiveJobForListing(id)</code> then <code>throw new AppError(..., 409)</code> (still throws, consistent with every other route — no custom error body; the frontend recovers the live job via the latest-job lookup, not the error body). Add <code>GET /api/listings/:id/identify-parts-jobs/latest</code> — 404 (AppError) if <code>getLatestJobForListing(id)</code> is null, else 200 with the mapped job. Create apps/server/src/routes/identifyPartsJobs.ts registering <code>GET /api/identify-parts-jobs/:jobId</code> (404 if <code>getJobById</code> is null, else 200) and <code>POST /api/identify-parts-jobs/:jobId/ack</code> (404 if missing; 400 AppError if <code>stage</code> isn&#x27;t <code>completed</code>/<code>failed</code> — &#x27;nothing to acknowledge yet&#x27;; else <code>markDelivered(jobId)</code> + 200). Register <code>registerIdentifyPartsJobsRoutes</code> in apps/server/src/index.ts next to the existing <code>registerIdentifyPartsRoutes</code> call. Add apps/server/test/identifyPartsConcurrency.test.ts (same <code>startTestServer</code>/hardcoded-<code>TEST_PORT</code> pattern as test/concurrency.test.ts, picking an unused port per that file&#x27;s port-registry comment) that creates one Listing then fires 10 genuinely concurrent <code>POST /api/listings/:id/identify-parts</code> requests via <code>Promise.all</code>, asserting exactly one came back 201 and the rest 409, all resolving to the same job via the latest-job lookup. Fix (Cycle 0 review): apps/server/src/routes/identifyParts.ts:66&#x27;s 409 branch computes <code>const active = await getActiveJobForListing(id);</code> and never uses it before the <code>throw new AppError(..., 409)</code> — a wasted DB round-trip and a new <code>@typescript-eslint/no-unused-vars</code> lint warning. Remove the unused call entirely (nothing downstream needs its result).</span></td><td><span data-at="2026-10-06T12:02:37Z" hidden></span>2026-10-06T12:02:37Z (30 min)</td><td><span data-at="2026-10-06T11:54:44Z">2026-10-06T11:54:44Z</span> (2026-10-06T11:11:53Z)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens 18500 &middot; Actual tokens 2800</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T4</span></td><td><span class="desc">Web UI: in apps/web/src/features/listings/listings-api.ts replace <code>identifyListingParts</code> with <code>enqueueIdentifyPartsJob(listingId)</code> (POST, 201 or throws ApiError on 409), <code>fetchIdentifyPartsJob(jobId)</code> (GET by id), <code>fetchLatestIdentifyPartsJob(listingId)</code> (GET latest, catching a 404 ApiError into null), <code>ackIdentifyPartsJob(jobId)</code> (POST ack). Rewrite apps/web/src/features/listings/identify-parts-button.tsx: on mount (when <code>listing</code> is defined) call <code>fetchLatestIdentifyPartsJob</code>; if non-terminal, start polling it; if terminal and not yet <code>delivered</code>, apply it immediately (see below). On click, call <code>enqueueIdentifyPartsJob</code>; on success, poll the returned job; on a 409 <code>ApiError</code>, call <code>fetchLatestIdentifyPartsJob</code> to get the real active job and poll that instead, plus show &quot;Already identifying this listing&#x27;s parts&quot;. Poll via <code>setInterval</code>-driven <code>fetchIdentifyPartsJob</code> every 2000ms while non-terminal, rendering stage copy from a stage→text map (<code>queued</code>→&#x27;Waiting to run…&#x27;, <code>identifying</code>→&#x27;Reading the listing text and photos with AI…&#x27;, <code>sourcing_references</code>→&#x27;Sourcing reference photos from manufacturer sites…&#x27;, <code>comparing</code>→&#x27;Comparing photos against reference images…&#x27;); clear the interval on reaching <code>completed</code>/<code>failed</code> or on unmount. On <code>completed</code> (live poll or mount-time check): call <code>onIdentified(job.parts)</code>, set the notes banner from <code>job.notes</code>, then <code>ackIdentifyPartsJob(job.id)</code>. On <code>failed</code>: show <code>job.errorMessage</code> in the existing <code>ErrorBanner</code>, then <code>ackIdentifyPartsJob(job.id)</code>. Button is <code>disabled</code> whenever a tracked job is non-terminal (click-triggered, 409-recovered, and mount-resumed cases alike) — never merely while a fetch itself is in flight. Update apps/web/test/identify-parts.test.tsx (existing 10 tests) for the new enqueue/poll/stage/409/disable/auto-apply/ack behavior, mocking listings-api.ts&#x27;s new functions and using fake timers for the poll interval. Fix (Cycle 0 review, 3 items): (1) apps/web/src/features/listings/identify-parts-button.tsx:129 — <code>npm run build</code> fails (TS18048, &#x27;listing&#x27; is possibly undefined): the outer <code>if (listing === undefined) return;</code> guard in the mount effect doesn&#x27;t narrow inside the nested async <code>resumeJob</code> closure, which calls <code>fetchLatestIdentifyPartsJob(listing.id)</code> — capture <code>const id = listing.id;</code> before defining <code>resumeJob</code> (or pass it as a parameter) so TS narrows correctly and the production build compiles. (2) apps/web/src/features/listings/listings-api.ts:4 — <code>IdentifyPartsResponse</code> is imported but never used; drop the unused import. (3) apps/web/test/api-client.test.ts&#x27;s &#x27;identifyListingParts request shape&#x27; describe block still calls <code>identifyListingParts</code>, the function this task&#x27;s listings-api.ts rewrite deleted — fails deterministically (<code>TypeError: ... is not a function</code>). Rewrite that block against the real request shapes of <code>enqueueIdentifyPartsJob</code>/<code>fetchIdentifyPartsJob</code>/<code>fetchLatestIdentifyPartsJob</code>/<code>ackIdentifyPartsJob</code>, the same way TE3 already did for the equivalent stale server-side test.</span></td><td><span data-at="2026-10-06T12:02:37Z" hidden></span>2026-10-06T12:02:37Z (35 min)</td><td><span data-at="2026-10-06T11:54:44Z">2026-10-06T11:54:44Z</span> (2026-10-06T11:41:53Z)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; <span class="tag">UI</span> &middot; Est tokens 12500 &middot; Actual tokens 24500</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R1</span></td><td><span class="desc">Review T1 (apps/server/src/db/schema.ts; apps/server/src/db/queries/identifyPartsJobs.ts). Scope: Requirements 2, 3, 5, 6, 7, 8, 11, 12, 13 (the query-layer/schema clauses of each, including the atomic <code>insertQueuedJobIfNoneActive</code> INSERT...WHERE NOT EXISTS for Req 13 and the atomic claim in Req 5) plus Standing checks 3 (comment style) and 6 (~200-line files).</span></td><td><span data-at="2026-10-06T12:44:16Z" hidden></span>2026-10-06T12:44:16Z (15 min)</td><td><span data-at="2026-10-06T12:10:02Z">2026-10-06T12:10:02Z</span> (2026-10-06T12:10:02Z)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 7800 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE1</span></td><td><span class="desc">Test T1 (apps/server/src/db/schema.ts; apps/server/src/db/queries/identifyPartsJobs.ts). Scope: same requirement set as R1. Write/run unit tests for the query functions (insertQueuedJobIfNoneActive, getActiveJobForListing, getJobById, getLatestJobForListing, claimNextQueuedJob, updateJobStage, completeJob, failJob, markDelivered, resetOrphanedJobsToQueued), including a break-run-restore proof that insertQueuedJobIfNoneActive&#x27;s atomicity (Req 13) actually matters.</span></td><td><span data-at="2026-10-06T12:44:16Z" hidden></span>2026-10-06T12:44:16Z (20 min)</td><td><span data-at="2026-10-06T12:10:02Z">2026-10-06T12:10:02Z</span> (2026-10-06T12:10:02Z)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 34900 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R2</span></td><td><span class="desc">Review T2 (apps/server/src/ai/partIdentification.ts; apps/server/src/jobs/identifyPartsWorkerPool.ts; apps/server/src/index.ts). Scope: Requirements 2 (DB-backed, not in-memory, job state), 3 (startup orphan reset), 4 (worker pool loop), 5 (POOL_SIZE constant + claim usage), 6 (onStage hook placement and stage-transition correctness) plus Standing checks 3, 5 (jobs/** DB access only via db/**), 6.</span></td><td><span data-at="2026-10-06T12:44:16Z" hidden></span>2026-10-06T12:44:16Z (15 min)</td><td><span data-at="2026-10-06T12:10:02Z">2026-10-06T12:10:02Z</span> (2026-10-06T12:10:02Z)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 10500 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE2</span></td><td><span class="desc">Test T2 (apps/server/src/ai/partIdentification.ts; apps/server/src/jobs/identifyPartsWorkerPool.ts; apps/server/src/index.ts). Scope: same requirement set as R2. Write/run tests proving onStage fires at the right points (only when eligible parts/references exist) and the pool claims/processes/transitions jobs correctly, including a break-run-restore proof on the pool&#x27;s own files.</span></td><td><span data-at="2026-10-06T12:44:16Z" hidden></span>2026-10-06T12:44:16Z (20 min)</td><td><span data-at="2026-10-06T12:10:02Z">2026-10-06T12:10:02Z</span> (2026-10-06T12:10:02Z)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 16000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R3</span></td><td><span class="desc">Review T3 (apps/server/src/routes/identifyParts.ts; apps/server/src/routes/identifyPartsJobs.ts; apps/server/src/index.ts; apps/server/test/identifyPartsConcurrency.test.ts). Scope: Requirements 1 (enqueue, no inline run, 201), 2 (route reads/writes only via DB), 7 (GET job by id), 8 (GET latest job), 11 (ack/delivered route), 12 (409 duplicate rejection), 13 (race-free proof, concurrency test) plus Standing checks 3, 6.</span></td><td><span data-at="2026-10-06T12:44:16Z" hidden></span>2026-10-06T12:44:16Z (15 min)</td><td><span data-at="2026-10-06T12:10:02Z">2026-10-06T12:10:02Z</span> (2026-10-06T12:10:02Z)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 34300 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE3</span></td><td><span class="desc">Test T3 (apps/server/src/routes/identifyParts.ts; apps/server/src/routes/identifyPartsJobs.ts; apps/server/src/index.ts; apps/server/test/identifyPartsConcurrency.test.ts). Scope: same requirement set as R3. Run the existing concurrency test plus route-level tests for 404/409/latest/ack/get-by-id, including a break-run-restore proof that the 409 path is genuinely race-free (temporarily swapping the atomic insert for check-then-insert).</span></td><td><span data-at="2026-10-06T12:44:16Z" hidden></span>2026-10-06T12:44:16Z (20 min)</td><td><span data-at="2026-10-06T12:10:02Z">2026-10-06T12:10:02Z</span> (2026-10-06T12:10:02Z)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 26000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R4</span></td><td><span class="desc">Review T4 (apps/web/src/features/listings/listings-api.ts; apps/web/src/features/listings/identify-parts-button.tsx; apps/web/test/identify-parts.test.tsx). Scope: Requirements 9 (per-stage copy), 10 (auto-apply on completed), 11 (client-side ack-once), 14 (button disabled in every active-job case) plus Standing checks 3, 4 (apps/web never imports apps/server directly), 6.</span></td><td><span data-at="2026-10-06T12:44:16Z" hidden></span>2026-10-06T12:44:16Z (15 min)</td><td><span data-at="2026-10-06T12:10:02Z">2026-10-06T12:10:02Z</span> (2026-10-06T12:10:02Z)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 14000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE4</span></td><td><span class="desc">Test T4 (apps/web/src/features/listings/listings-api.ts; apps/web/src/features/listings/identify-parts-button.tsx; apps/web/test/identify-parts.test.tsx). Scope: same requirement set as R4. Run/extend the existing jsdom test suite (listings-api fully mocked, fake timers for polling); no backend file mutation needed, so no conflict with any other tester.</span></td><td><span data-at="2026-10-06T12:44:16Z" hidden></span>2026-10-06T12:44:16Z (20 min)</td><td><span data-at="2026-10-06T12:10:02Z">2026-10-06T12:10:02Z</span> (2026-10-06T12:10:02Z)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 48000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">U0</span></td><td><span class="desc">UAT: start the app in the worktree (apps/server + apps/web dev servers) and exercise the whole async identify-parts-queue feature end to end as a real user — enqueue, watch it move through queued/identifying/sourcing_references-or-skip/comparing to completed with real stage copy, confirm auto-apply to Expected Parts, confirm the 409+disabled-button behavior on a duplicate click, confirm a page reload resumes/doesn&#x27;t duplicate-apply. Standing-gate result already confirmed by validate-lead: lint clean, <code>npm run build</code> exit 0, whole suite 529/529 effective (478 baseline + 51 new, two pre-existing/flake failures excluded and documented) — cite this instead of re-running the whole suite.</span></td><td><span data-at="2026-10-06T13:25:23Z" hidden></span>2026-10-06T13:25:23Z (20 min)</td><td><span data-at="2026-10-06T12:46:26Z">2026-10-06T12:46:26Z</span> (2026-10-06T12:46:26Z)</td></tr>
+<tr class="sub"><td colspan="5">uat &middot; Est tokens — &middot; Actual tokens —</td></tr></tbody></table></div>
+<h2>Assumptions</h2><ul class="items"><li><span class="tag">A1</span><span>&quot;Thread pool&quot; means an async concurrency-limited worker loop in the main Node process, not literal <code>node:worker_threads</code> — per the user&#x27;s explicit choice, because the pipeline&#x27;s work (spawning the <code>omp</code> CLI, DB/HTTP I/O) is I/O-bound and the DuckDB native binding is documented single-connection-per-process.</span></li><li><span class="tag">A2</span><span>The stage set is the 4 coarse stages (plus <code>queued</code>/<code>completed</code>/<code>failed</code>) the user approved, not a finer per-sub-step breakdown.</span></li><li><span class="tag">A3</span><span>A listing with an in-flight job rejects a second POST with 409, and the button is disabled client-side while active — per the user&#x27;s explicit choice.</span></li><li><span class="tag">A4</span><span>Job completion auto-applies suggested parts to the Expected Parts editor (same as today&#x27;s synchronous auto-apply), tracked via a server-side <code>delivered</code> flag to prevent double-apply on reload — per the user&#x27;s explicit choice.</span></li><li><span class="tag">A5</span><span>The worker pool polls the DB for queued jobs on a fixed interval, rather than being notified synchronously by the enqueue route, so a fresh job briefly shows <code>queued</code>/&quot;Waiting to run…&quot; even when the pool has free capacity. This also decouples the route and pool modules and directly serves the user&#x27;s requested &quot;waiting to run&quot; status.</span></li><li><span class="tag">A6</span><span>Graceful shutdown stops the worker pool&#x27;s poll loop (mirroring the existing scheduler&#x27;s <code>ScheduledTask.stop()</code> wiring) so no new claim attempt starts against a closing DB connection, but it does not wait for an in-flight job to finish — matching the existing scheduler&#x27;s accepted fire-and-forget shutdown behavior. An interrupted in-flight job is simply reset to <code>queued</code> by the startup-recovery sweep next boot and reprocessed from scratch (there is no way to resume mid-AI-call).</span></li><li><span class="tag">A7</span><span><code>IDENTIFY_PARTS_POOL_SIZE</code> is a plain positive-integer env var (parsed like <code>PORT</code> in index.ts), with no further validation or UI for changing it — it&#x27;s an ops-level/dev knob, not a user-facing setting.</span></li><li><span class="tag">A8</span><span><code>npm test</code>&#x27;s baseline on this sandbox is flaky in a way unrelated to this feature: 3 clean baseline runs showed the server suite at 363/363, 354/363, and 359/363, with a different real-server-spawning test file (<code>ECONNREFUSED</code> against its own hardcoded test port) failing each time under concurrent <code>tsx</code> child-process spawn load. BaselineSuite is recorded as <code>pass</code> (478 total across all 3 workspaces) on the strength of the one fully clean run.</span></li></ul>
+</section>
+</main><script>
+// One redraw every five minutes carries a republish to anyone already looking.
+// REFRESH_MS and LOADED_AT are shared with the countdown below, so the two
+// can never drift apart from each other.
+var REFRESH_MS=300000, LOADED_AT=Date.now();
+setTimeout(function(){location.reload();}, REFRESH_MS);
+
+// Durations count up client-side, so an in-progress row does not freeze between
+// publishes, and every timestamp reads in the viewer's own zone rather than one
+// chosen when the page was written.
+function fmt(ms){var s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),
+m=Math.floor(s%3600/60);return h?h+'h '+m+'m':m+'m';}
+function fmtCountdown(ms){var s=Math.max(0,Math.round(ms/1000)),
+m=Math.floor(s/60);return m+'m '+(s%60)+'s';}
+function tick(){
+  var now=Date.now();
+  document.querySelectorAll('[data-since]').forEach(function(el){
+    el.textContent=fmt(now-Date.parse(el.dataset.since));});
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){
+    el.textContent=fmtCountdown(REFRESH_MS-(now-LOADED_AT));});
+}
+document.querySelectorAll('[data-at]').forEach(function(el){
+  var d=new Date(el.dataset.at);
+  var today=new Date().toDateString()===d.toDateString();
+  el.textContent=today?d.toLocaleTimeString():d.toLocaleString();});
+tick(); setInterval(tick,1000);
+
+// A description gets an expand control only when it truly does not fit.
+document.querySelectorAll('.desc').forEach(function(el){
+  if(el.scrollWidth<=el.clientWidth) return;
+  var b=document.createElement('button');b.className='more';b.textContent='more';
+  b.onclick=function(){el.classList.toggle('open');
+    b.textContent=el.classList.contains('open')?'less':'more';};
+  el.parentNode.appendChild(b);});
+
+function showCycle(n){
+  document.querySelectorAll('[data-cycle-panel]').forEach(function(p){
+    p.hidden=(p.dataset.cyclePanel!==String(n));});
+  document.querySelectorAll('[data-cycle-tab]').forEach(function(t){
+    t.setAttribute('aria-selected',t.dataset.cycleTab===String(n));});
+}
+</script>

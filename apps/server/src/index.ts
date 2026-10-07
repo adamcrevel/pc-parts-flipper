@@ -13,7 +13,9 @@ import { registerSalesRoutes } from './routes/sales.js';
 import { registerProfitRoutes } from './routes/profit.js';
 import { registerScanRoutes } from './routes/scan.js';
 import { registerIdentifyPartsRoutes } from './routes/identifyParts.js';
+import { registerIdentifyPartsJobsRoutes } from './routes/identifyPartsJobs.js';
 import { startScheduler } from './scan/scheduler.js';
+import { startIdentifyPartsWorkerPool } from './jobs/identifyPartsWorkerPool.js';
 import { closeConnection } from './db/client.js';
 import { PHOTOS_DIR } from './photos/photoStorage.js';
 
@@ -64,6 +66,7 @@ await registerSalesRoutes(server);
 await registerProfitRoutes(server);
 await registerScanRoutes(server);
 await registerIdentifyPartsRoutes(server);
+await registerIdentifyPartsJobsRoutes(server);
 
 // Registers the once-daily scheduled scan job (T8, Req 6, 9) so eligible
 // Sources are re-scanned automatically, not only via T7's manual route.
@@ -71,6 +74,11 @@ await registerIdentifyPartsRoutes(server);
 // can stop it cleanly during shutdown instead of leaving a dangling cron
 // timer.
 const scheduledTask = startScheduler();
+// Starts the identify-parts worker pool (T2, Req 1–4) that processes queued
+// identify-parts jobs concurrently, up to IDENTIFY_PARTS_POOL_SIZE (default 1).
+// Capturing the returned handle so the SIGTERM/SIGINT handler below can stop
+// the pool cleanly during shutdown before closing the server.
+const identifyPartsPool = startIdentifyPartsWorkerPool();
 
 // Port the server listens on; configurable for deployment, defaults to 3001
 // for local development.
@@ -120,6 +128,7 @@ async function gracefulShutdown(signal: NodeJS.Signals): Promise<void> {
   shuttingDown = true;
   logger.info({ signal }, 'Shutdown signal received, starting graceful shutdown');
   scheduledTask.stop();
+  identifyPartsPool.stop();
   await server.close();
   await closeConnection();
   logger.info('Graceful shutdown complete');

@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>T4 Prototype — Identify Parts Button (Async Job Queue)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          border: '#e2e8f0',
+          input: '#e2e8f0',
+          ring: '#0f172a',
+          background: '#ffffff',
+          foreground: '#0f172a',
+          primary: { DEFAULT: '#0f172a', foreground: '#f8fafc' },
+          secondary: { DEFAULT: '#f1f5f9', foreground: '#0f172a' },
+          destructive: { DEFAULT: '#dc2626', foreground: '#f8fafc' },
+          muted: { DEFAULT: '#f1f5f9', foreground: '#64748b' },
+          accent: { DEFAULT: '#f1f5f9', foreground: '#0f172a' },
+        },
+      },
+    },
+  };
+</script>
+<style>
+  /* button.tsx buttonVariants base + outline/sm, reproduced verbatim as real classes (via tailwind config above) */
+  body { background: #fafafa; }
+  .proto-shell { max-width: 640px; }
+  .scenario-card { break-inside: avoid; }
+</style>
+</head>
+<body class="min-h-screen p-8 text-foreground">
+  <div class="proto-shell mx-auto space-y-10">
+    <header class="space-y-1">
+      <h1 class="text-lg font-semibold">T4 Prototype — Async Identify Parts button</h1>
+      <p class="text-sm text-muted-foreground">
+        Click through each scenario below. Every element reuses the real
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">Button</code>,
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">InfoBanner</code>, and
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">ErrorBanner</code> classes from
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">apps/web/src/components/ui</code>.
+      </p>
+    </header>
+
+    <!-- ===================== LIVE INTERACTIVE SCENARIO ===================== -->
+    <section class="space-y-3 rounded-lg border border-border p-4 scenario-card">
+      <h2 class="text-sm font-semibold">Interactive walk-through (click "Identify Parts")</h2>
+      <p class="text-xs text-muted-foreground">
+        Drives the real state machine: idle → queued → identifying → sourcing_references → comparing → completed.
+        Click "Identify Parts" again mid-run to see the 409-recovered case. Use "Simulate failure instead" to see the error path.
+      </p>
+
+      <!-- This div is the literal replacement for identify-parts-button.tsx's returned JSX -->
+      <div class="space-y-2" id="live-root">
+        <button type="button" id="live-btn"
+          class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+          Identify Parts
+        </button>
+
+        <p id="live-stage" class="text-sm text-muted-foreground hidden"></p>
+
+        <div id="live-applied" class="hidden text-sm text-muted-foreground">
+          ✓ 3 suggested parts applied to Expected Parts
+        </div>
+
+        <div id="live-info" role="status"
+          class="hidden flex items-start justify-between gap-3 rounded-md border border-border bg-muted px-4 py-3 text-sm text-foreground">
+          <span id="live-info-text"></span>
+          <button type="button" aria-label="Dismiss" class="text-muted-foreground hover:text-foreground" onclick="document.getElementById('live-info').classList.add('hidden')">×</button>
+        </div>
+
+        <div id="live-error" role="alert"
+          class="hidden rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        </div>
+      </div>
+
+      <div class="flex gap-2 pt-2">
+        <button type="button" onclick="runHappyPath()" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+          ▶ Run happy path (with notes)
+        </button>
+        <button type="button" onclick="runFailurePath()" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+          ▶ Simulate failure instead
+        </button>
+        <button type="button" onclick="resetLive()" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+          Reset
+        </button>
+      </div>
+    </section>
+
+    <!-- ===================== STATIC STATE GALLERY ===================== -->
+    <section class="space-y-6">
+      <h2 class="text-sm font-semibold">All states (static reference)</h2>
+
+      <!-- 1. Idle -->
+      <div class="rounded-lg border border-border p-4 space-y-2 scenario-card">
+        <p class="text-xs font-medium text-muted-foreground">1 — Idle</p>
+        <div class="space-y-2">
+          <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+            Identify Parts
+          </button>
+        </div>
+      </div>
+
+      <!-- 2. Clicked / queued -->
+      <div class="rounded-lg border border-border p-4 space-y-2 scenario-card">
+        <p class="text-xs font-medium text-muted-foreground">2 — Clicked (stage: queued)</p>
+        <div class="space-y-2">
+          <button type="button" disabled class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+            Identify Parts
+          </button>
+          <p class="text-sm text-muted-foreground">Waiting to run…</p>
+        </div>
+      </div>
+
+      <!-- 3. identifying -->
+      <div class="rounded-lg border border-border p-4 space-y-2 scenario-card">
+        <p class="text-xs font-medium text-muted-foreground">3 — stage: identifying</p>
+        <div class="space-y-2">
+          <button type="button" disabled class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+            Identify Parts
+          </button>
+          <p class="text-sm text-muted-foreground">Reading the listing text and photos with AI…</p>
+        </div>
+      </div>
+
+      <!-- 4. sourcing_references -->
+      <div class="rounded-lg border border-border p-4 space-y-2 scenario-card">
+        <p class="text-xs font-medium text-muted-foreground">4 — stage: sourcing_references</p>
+        <div class="space-y-2">
+          <button type="button" disabled class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+            Identify Parts
+          </button>
+          <p class="text-sm text-muted-foreground">Sourcing reference photos from manufacturer sites…</p>
+        </div>
+      </div>
+
+      <!-- 5. comparing -->
+      <div class="rounded-lg border border-border p-4 space-y-2 scenario-card">
+        <p class="text-xs font-medium text-muted-foreground">5 — stage: comparing</p>
+        <div class="space-y-2">
+          <button type="button" disabled class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+            Identify Parts
+          </button>
+          <p class="text-sm text-muted-foreground">Comparing photos against reference images…</p>
+        </div>
+      </div>
+
+      <!-- 6. completed, notes present, applied -->
+      <div class="rounded-lg border border-border p-4 space-y-2 scenario-card">
+        <p class="text-xs font-medium text-muted-foreground">6 — stage: completed (notes present, parts auto-applied)</p>
+        <div class="space-y-2">
+          <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+            Identify Parts
+          </button>
+          <p class="text-sm text-muted-foreground">✓ 3 suggested parts applied to Expected Parts</p>
+          <div role="status" class="flex items-start justify-between gap-3 rounded-md border border-border bg-muted px-4 py-3 text-sm text-foreground">
+            <span>These look like stock manufacturer photos rather than the actual unit — resale values are estimates only.</span>
+            <button type="button" aria-label="Dismiss" class="text-muted-foreground hover:text-foreground">×</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 7. 409 recovered -->
+      <div class="rounded-lg border border-border p-4 space-y-2 scenario-card">
+        <p class="text-xs font-medium text-muted-foreground">7 — Second click while active (409 recovered)</p>
+        <div class="space-y-2">
+          <button type="button" disabled class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+            Identify Parts
+          </button>
+          <p class="text-sm text-muted-foreground">Reading the listing text and photos with AI…</p>
+          <div role="status" class="flex items-start justify-between gap-3 rounded-md border border-border bg-muted px-4 py-3 text-sm text-foreground">
+            <span>Already identifying this listing's parts.</span>
+            <button type="button" aria-label="Dismiss" class="text-muted-foreground hover:text-foreground">×</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 8. failed -->
+      <div class="rounded-lg border border-border p-4 space-y-2 scenario-card">
+        <p class="text-xs font-medium text-muted-foreground">8 — stage: failed (button re-enabled)</p>
+        <div class="space-y-2">
+          <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+            Identify Parts
+          </button>
+          <div role="alert" class="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            The AI vision model timed out after 3 retries. Try again in a few minutes.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="pt-4 text-xs text-muted-foreground">
+      Save-first hint (unsaved listing, unchanged by this task):
+      <p class="mt-1 text-sm text-muted-foreground">Save the listing to identify parts with AI.</p>
+    </footer>
+  </div>
+
+<script>
+  const btn = document.getElementById('live-btn');
+  const stageEl = document.getElementById('live-stage');
+  const appliedEl = document.getElementById('live-applied');
+  const infoEl = document.getElementById('live-info');
+  const infoText = document.getElementById('live-info-text');
+  const errorEl = document.getElementById('live-error');
+
+  let active = false;
+  let timers = [];
+
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
+  function resetLive() {
+    clearTimers();
+    active = false;
+    btn.disabled = false;
+    btn.textContent = 'Identify Parts';
+    stageEl.classList.add('hidden');
+    appliedEl.classList.add('hidden');
+    infoEl.classList.add('hidden');
+    errorEl.classList.add('hidden');
+  }
+
+  function setStage(text) {
+    stageEl.textContent = text;
+    stageEl.classList.remove('hidden');
+  }
+
+  // Simulates: click -> queued -> identifying -> sourcing_references -> comparing -> completed (notes + auto-apply)
+  function runHappyPath() {
+    resetLive();
+    active = true;
+    btn.disabled = true;
+    const stages = [
+      [0,    'Waiting to run…'],
+      [900,  'Reading the listing text and photos with AI…'],
+      [2200, 'Sourcing reference photos from manufacturer sites…'],
+      [3400, 'Comparing photos against reference images…'],
+    ];
+    stages.forEach(([delay, text]) => {
+      timers.push(setTimeout(() => setStage(text), delay));
+    });
+    timers.push(setTimeout(() => {
+      active = false;
+      btn.disabled = false;
+      stageEl.classList.add('hidden');
+      appliedEl.classList.remove('hidden');
+      infoText.textContent = "These look like stock manufacturer photos rather than the actual unit — resale values are estimates only.";
+      infoEl.classList.remove('hidden');
+    }, 4400));
+  }
+
+  function runFailurePath() {
+    resetLive();
+    active = true;
+    btn.disabled = true;
+    setStage('Waiting to run…');
+    timers.push(setTimeout(() => setStage('Reading the listing text and photos with AI…'), 800));
+    timers.push(setTimeout(() => {
+      active = false;
+      btn.disabled = false;
+      stageEl.classList.add('hidden');
+      errorEl.textContent = 'The AI vision model timed out after 3 retries. Try again in a few minutes.';
+      errorEl.classList.remove('hidden');
+    }, 2200));
+  }
+
+  btn.addEventListener('click', () => {
+    if (active) {
+      // Second click while a job is active: real button is `disabled`, so this
+      // can't literally fire — but surface the 409-recovered banner anyway so
+      // reviewers can see the copy without needing dev-tools tricks.
+      infoText.textContent = "Already identifying this listing's parts.";
+      infoEl.classList.remove('hidden');
+      return;
+    }
+    runHappyPath();
+  });
+</script>
+</body>
+</html>

@@ -1,162 +1,130 @@
-// Proof for POST /api/listings/:id/identify-parts
-// (apps/server/src/routes/identifyParts.ts).
+// Proof for apps/server/src/routes/identifyParts.ts's two routes:
+// POST /api/listings/:id/identify-parts (enqueue-or-409) and
+// GET /api/listings/:id/identify-parts-jobs/latest (poll for the most
+// recent job).
 //
-// Boots a *real* Fastify server in-process (Fastify() + registerErrorHandler +
-// registerIdentifyPartsRoutes, listening on a real local port) against an
-// isolated temp DuckDB file, following scan.test.ts's pattern rather than
-// helpers.ts's spawn()-based server: the only seam that keeps the real `omp`
-// binary out of the automated suite is ompRunner.ts's module-level override,
-// and installing it requires the route and the test to share one process.
-// (The real end-to-end omp call is verified out of band, the same way the eBay
-// connector's real network behavior is.)
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { FastifyInstance } from 'fastify';
-import type { IdentifyPartsResponse } from '@pc-parts-flipper/shared';
-import type * as DbModule from '../src/db/index.js';
-import type { Listing, Source } from '../src/db/index.js';
-import type * as RunnerModule from '../src/ai/ompRunner.js';
-import type * as SourcingRunnerModule from '../src/ai/ompSourcingRunner.js';
-import type * as IdentifyRoutesModule from '../src/routes/identifyParts.js';
-import type * as ErrorHandlerModule from '../src/error-handler.js';
+// Rewritten for the async identify-parts-queue feature (T3): the route no
+// longer runs AI identification synchronously and returns a full
+// IdentifyPartsResponse (200) or a model-parse failure (502) — it enqueues a
+// `queued` job row and returns 201, or 409 if the Listing already has one
+// active. The 10-way *concurrent* race proof for that 201-vs-409 split lives
+// in identifyPartsConcurrency.test.ts (Req 13); this file covers the
+// simpler, sequential behaviors that test doesn't exercise: a 404 for a
+// nonexistent Listing on both routes, and a 409 on a second *sequential*
+// enqueue attempt.
+//
+// Uses the same real-spawned-server pattern as identifyPartsConcurrency.test.ts
+// (helpers.ts's startTestServer) rather than the in-process Fastify instance
+// this file used before: the route now does nothing AI-related itself
+// (identifyListingParts runs entirely inside the background worker, T2's
+// identifyPartsWorkerPool.ts), so there's no ompRunner seam left for this
+// route's own test to install an override into, in-process or otherwise. The
+// worker pool is disabled via IDENTIFY_PARTS_POOL_SIZE=0 so the queued jobs
+// these tests create are never claimed and the real `omp` binary is never
+// invoked (this project's standing rule that the suite stays
+// network/credential-independent — see ompRunner.ts).
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { CreateListingInput, ListingDetail } from '@pc-parts-flipper/shared';
+import { getJson, postJson, startTestServer, type TestServer } from './helpers.js';
 
-// Arbitrary high port distinct from every other suite's TEST_PORT
-// (concurrency.test.ts's 34_591, sources.test.ts's 34_597, app-shell.test.ts's
-// 34_601, listings.test.ts's 34_602, scan.test.ts's 34_610).
-const TEST_PORT = 34_613;
-const BASE_URL = `http://127.0.0.1:${TEST_PORT}`;
-
-let dataDir: string;
-let db: typeof DbModule;
-let runner: typeof RunnerModule;
-let sourcingRunner: typeof SourcingRunnerModule;
-let app: FastifyInstance;
+interface SourceResponse {
+  id: string;
+}
 
 interface ErrorResponse {
   error: { message: string; statusCode: number };
 }
 
-// Creates a Source + Listing pair to identify parts on.
-async function createListingWithPhotos(title: string, photoPaths: string[]): Promise<Listing> {
-  const source: Source = await db.createSource({
-    name: `AI Identify Source ${title}`,
-    platformType: 'ebay',
-    url: null,
-    notes: null,
-    connectorConfig: null,
-  });
-  return db.createListing({
-    sourceId: source.id,
-    title,
-    description: 'Includes keyboard and mouse.',
-    listingUrl: null,
-    askingPrice: 500,
-    listingDate: '2026-09-20',
-    acquisitionFees: 0,
-    photoPaths,
-  });
+interface IdentifyPartsJobResponse {
+  id: string;
+  listingId: string;
+  stage: string;
 }
 
-beforeAll(async () => {
-  dataDir = await mkdtemp(path.join(tmpdir(), 'pc-parts-flipper-identify-route-test-'));
-  process.env.DUCKDB_DATA_DIR = dataDir;
-  // Dynamic import (same exception as db.test.ts/scan.test.ts): client.ts's
-  // DATA_DIR is read once at module-evaluation time from DUCKDB_DATA_DIR, so a
-  // static import would open the shared development database instead.
-  db = await import('../src/db/index.js');
-  runner = await import('../src/ai/ompRunner.js');
-  sourcingRunner = await import('../src/ai/ompSourcingRunner.js');
-  const { registerIdentifyPartsRoutes }: typeof IdentifyRoutesModule = await import('../src/routes/identifyParts.js');
-  const { registerErrorHandler }: typeof ErrorHandlerModule = await import('../src/error-handler.js');
-  const Fastify = (await import('fastify')).default;
+// Arbitrary high port distinct from every other suite's TEST_PORT (see the
+// roster in e.g. identifyPartsConcurrency.test.ts's comment: 34_591-34_633).
+// Also retires the pre-existing 34_613 collision this file previously shared
+// with gracefulShutdown.test.ts.
+const TEST_PORT = 34_635;
 
-  app = Fastify();
-  registerErrorHandler(app);
-  await registerIdentifyPartsRoutes(app);
-  await app.listen({ port: TEST_PORT, host: '127.0.0.1' });
-}, 30_000);
+function listingBody(title: string, sourceId: string): CreateListingInput {
+  return {
+    sourceId,
+    title,
+    description: null,
+    listingUrl: 'https://example.com/identify-parts-route-test',
+    askingPrice: 100,
+    listingDate: '2026-01-01',
+    acquisitionFees: 0,
+    expectedParts: [],
+  };
+}
 
-afterAll(async () => {
-  await app.close();
-  await rm(dataDir, { recursive: true, force: true });
-});
+describe('identify-parts queue routes (T3)', () => {
+  let server: TestServer;
+  let sourceId: string;
 
-afterEach(() => {
-  runner.setOmpRunnerOverride(null);
-  sourcingRunner.setOmpSourcingRunnerOverride(null);
-});
-
-// This file proves the identify-parts ROUTE, not reference-photo sourcing
-// behavior — but a fixture part with a known brand and no model number
-// (used below) now legitimately triggers catalog-mode sourcing
-// (ai-catalog-sourcing feature). Without this default stub, that call would
-// reach the real `omp` binary and hang the test. Answers both the
-// single-product and catalog-mode response shapes so either sourcing path
-// resolves immediately as "nothing found".
-beforeEach(() => {
-  sourcingRunner.setOmpSourcingRunnerOverride(async () => '{"found":false,"url":null,"products":[]}');
-});
-
-describe('POST /api/listings/:id/identify-parts', () => {
-  it('returns 200 with the parsed identification for an existing Listing', async () => {
-    const modelOutput = JSON.stringify({
-      parts: [
-        { category: 'CPU', brand: 'AMD', partNumber: 'Ryzen 5 5600X', description: 'Boxed cooler included', confidence: 'high', source: 'text' },
-        { category: 'GPU', brand: 'NVIDIA', partNumber: null, description: 'RTX 3060, 12GB variant unconfirmed', confidence: 'medium', source: 'image' },
-      ],
-      notes: 'PSU wattage not visible in any photo.',
+  beforeAll(async () => {
+    server = await startTestServer(TEST_PORT, { IDENTIFY_PARTS_POOL_SIZE: '0' });
+    const sourceRes = await postJson<SourceResponse>(`${server.baseUrl}/api/sources`, {
+      name: 'Identify-Parts Route Test Source',
+      platformType: 'ebay',
+      url: 'https://example.com/identify-parts-route-test',
+      notes: null,
     });
-    let receivedImages: readonly string[] = [];
-    runner.setOmpRunnerOverride(async (_prompt, imagePaths) => {
-      receivedImages = imagePaths;
-      return modelOutput;
-    });
-    const listing = await createListingWithPhotos('Gaming PC with RTX 3060', ['photos/pic-one.jpg']);
+    expect(sourceRes.status, `seed Source creation failed: ${JSON.stringify(sourceRes.body)}`).toBe(201);
+    sourceId = sourceRes.body.id;
+  }, 30_000);
 
-    const res = await fetch(`${BASE_URL}/api/listings/${listing.id}/identify-parts`, { method: 'POST' });
-    const body = (await res.json()) as IdentifyPartsResponse;
+  afterAll(async () => {
+    await server.stop();
+  }, 30_000);
 
-    expect(res.status).toBe(200);
-    expect(body.parts).toHaveLength(2);
-    // Full-shape equality, so brand/partNumber reaching the HTTP response is
-    // proven rather than assumed — including the null half.
-    expect(body.parts[0]).toEqual({ category: 'CPU', brand: 'AMD', partNumber: 'Ryzen 5 5600X', description: 'Boxed cooler included', confidence: 'high', source: 'text', identityCandidates: [] });
-    expect(body.parts[1].brand).toBe('NVIDIA');
-    expect(body.parts[1].partNumber).toBeNull();
-    expect(body.notes).toBe('PSU wattage not visible in any photo.');
-    // The route reached the real orchestrator (photo resolution included),
-    // not some shortcut that echoed the fixture.
-    expect(receivedImages).toEqual([path.join(dataDir, 'photos', 'pic-one.jpg')]);
+  it('POST enqueues a queued job and returns 201 referencing the Listing', async () => {
+    const listingRes = await postJson<ListingDetail>(`${server.baseUrl}/api/listings`, listingBody('First Enqueue Listing', sourceId));
+    expect(listingRes.status, `seed Listing creation failed: ${JSON.stringify(listingRes.body)}`).toBe(201);
+    const listingId = listingRes.body.id;
+
+    const res = await postJson<IdentifyPartsJobResponse>(`${server.baseUrl}/api/listings/${listingId}/identify-parts`, {});
+
+    expect(res.status).toBe(201);
+    expect(res.body.listingId).toBe(listingId);
+    expect(res.body.stage).toBe('queued');
+    expect(res.body.id).toBeTruthy();
   });
 
-  it('returns 404 for a Listing that does not exist, without calling the model', async () => {
-    let called = false;
-    runner.setOmpRunnerOverride(async () => {
-      called = true;
-      return '{"parts":[],"notes":""}';
-    });
-
+  it('POST returns 404 for a Listing that does not exist', async () => {
     // UUID-shaped but unused id, matching scan.test.ts's nonexistent-id
     // convention: the id column is a DuckDB UUID, so a non-UUID string fails
     // conversion before the row lookup could report "not found".
-    const res = await fetch(`${BASE_URL}/api/listings/00000000-0000-0000-0000-000000000000/identify-parts`, { method: 'POST' });
-    const body = (await res.json()) as ErrorResponse;
+    const res = await postJson<ErrorResponse>(`${server.baseUrl}/api/listings/00000000-0000-0000-0000-000000000000/identify-parts`, {});
 
     expect(res.status).toBe(404);
-    expect(body.error.message).toContain('not found');
-    expect(called).toBe(false);
+    expect(res.body.error.message).toContain('not found');
   });
 
-  it('surfaces an identification failure as a real error, never an empty success body', async () => {
-    runner.setOmpRunnerOverride(async () => 'Sorry, I cannot do that.');
-    const listing = await createListingWithPhotos('Office PC', []);
+  it('POST returns 409 when the Listing already has an active job', async () => {
+    const listingRes = await postJson<ListingDetail>(`${server.baseUrl}/api/listings`, listingBody('Second Enqueue Listing', sourceId));
+    expect(listingRes.status, `seed Listing creation failed: ${JSON.stringify(listingRes.body)}`).toBe(201);
+    const listingId = listingRes.body.id;
 
-    const res = await fetch(`${BASE_URL}/api/listings/${listing.id}/identify-parts`, { method: 'POST' });
-    const body = (await res.json()) as ErrorResponse;
+    const firstRes = await postJson<IdentifyPartsJobResponse>(`${server.baseUrl}/api/listings/${listingId}/identify-parts`, {});
+    expect(firstRes.status, `first enqueue failed: ${JSON.stringify(firstRes.body)}`).toBe(201);
 
-    expect(res.status).toBe(502);
-    expect(body.error.message).toContain('did not return valid JSON');
+    const secondRes = await postJson<ErrorResponse>(`${server.baseUrl}/api/listings/${listingId}/identify-parts`, {});
+
+    expect(secondRes.status).toBe(409);
+    expect(secondRes.body.error.message).toContain('already has an active identify-parts job');
+  });
+
+  it('GET latest returns 404 when the Listing has never had a job', async () => {
+    const listingRes = await postJson<ListingDetail>(`${server.baseUrl}/api/listings`, listingBody('Never Enqueued Listing', sourceId));
+    expect(listingRes.status, `seed Listing creation failed: ${JSON.stringify(listingRes.body)}`).toBe(201);
+    const listingId = listingRes.body.id;
+
+    const res = await getJson<ErrorResponse>(`${server.baseUrl}/api/listings/${listingId}/identify-parts-jobs/latest`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.message).toContain('No identify-parts job');
   });
 });

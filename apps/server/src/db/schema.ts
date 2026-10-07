@@ -18,6 +18,12 @@ export const ENUM_STATEMENTS: readonly string[] = [
   `CREATE TYPE IF NOT EXISTS teardown_result_type AS ENUM
     ('present_as_expected', 'present_but_different', 'missing', 'additional')`,
   `CREATE TYPE IF NOT EXISTS part_status AS ENUM ('ready_to_list', 'listed', 'sold', 'unsellable')`,
+  // Identify-Parts job queue (async identify-parts-queue feature): queued ->
+  // identifying -> sourcing_references -> comparing -> completed/failed,
+  // mirroring the synchronous pipeline's own phases so a stuck job's stage
+  // tells you exactly which phase it died in.
+  `CREATE TYPE IF NOT EXISTS identify_parts_job_stage AS ENUM
+    ('queued', 'identifying', 'sourcing_references', 'comparing', 'completed', 'failed')`,
 ];
 
 // -- Phase 2: tables -------------------------------------------------------
@@ -155,8 +161,25 @@ export const TABLE_STATEMENTS: readonly string[] = [
     created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
     updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
   )`,
+  `CREATE TABLE IF NOT EXISTS identify_parts_jobs (
+    id UUID PRIMARY KEY,
+    listing_id UUID NOT NULL REFERENCES listings(id),
+    stage identify_parts_job_stage NOT NULL DEFAULT 'queued',
+    -- JSON-encoded IdentifyPartsResponse (packages/shared/src/aiIdentification.ts),
+    -- same string-column-holding-JSON pattern as listings.photo_paths above.
+    -- Null until the job reaches 'completed'.
+    result VARCHAR,
+    error_message VARCHAR,
+    -- Set once the route handler has handed the completed/failed result back
+    -- to its caller, so a second poll for the same job knows not to deliver
+    -- it again (the queue is drained by polling, not a push channel).
+    delivered BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
+  )`,
 ];
-
 // -- Phase 3: alters ---------------------------------------------------
 // Columns later features add on top of the original schema. Uses
 // ADD COLUMN IF NOT EXISTS so this phase is safe to re-run on every boot,
@@ -230,4 +253,5 @@ export const INDEX_STATEMENTS: readonly string[] = [
   // needed reasoning as idx_sourcing_attempts_dedup just above.
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_catalog_sourcing_attempts_dedup ON part_catalog_sourcing_attempts(category, brand)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_listings_source_external_item ON listings(source_id, external_item_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_identify_parts_jobs_listing_id ON identify_parts_jobs(listing_id)`,
 ];
