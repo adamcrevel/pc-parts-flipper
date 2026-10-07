@@ -170,10 +170,24 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'succeeded',
     'products_found',
   ],
+  // (async identify-parts-queue feature T1): one row per enqueued
+  // identify-parts job, columns in the CREATE TABLE's DDL order above.
+  identify_parts_jobs: [
+    'id',
+    'listing_id',
+    'stage',
+    'result',
+    'error_message',
+    'delivered',
+    'created_at',
+    'started_at',
+    'completed_at',
+    'updated_at',
+  ],
 };
 
 describe('migrations create every table with the correct columns', () => {
-  it('creates exactly the 9 tables named in the Requirements plus part_reference_photos (ai-visual-identification), part_reference_sourcing_attempts (ai-reference-autosourcing), and part_catalog_sourcing_attempts (ai-catalog-sourcing)', async () => {
+  it('creates exactly the 9 tables named in the Requirements plus part_reference_photos (ai-visual-identification), part_reference_sourcing_attempts (ai-reference-autosourcing), part_catalog_sourcing_attempts (ai-catalog-sourcing), and identify_parts_jobs (async identify-parts-queue)', async () => {
     const connection = await getConnection();
     const reader = await connection.runAndReadAll(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'main' ORDER BY table_name`,

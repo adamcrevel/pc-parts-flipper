@@ -72,13 +72,24 @@ async function waitForHealth(baseUrl: string, timeoutMs: number): Promise<void> 
  * assumption A4 comment there) so this test run never touches/pollutes the
  * shared dev data/ directory. Captures stdout/stderr so a startup failure
  * surfaces real server logs in the thrown error instead of just "timed out".
+ *
+ * `envOverrides` is merged in last, so a caller can both point the server at
+ * its own pre-seeded DuckDB directory (overriding DUCKDB_DATA_DIR — used by
+ * identifyPartsJobsRoute.test.ts to seed fixture rows before the server ever
+ * opens the file) and/or tune a knob like IDENTIFY_PARTS_POOL_SIZE (used by
+ * identifyPartsRoute.test.ts and identifyPartsJobsRoute.test.ts to disable
+ * the background worker, so a job these tests leave `queued` is never
+ * claimed and the real `omp` binary never invoked). When DUCKDB_DATA_DIR is
+ * overridden this way, the override's owner is responsible for that
+ * directory's cleanup — stop() below only removes the one it created itself.
  */
-export async function startTestServer(port: number): Promise<TestServer> {
-  const dataDir = await mkdtemp(path.join(tmpdir(), 'pc-parts-flipper-concurrency-'));
+export async function startTestServer(port: number, envOverrides: Record<string, string> = {}): Promise<TestServer> {
+  const ownsDataDir = envOverrides.DUCKDB_DATA_DIR === undefined;
+  const dataDir = envOverrides.DUCKDB_DATA_DIR ?? (await mkdtemp(path.join(tmpdir(), 'pc-parts-flipper-concurrency-')));
   const output: string[] = [];
   const child: ChildProcessWithoutNullStreams = spawn(process.execPath, [tsxCliPath, 'src/index.ts'], {
     cwd: serverRoot,
-    env: { ...process.env, PORT: String(port), DUCKDB_DATA_DIR: dataDir },
+    env: { ...process.env, PORT: String(port), DUCKDB_DATA_DIR: dataDir, ...envOverrides },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.stdout.on('data', (chunk: Buffer) => output.push(chunk.toString()));
@@ -105,7 +116,9 @@ export async function startTestServer(port: number): Promise<TestServer> {
       child.once('exit', () => resolveExit());
       child.kill('SIGTERM');
       await exited;
-      await rm(dataDir, { recursive: true, force: true });
+      if (ownsDataDir) {
+        await rm(dataDir, { recursive: true, force: true });
+      }
     },
   };
 }

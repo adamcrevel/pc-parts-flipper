@@ -101,7 +101,7 @@ function trimReferencePhotosRoundRobin(
  * `options` exists for the test suite (short timeout, fake spawn) and is
  * passed straight through to the runner; production callers omit it.
  */
-export async function identifyListingParts(listing: Listing, options?: OmpRunOptions): Promise<IdentifyPartsResponse> {
+export async function identifyListingParts(listing: Listing, options?: OmpRunOptions, onStage?: (stage: 'sourcing_references' | 'comparing') => void): Promise<IdentifyPartsResponse> {
   const imagePaths = resolvePhotoPaths(listing.photoPaths);
   logger.info({ listingId: listing.id, photoCount: imagePaths.length }, 'Starting AI part identification');
 
@@ -132,6 +132,7 @@ export async function identifyListingParts(listing: Listing, options?: OmpRunOpt
     // is private to this request (never shared with a concurrent one).
     const sourceMissingReferenceIfNeeded = createReferenceSourcer();
     const referencesByPart = new Map<number, ReferencePhoto[]>();
+    onStage?.('sourcing_references');
     for (const partIndex of eligibleIndices) {
       const part = response.parts[partIndex];
       // Attempted before this part's own lookup, so a photo sourced here is
@@ -192,6 +193,8 @@ export async function identifyListingParts(listing: Listing, options?: OmpRunOpt
       { listingId: listing.id, eligibleCount: eligibleParts.length },
       'Starting AI visual comparison pass',
     );
+
+    onStage?.('comparing');
 
     const comparisonRawStdout = await getOmpRunner()(comparisonPrompt, combinedImagePaths, options);
     const comparisonUpdates = parseVisualComparisonResponse(comparisonRawStdout);
