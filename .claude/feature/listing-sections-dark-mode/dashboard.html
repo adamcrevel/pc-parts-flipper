@@ -1,0 +1,287 @@
+<title>Feature</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--radius:8px}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74}}
+*{box-sizing:border-box;overflow-wrap:break-word}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+/* Grid tracks default to fitting their content's full, unbroken width -- a single
+   long token (a file path, a backtick-quoted identifier) anywhere in a panel would
+   otherwise stretch the whole page past max-width, no matter how long the gap or how
+   small every other panel is. min-width:0 is what lets a grid item shrink below that
+   and actually wrap instead. Confirmed live: this is what was making every real plan
+   (which is full of exactly these long tokens) render many times wider than the
+   viewport, independent of the DOCTYPE/viewport fix. */
+main{max-width:1000px;margin:0 auto;padding:24px;display:grid;gap:20px}
+main>*{min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);
+border-radius:var(--radius);padding:20px 22px}
+h1{margin:0 0 4px;font-size:21px;letter-spacing:-.01em}
+h2{margin:22px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+h2:first-of-type{margin-top:14px}
+.panel>p{line-height:1.65;margin:0 0 4px}
+.totals{display:flex;gap:32px;flex-wrap:wrap;margin:12px 0}
+.total .n{font-size:26px;font-variant-numeric:tabular-nums}
+.total .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+details{margin-top:8px}summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;
+border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--good);border-color:var(--good);color:var(--panel)}
+.scroll{overflow-x:auto}
+/* table-layout:auto (the default) sizes a column from its content's own natural
+   width -- for a nowrap+ellipsis cell, that is the FULL unwrapped text, which is
+   exactly the width ellipsis is meant to avoid ever reaching. It is a well-known
+   gap in the auto algorithm, not a quirk of this page: the standard fix is
+   table-layout:fixed, with every narrow column given an explicit width so the
+   description column (the one left unset) absorbs the rest and actually holds
+   .desc to it. Confirmed live: without this, a single real task description
+   dragged the whole table into a wide horizontal scrollbar regardless of how
+   short every other column's content was. */
+table{width:100%;border-collapse:collapse;font-size:14px;table-layout:fixed}
+/* The status column's own text ("In progress &middot; running long.") is real
+   prose, not a single short token -- 28px forced it to wrap, and the page's own
+   global overflow-wrap:break-word (needed elsewhere, see main>* above) then broke
+   it mid-word instead of at a space. Wide enough for the longest badge on two
+   lines, with normal word-wrapping restored just for this column. */
+th:first-child,td:first-child{width:112px;overflow-wrap:normal}
+th:nth-child(2),td:nth-child(2){width:52px}
+th:nth-child(4),td:nth-child(4){width:130px}
+th:nth-child(5),td:nth-child(5){width:150px}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.good .dot,.dot.good{background:var(--good)}.bad .dot,.dot.bad{background:var(--bad)}
+.neutral .dot,.dot.neutral{background:var(--muted)}
+.sub td{border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);padding-top:0}
+/* .desc is a <span> -- inline by default, and width/overflow/text-overflow are all
+   spec-ignored on a plain inline box, so none of this ever actually truncated
+   anything on its own. display:block (now that its <td> has a real fixed width to
+   fill, from table-layout:fixed above) is what makes the rest of this rule do
+   anything at all. */
+.desc{display:block;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.desc.open{white-space:normal;overflow:visible}
+.more{font:inherit;font-size:11px;border:none;background:none;color:var(--muted);cursor:pointer}
+.tag{display:inline-block;padding:0 6px;margin-right:4px;border:1px solid var(--line);
+border-radius:999px;font-size:11px;font-variant-numeric:tabular-nums}
+.banner{border-left:3px solid var(--bad);padding:10px 14px;background:var(--panel);
+border-radius:var(--radius);margin-bottom:14px}
+.fail{background:rgba(163,49,42,.09);padding:6px 9px;border-radius:6px;margin-top:6px}
+ul,ol{margin:8px 0;padding-left:24px}
+li{margin:8px 0;line-height:1.6}
+/* Requirements and Assumptions are both "one short id, one longer text" --
+   the same shape a table row has, so they get the same row-grid treatment
+   the task table already uses (a border between rows, an aligned label
+   column), instead of reading as a looser bulleted paragraph. Plain bullet
+   lists (Findings, UAT checks) keep the plainer rule above. The id badge
+   reuses .tag -- the exact same pill the task table's own id column uses now
+   -- so a reader learns one visual language for "this is an id" instead of
+   three different ones. */
+.items{list-style:none;margin:8px 0;padding:0;display:grid;gap:0}
+.items li{margin:0;display:grid;grid-template-columns:34px 1fr;gap:10px;
+padding:10px 2px;border-bottom:1px solid var(--line);line-height:1.6}
+.items li:last-child{border-bottom:none}
+/* A grid item's own display:inline-block is not enough to stop it stretching
+   to fill its whole cell -- CSS Grid stretches an item's box to its area by
+   default regardless, so the pill's border was being drawn around the full
+   34px-by-row-height cell instead of snugly around "A1". justify/align-self
+   opt back out of that stretch. */
+.items li>:first-child{justify-self:start;align-self:start}
+.note{font-size:12px;color:var(--muted)}
+pre{font-family:inherit;white-space:pre-wrap;word-break:break-word;margin:0;line-height:1.65}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9em;
+background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+</style>
+<main>
+<section class="panel">
+<h1>Feature</h1>
+<p class="note">Status done &middot; cycle 0 of 3 &middot; refreshes in <span data-refresh-in>5m 0s</span></p>
+<h2>Goal</h2><p>The Listing edit screen is the only place you see a Listing&#x27;s details — there&#x27;s no separate
+read-only view. Make the listing-level fields and each Expected Part collapse into compact,
+visually distinct boxes, so a Listing with several parts reads as a short list instead of a long
+form. Also add a Light/Dark/System theme control that defaults to the device&#x27;s own preference.</p>
+<h2>Requirements</h2><ul class="items"><li><span class="tag">1</span><span>When editing an existing Listing, Title, Source, Description, Listing URL, Asking Price,
+   Listing Date, and Acquisition Fees / Shipping render inside one collapsible box, collapsed by
+   default every time that Listing is opened.</span></li><li><span class="tag">2</span><span>When creating a new Listing, that same box renders expanded by default, since nothing is
+   filled in yet to hide and every field must be completed.</span></li><li><span class="tag">3</span><span>Each Expected Part row renders inside its own collapsible box.</span></li><li><span class="tag">4</span><span>An Expected Part row seeded from the opened Listing&#x27;s already-saved data starts collapsed.</span></li><li><span class="tag">5</span><span>An Expected Part row added during the current session via &quot;Add Part&quot; starts expanded.</span></li><li><span class="tag">6</span><span>A collapsed Expected Part row shows only its component category, brand, part/model number, and
+   estimated resale value.</span></li><li><span class="tag">7</span><span>Expanding an Expected Part row reveals its description.</span></li><li><span class="tag">8</span><span>Expanding an Expected Part row that carries an &quot;AI suggested&quot; badge also reveals that badge and
+   its confidence/source caption.</span></li><li><span class="tag">9</span><span>Expanding an Expected Part row that has AI identity-candidate alternates also reveals the
+   identity-candidates picker.</span></li><li><span class="tag">10</span><span>Collapsing or expanding an Expected Part row never discards, resets, or re-validates any
+    field&#x27;s value — each row stays a live, editable form underneath its box either way.</span></li><li><span class="tag">11</span><span>A collapsed Expected Part row with an active validation error on any field shows a visible
+    error indicator on its trigger, but stays independently collapsible/expandable like any other
+    row — an error is never silently hidden, but a row is never forced open either.</span></li><li><span class="tag">12</span><span>Both the Listing-fields box and each Expected Part&#x27;s box render with a background that
+    visibly contrasts the page&#x27;s own background, in both light and dark mode, using one new
+    shared token rather than an existing one already used elsewhere (hover states, badges,
+    loading skeletons) for purposes unrelated to this feature.</span></li><li><span class="tag">13</span><span>The app provides a theme control, reachable from every screen, settable to Light, Dark, or
+    System.</span></li><li><span class="tag">14</span><span>Until the user makes an explicit choice, the app&#x27;s light/dark appearance follows the device&#x27;s
+    OS-level color-scheme preference.</span></li><li><span class="tag">15</span><span>Choosing Light or Dark overrides the device preference and persists across page reloads and
+    future visits, until changed again.</span></li><li><span class="tag">16</span><span>Switching the theme control updates the visible UI immediately, with no page reload.</span></li><li><span class="tag">17</span><span>While the theme is set to System, a live change to the device&#x27;s OS-level color-scheme
+    preference updates the app&#x27;s appearance to match, without the user touching the control again.</span></li><li><span class="tag">18</span><span>The sidebar&#x27;s current-page highlight uses that same shared contrast token, so in light mode
+    it is clearly distinguishable from the plain page background; its dark-mode appearance is
+    unchanged, since it is already distinguishable there.</span></li></ul>
+<p><a href="https://gist.githack.com/adamcrevel/39060d481924ce5cc94a098117b5e530/raw/prototype.html">Prototype</a></p>
+<p><a href="https://gist.githack.com/adamcrevel/2f6a1d33f29367745750586303809b25/raw/walkthrough.html">Walkthrough</a></p>
+<div class="totals">
+<div class="total"><div class="n" data-since="2026-10-07T07:48:26Z">&mdash;</div><div class="l">total time</div></div>
+<div class="total"><div class="n">253,755</div><div class="l">total tokens</div></div>
+</div>
+<details><summary>Where that token figure comes from</summary><p class="note">input 0 + output 31,061 + cache-write 65,762 + cache-read 156,932, across 75 turns</p><p class="note">Most of a long conversation's token count is cache-read: the accumulated context is resent on every turn and billed at a fraction of the normal rate. A high total reflects the turn count over time, not necessarily a large bill.</p></details>
+<h2>Retrospective</h2><pre># Retrospective
+
+## What happened
+- This feature ran a single cycle (Cycle 0) with no new cycle opened — one in-place retry
+  (MF-1) inside Cycle 0 handled the only defect found, and nothing else escalated the plan.
+  That is a clean run by this project&#x27;s own standard: one prototype, five builder tasks,
+  five paired review/test tasks, one UAT pass, all complete.
+- The one retry: T3&#x27;s <code>expectedPartToRow</code> originally carved out an exception — leaving an
+  AI-suggested Expected Part row expanded rather than collapsed by default — to satisfy 9
+  existing <code>identify-parts.test.tsx</code> assertions (A7). R3&#x27;s independent review (A10) caught
+  this as a genuine Req 4 violation (Req 5&#x27;s &quot;starts expanded&quot; text is scoped to the Add-Part
+  button, not to AI-suggested rows) and proved the carve-out was unnecessary: reverting to
+  unconditional <code>collapsed: true</code> and re-running <code>identify-parts.test.tsx</code> in isolation left
+  all 15 assertions passing anyway, because that test file&#x27;s own <code>descriptionValues()</code> helper
+  already expands closed rows before reading values. MF-1 fixed this with one line
+  (<code>listing-form-state.ts:60</code>) plus doc/test updates (A14) — cheap to fix, but it existed only
+  because T3&#x27;s own build pass trusted a shortcut instead of first checking whether the
+  existing tests&#x27; helper already handled the collapsed case.
+- A11 names a reviewer/tester file race: R3 ran its own break-run-restore experiment against
+  <code>listing-form-state.ts</code> at the same time TE3 was mutation-testing that same file, each
+  observing the other&#x27;s transient edits as a flaky failure before both self-healed. No lasting
+  damage, but it cost both agents time chasing a false signal. The harness&#x27;s standing rule only
+  names tester-tester races as needing serialization; reviewers also carry Edit/Write in
+  practice and this pairing (reviewer + tester, same production file, same cycle) was not
+  covered.
+- A12: every dispatched child task&#x27;s <code>actual_tokens</code> came back <code>null</code> — exact-tag lookup via
+  <code>measure-child-cost.py child-cost --tag &lt;id&gt;</code> finds no transcript on this host, and the
+  fallback (a guessed/looser tag) returned numbers that were both inconsistent across repeated
+  calls and collapsed several unrelated task ids to the same value. This is the second
+  feature in this codebase to hit exactly this (the plan cites <code>identify-parts-queue/plan.md</code>
+  A19), so every <code>actual_tokens</code> cell in the task table above is <code>null</code> — not a one-off gap,
+  a standing measurement blind spot on this host.
+- A13/A15: the whole-suite standing gate hit the same real-server-spawn concurrency flake
+  twice across two separate validate passes within this one cycle (<code>sales.test.ts</code> once,
+  <code>purchases.test.ts</code> once) — different files losing the same resource race each time, both
+  confirmed non-regressions by isolated re-run. This is also a repeat of a pattern already
+  documented in <code>identify-parts-queue/plan.md</code> (A13/A18): vitest&#x27;s own file-level parallelism
+  across many real-server-spawning test files contends for the same resource under concurrent
+  load, and each feature that validates on this host re-discovers and re-diagnoses it from
+  scratch.
+- No <code>context_split</code> and no reactive model escalation appear anywhere in the task table — every
+  task finished within its original row, and no <code>model</code> column entry shows an upgrade mid-task.
+
+## Proposals
+- Add a standing instruction to <code>feature-build-lead</code> (or the builder role generally): before
+  carving out an exception to satisfy an existing test, first check whether the existing test&#x27;s
+  own helper functions already accommodate the new behavior — T3&#x27;s A7 exception was invented to
+  avoid breaking <code>identify-parts.test.tsx</code>, but the breakage never actually existed once checked.
+  This would have skipped MF-1 entirely.
+- Extend the harness&#x27;s reviewer/tester file-conflict rule beyond &quot;testers never conflict&quot; to
+  cover &quot;a reviewer running break-run-restore and a tester running mutation testing on the same
+  file in the same cycle must not run concurrently&quot; — A11&#x27;s near-miss came from exactly this
+  uncovered pairing, and the current rule&#x27;s wording only protects against tester-tester overlap.
+- File (or escalate) the <code>measure-child-cost.py --tag</code> null-lookup gap as a standing
+  infrastructure ticket rather than re-documenting it per-feature: this is the second plan
+  (<code>identify-parts-queue</code> then <code>listing-sections-dark-mode</code>) to independently rediscover that
+  exact-tag lookup returns <code>null</code> on this host and that the guessed-tag fallback is unreliable.
+  A one-time fix to the measurement tool would remove a recurring per-feature investigation cost.
+- File the real-server-spawn concurrent-vitest flake (seen now in both <code>sales.test.ts</code> and
+  <code>purchases.test.ts</code>, across two different features) as a standing known-issue, e.g. a note in
+  the test suite&#x27;s own README or a <code>vitest.config</code> change (reduced file-level parallelism for
+  suites that spawn a real server, or a shared setup/teardown lock) — rather than each feature&#x27;s
+  validate pass re-running the full suite 3 times to re-prove the same non-regression.
+
+---
+This report cost approximately 8900 tokens (self-reported estimate) /
+not available tokens (measured). Not counted in the feature&#x27;s own total —
+this analysis happened after the feature was already done.
+</pre>
+</section>
+<nav class="tabs">
+<button data-cycle-tab="0" aria-selected="true" onclick="showCycle(0)">Cycle 0</button>
+</nav>
+<section class="panel" data-cycle-panel="0">
+<h2>Cycle 0</h2>
+<p><strong>Trigger.</strong> initial</p>
+<p><span class="good"><span class="dot"></span>UAT passed.</span></p>
+<ul><li>Seeded a real Listing (3 Expected Parts: CPU/Intel, GPU/NVIDIA with aiConfidence=high/aiSource=both/2 identityCandidates, RAM/Corsair) via the real POST/PUT /api/listings endpoint — the identical contract a real identify-parts job itself uses.</li><li>Req1: opened the seeded Listing — Listing Details box rendered collapsed (aria-expanded=false); clicked it open then closed again, both transitions worked.</li><li>Req2: clicked Add Listing (create mode) — Listing Details box rendered expanded (aria-expanded=true) immediately, no click needed.</li><li>Req3: exactly 4 collapsible triggers rendered on the opened Listing (1 Listing Details + 3 Expected Part rows).</li><li>Req4: all 3 seeded Expected Part rows rendered collapsed (aria-expanded=false) on open.</li><li>Req5: a row added via Add Part rendered expanded (aria-expanded=true) immediately, no click needed.</li><li>Req6: the collapsed GPU row&#x27;s trigger showed category/brand/partNumber/estimatedResaleValue only; zero description inputs existed anywhere in the DOM while all 3 rows were collapsed.</li><li>Req7: expanding the GPU row revealed exactly one description input, with the correct saved value.</li><li>Req8: expanding the GPU row revealed its &quot;AI suggested&quot; badge and a &quot;high confidence · from the listing text and photos&quot; caption.</li><li>Req9: expanding the GPU row revealed both seeded identity candidates in the picker.</li><li>Req10: a brand typed into a new row survived two collapse/expand round trips unchanged; the GPU row&#x27;s aiSuggested badge survived a collapse/re-expand too.</li><li>Req11: a row left with blank required fields showed its validation errors, then collapsed and re-expanded freely twice, with its error indicator (AlertCircle, aria-label naming the error) visible throughout, never forced open or stuck.</li><li>Req12: computed styles confirmed both the Listing Details box and an Expected Part row&#x27;s background are visibly distinct from the plain page background, in both light mode (rgb(209,215,224) vs rgb(255,255,255)) and dark mode (rgb(30,41,59) vs rgb(2,8,23)); confirmed via direct file read that `--surface-contrast`/`surfaceContrast` is one dedicated token, not a reuse of `--muted`/`--accent`.</li><li>Req13: the Light/Dark/System control is visible on all 7 top-level screens (Sources, Listings, Listings Queue, Purchases, Parts, Sale Listings, Profit Dashboard).</li><li>Req14: with no stored preference and OS set to light, the app showed no dark class and the control&#x27;s System button showed aria-pressed=true.</li><li>Req15: choosing Dark persisted to localStorage and survived a full page reload; with Dark stored, live-switching the OS preference to light had no effect — the explicit choice held.</li><li>Req16: clicking Dark then Light re-themed the page&#x27;s actual rendered background color immediately each time, with no reload call made.</li><li>Req17: with the stored preference cleared (System) and no click on the control, flipping the OS color-scheme live changed the applied class in both directions, while localStorage&#x27;s theme key stayed unset throughout.</li><li>Req18: the active nav link (Sources, when on /sources) carried the same surfaceContrast class the collapsible boxes use, and its background was visibly distinct from the plain page background in light mode; the non-active Listings link did not carry it.</li><li>Standing checks: lint clean; apps/web&#x27;s import-boundary test passed and a direct grep of every file this feature touched found zero apps/server imports; every new public export carries a header/block-comment matching this codebase&#x27;s existing documentation convention; whole suite 561 tests run vs. BaselineTests 529 (cited from feature-validate-lead&#x27;s PASS digest, not re-run), no shrink.</li></ul>
+<p class="note">17 task(s). Estimated 262 min. Actual tokens 0, estimated 293,200. This never includes the driving conversation's own tokens, which cannot honestly be split by cycle.
+<div class="scroll"><table><thead><tr><th></th><th>Id</th><th>Description</th><th>Duration (Estimate)</th><th>Started At (Estimate)</th></tr></thead><tbody><tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">P0</span></td><td><span class="desc">Clickable prototype covering T1-T5: the two collapsible-box kinds (listing-fields section, per-part rows with the stated collapsed/expanded content split, collapsed error indicator never forced open), the new shared contrast token also used by the sidebar&#x27;s active-page highlight, and the Light/Dark/System theme control.</span></td><td><span data-at="2026-10-07T08:15:47Z" hidden></span>2026-10-07T08:15:47Z (10 min)</td><td><span data-at="2026-10-07T08:08:04Z">2026-10-07T08:08:04Z</span> (2026-10-07T08:08:04Z)</td></tr>
+<tr class="sub"><td colspan="5">prototype &middot; <span class="tag">UI</span> &middot; Est tokens 45000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T1</span></td><td><span class="desc">Build a reusable Collapsible UI primitive: <code>apps/web/src/components/ui/collapsible.tsx</code> wrapping a new <code>@radix-ui/react-collapsible</code> dependency (added to <code>apps/web/package.json</code>, shadcn style, matching <code>button.tsx</code>/<code>card.tsx</code>&#x27;s conventions), exporting the low-level <code>Collapsible</code>/<code>CollapsibleTrigger</code>/<code>CollapsibleContent</code> primitives plus one higher-level <code>CollapsibleSection</code> component (trigger row with a chevron icon from <code>lucide-react</code> reflecting open/closed state, a border, and the new contrast background below, and a content region). Define one new CSS variable <code>--surface-contrast</code> in <code>apps/web/src/index.css</code> (light: a noticeably darker gray than <code>--muted</code>&#x27;s existing near-white value, <code>215 20% 85%</code>; dark: identical to <code>--muted</code>&#x27;s existing dark value, <code>217.2 32.6% 17.5%</code>, so dark mode is visually unchanged) plus its Tailwind color entry (<code>tailwind.config.js</code>, <code>surfaceContrast</code>) — a dedicated token rather than reusing <code>--muted</code>/<code>--accent</code>, since both are already used throughout the app (button hover states, badges, loading skeletons) for purposes unrelated to this feature, and changing them directly would restyle all of those too. <code>CollapsibleSection</code> uses <code>bg-surface-contrast</code> (Req 12); Task T5 reuses the same token for the sidebar&#x27;s active-page highlight (Req 18).</span></td><td><span data-at="2026-10-07T08:45:01Z" hidden></span>2026-10-07T08:45:01Z (25 min)</td><td><span data-at="2026-10-07T08:26:54Z">2026-10-07T08:26:54Z</span> (2026-10-07T08:23:30Z)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; <span class="tag">UI</span> &middot; Est tokens 46000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T2</span></td><td><span class="desc">Wrap <code>ListingFields</code>&#x27;s rendered block in <code>apps/web/src/features/listings/listing-form.tsx</code> in T1&#x27;s <code>CollapsibleSection</code> (Req 1-2): collapsed by default when <code>initialValue</code> is set (editing an existing Listing), expanded by default when it is not (creating a new one).</span></td><td><span data-at="2026-10-07T09:42:41Z" hidden></span>2026-10-07T09:42:41Z (15 min)</td><td><span data-at="2026-10-07T08:45:19Z">2026-10-07T08:45:19Z</span> (2026-10-07T08:48:30Z)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; <span class="tag">UI</span> &middot; Est tokens 9500 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T3</span></td><td><span class="desc">Make each row in <code>apps/web/src/features/listings/expected-parts-editor.tsx</code> collapsible with T1&#x27;s <code>CollapsibleSection</code> (Req 3-11). Add an optional <code>collapsed?: boolean</code> field to <code>ExpectedPartRow</code>; <code>expectedPartToRow</code> (<code>listing-form-state.ts</code>) sets it <code>true</code> on every row it builds from already-saved data (Req 4), <code>emptyExpectedPartRow()</code> sets it <code>false</code> (Req 5). Add a <code>toggleRowCollapsed(index)</code> function in <code>ExpectedPartsEditor</code>, separate from <code>updateRow</code>, so opening/closing a row never clears its <code>aiSuggested</code> flag the way an actual field edit does (Req 10). Render each row with <code>open={!row.collapsed}</code> — purely the user&#x27;s own toggle, never forced (Req 11) — the section&#x27;s trigger always showing category/brand/partNumber/estimatedResaleValue (Req 6) plus a small destructive-colored indicator (e.g. a <code>lucide-react</code> <code>AlertCircle</code> in <code>text-destructive</code>) whenever <code>rowErrors[index]</code> has any truthy field, visible on the trigger whether the row is open or collapsed (Req 11); its content region holds description (Req 7), the AI-suggested badge/caption when present (Req 8), and the identity-candidates picker when present (Req 9), visible only while open. **MUST_FIX (MF-1, Cycle 0 validate-lead):** <code>expectedPartToRow</code> (<code>listing-form-state.ts</code>) must set <code>collapsed: true</code> unconditionally for every row built from already-saved data — no AI-suggestion exception; remove the &quot;one exception&quot; paragraph from its doc comment. Update the two <code>apps/web/test/listing-form-state.test.ts</code> tests currently asserting the carve-out to expect <code>collapsed: true</code> for AI-suggested rows too. No change needed to <code>identify-parts.test.tsx</code> — its own <code>descriptionValues</code> helper already expands every closed trigger before reading description/badge values, which keeps its 15 assertions passing under the literal Req 4 rule (confirmed by validate-lead&#x27;s own revert-and-rerun test).</span></td><td><span data-at="2026-10-07T10:47:54Z" hidden></span>2026-10-07T10:47:54Z (30 min)</td><td><span data-at="2026-10-07T10:42:00Z">2026-10-07T10:42:00Z</span> (2026-10-07T09:03:30Z)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; <span class="tag">UI</span> &middot; Est tokens — &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T4</span></td><td><span class="desc">Add a Light/Dark/System theme preference (Req 13-17): a new <code>useThemePreference</code> hook (<code>apps/web/src/lib/use-theme-preference.ts</code>) backed by <code>localStorage</code> (key <code>pc-parts-flipper:theme</code>), defaulting to <code>&#x27;system&#x27;</code> when nothing is stored (Req 14); an effect applies/removes the <code>dark</code> class on <code>document.documentElement</code>, re-deriving the effective value from <code>window.matchMedia(&#x27;(prefers-color-scheme: dark)&#x27;)</code> whenever the stored preference is <code>&#x27;system&#x27;</code>, and subscribes to that query&#x27;s <code>change</code> event so a live OS-level change updates the applied class without a reload (Req 17) and without the stored preference itself changing. An explicit Light/Dark choice writes straight to <code>localStorage</code> (Req 15) and updates the class synchronously (Req 16). Add a compact 3-option control to <code>apps/web/src/routes/root-layout.tsx</code>&#x27;s sidebar, wired to the hook (Req 13).</span></td><td><span data-at="2026-10-07T08:45:01Z" hidden></span>2026-10-07T08:45:01Z (25 min)</td><td><span data-at="2026-10-07T08:26:54Z">2026-10-07T08:26:54Z</span> (2026-10-07T09:33:30Z)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; <span class="tag">UI</span> &middot; Est tokens 35600 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T5</span></td><td><span class="desc">In <code>apps/web/src/routes/root-layout.tsx</code>, switch the active nav-link&#x27;s own highlight from <code>bg-accent text-accent-foreground</code> to <code>bg-surface-contrast text-accent-foreground</code> (T1&#x27;s new token) — only the <code>isActive</code> branch; its separate <code>hover:bg-accent hover:text-accent-foreground</code> classes are untouched (Req 18).</span></td><td><span data-at="2026-10-07T09:42:41Z" hidden></span>2026-10-07T09:42:41Z (10 min)</td><td><span data-at="2026-10-07T08:45:19Z">2026-10-07T08:45:19Z</span> (2026-10-07T09:58:30Z)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; <span class="tag">UI</span> &middot; Est tokens 1100 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R1</span></td><td><span class="desc">Review T1 (apps/web/package.json; apps/web/src/index.css; apps/web/tailwind.config.js; apps/web/src/components/ui/collapsible.tsx). Scope: Requirement 12 (<code>--surface-contrast</code> token definition — light noticeably darker than <code>--muted</code>&#x27;s <code>215 20% 85%</code>, dark identical to <code>--muted</code>&#x27;s <code>217.2 32.6% 17.5%</code>; Tailwind <code>surfaceContrast</code> color entry; <code>CollapsibleSection</code>&#x27;s own <code>bg-surfaceContrast</code> application and chevron/open-state wiring) plus Standing Checks 2 (lint) and 3 (header/block-comment doc on the new public <code>Collapsible</code>/<code>CollapsibleTrigger</code>/<code>CollapsibleContent</code>/<code>CollapsibleSection</code> exports). Also confirm <code>CollapsibleContent</code> actually unmounts its children while closed (no stray <code>forceMount</code>), since T3&#x27;s design for Req 6/10 depends on exactly that behavior.</span></td><td><span data-at="2026-10-07T10:24:26Z" hidden></span>2026-10-07T10:24:26Z (10 min)</td><td><span data-at="2026-10-07T09:54:39Z">2026-10-07T09:54:39Z</span> (2026-10-07T09:54:39Z)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; <span class="tag">UI</span> &middot; Est tokens 13500 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE1</span></td><td><span class="desc">Test T1 (same files as R1). Scope: same requirement set as R1. Run/extend <code>apps/web/test/collapsible.test.tsx</code>: open/close toggling, chevron state, <code>bg-surfaceContrast</code> class present on the trigger, <code>CollapsibleContent</code> unmounted while closed vs. mounted while open.</span></td><td><span data-at="2026-10-07T10:24:26Z" hidden></span>2026-10-07T10:24:26Z (12 min)</td><td><span data-at="2026-10-07T09:54:39Z">2026-10-07T09:54:39Z</span> (2026-10-07T09:54:39Z)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; <span class="tag">UI</span> &middot; Est tokens 7000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R2</span></td><td><span class="desc">Review T2 (apps/web/src/features/listings/listing-form.tsx). Scope: Requirements 1-2 (collapsed by default iff <code>initialValue</code> is set, expanded for a new Listing) and Requirement 12&#x27;s listing-fields-box clause (confirm the box actually renders with T1&#x27;s <code>bg-surfaceContrast</code> background, not overridden) plus Standing Check 3 if any new exported function was added.</span></td><td><span data-at="2026-10-07T10:24:26Z" hidden></span>2026-10-07T10:24:26Z (10 min)</td><td><span data-at="2026-10-07T09:54:39Z">2026-10-07T09:54:39Z</span> (2026-10-07T09:54:39Z)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; <span class="tag">UI</span> &middot; Est tokens 9700 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE2</span></td><td><span class="desc">Test T2 (same files as R2, plus <code>apps/web/test/listing-form.test.tsx</code> and <code>apps/web/test/listings-page.test.tsx</code> it touched). Scope: same requirement set as R2. Verify an edit-existing-Listing render starts the fields box collapsed and a create-new-Listing render starts it expanded, including a break-run-restore proof on <code>listing-form.tsx</code>&#x27;s own <code>initialValue</code>-gated default. <code>listing-form.tsx</code> is this task&#x27;s exclusive production file, so no conflict with any other tester in this batch.</span></td><td><span data-at="2026-10-07T10:24:26Z" hidden></span>2026-10-07T10:24:26Z (12 min)</td><td><span data-at="2026-10-07T09:54:39Z">2026-10-07T09:54:39Z</span> (2026-10-07T09:54:39Z)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; <span class="tag">UI</span> &middot; Est tokens 22800 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R3</span></td><td><span class="desc">Review T3 (apps/web/src/features/listings/expected-parts-editor.tsx; apps/web/src/features/listings/listing-form-state.ts). Scope: Requirements 3-11 and Requirement 12&#x27;s per-part-box clause. Re-check MF-1 specifically: <code>expectedPartToRow</code> now sets <code>collapsed: true</code> unconditionally (no AI-suggestion exception), its doc comment&#x27;s &quot;one exception&quot; paragraph is gone, and <code>listing-form-state.test.ts</code>&#x27;s two carve-out tests now expect <code>collapsed: true</code> for AI-suggested rows too. Also check Standing Check 3 (doc comment on <code>toggleRowCollapsed</code>).</span></td><td><span data-at="2026-10-07T11:03:02Z" hidden></span>2026-10-07T11:03:02Z (18 min)</td><td><span data-at="2026-10-07T10:50:19Z">2026-10-07T10:50:19Z</span> (2026-10-07T10:50:19Z)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; <span class="tag">UI</span> &middot; Est tokens 24300 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE3</span></td><td><span class="desc">Test T3 (same files as R3, plus <code>apps/web/test/expected-parts-editor.test.tsx</code>, <code>apps/web/test/listing-form-state.test.ts</code>, <code>apps/web/test/identity-candidates-picker.test.tsx</code>, <code>apps/web/test/identify-parts.test.tsx</code>, <code>apps/web/test/listings-page.test.tsx</code> it touched). Scope: same requirement set as R3. Prove, with break-run-restore on <code>expected-parts-editor.tsx</code>/<code>listing-form-state.ts</code>: default-collapsed on saved rows with no AI-suggestion exception (Req 4, post-MF-1), default-expanded on Add Part rows (Req 5), the collapsed/expanded content split (Req 6-9), that toggling collapse never clears <code>aiSuggested</code>/any field value (Req 10), and the error indicator shows on a collapsed row without forcing it open (Req 11). Re-run <code>identify-parts.test.tsx</code> in full and confirm all 15 of its tests still pass under the corrected unconditional rule.</span></td><td><span data-at="2026-10-07T11:03:02Z" hidden></span>2026-10-07T11:03:02Z (20 min)</td><td><span data-at="2026-10-07T10:50:19Z">2026-10-07T10:50:19Z</span> (2026-10-07T10:50:19Z)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; <span class="tag">UI</span> &middot; Est tokens 14800 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R4</span></td><td><span class="desc">Review T4 (apps/web/src/lib/use-theme-preference.ts; apps/web/src/routes/root-layout.tsx&#x27;s theme-control addition only — not its <code>isActive</code> nav-highlight branch, which is T5&#x27;s). Scope: Requirements 13-17 plus Standing Check 3 (doc comment on the new public <code>useThemePreference</code> hook — confirm it meets the bar) and Standing Check 2 (lint).</span></td><td><span data-at="2026-10-07T10:24:26Z" hidden></span>2026-10-07T10:24:26Z (12 min)</td><td><span data-at="2026-10-07T09:54:39Z">2026-10-07T09:54:39Z</span> (2026-10-07T09:54:39Z)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; <span class="tag">UI</span> &middot; Est tokens 11800 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE4</span></td><td><span class="desc">Test T4 (same files as R4, plus <code>apps/web/test/use-theme-preference.test.tsx</code>). Scope: same requirement set as R4. Verify default <code>&#x27;system&#x27;</code> with no stored key (Req 14), an explicit choice persists to <code>localStorage</code> and survives a fresh hook mount simulating reload (Req 15), synchronous class update on choice (Req 16), and a live <code>matchMedia</code> <code>change</code> event updates the applied class while the stored preference stays <code>&#x27;system&#x27;</code> (Req 17) — break-run-restore on <code>use-theme-preference.ts</code>. Both this task and T5 touch <code>root-layout.tsx</code>: this tester is dispatched in the first batch; T5&#x27;s tester (TE5) waits for this one to fully return before it starts.</span></td><td><span data-at="2026-10-07T10:24:26Z" hidden></span>2026-10-07T10:24:26Z (15 min)</td><td><span data-at="2026-10-07T09:54:39Z">2026-10-07T09:54:39Z</span> (2026-10-07T09:54:39Z)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; <span class="tag">UI</span> &middot; Est tokens 11500 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R5</span></td><td><span class="desc">Review T5 (apps/web/src/routes/root-layout.tsx&#x27;s <code>isActive</code> nav-highlight branch only). Scope: Requirement 18, plus Requirement 12&#x27;s token-identity clause (confirm <code>bg-surfaceContrast</code> here is literally the same Tailwind color entry T1 defined, not a new ad hoc class) — confirm only the <code>isActive</code> branch changed and the separate <code>hover:bg-accent hover:text-accent-foreground</code> classes are untouched.</span></td><td><span data-at="2026-10-07T10:24:26Z" hidden></span>2026-10-07T10:24:26Z (8 min)</td><td><span data-at="2026-10-07T09:54:39Z">2026-10-07T09:54:39Z</span> (2026-10-07T09:54:39Z)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; <span class="tag">UI</span> &middot; Est tokens 2800 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE5</span></td><td><span class="desc">Test T5 (same file as R5, plus <code>apps/web/test/root-layout.test.tsx</code> it touched). Scope: same requirement set as R5. Verify the active nav link renders <code>bg-surfaceContrast text-accent-foreground</code> and an inactive link does not, with a break-run-restore proof on <code>root-layout.tsx</code>&#x27;s <code>isActive</code> branch. Dispatched only after TE4 had fully returned — both T4 and T5 touch <code>root-layout.tsx</code>, so running their testers concurrently risked them mutating the same production file at the same time.</span></td><td><span data-at="2026-10-07T10:24:26Z" hidden></span>2026-10-07T10:24:26Z (10 min)</td><td><span data-at="2026-10-07T10:16:48Z">2026-10-07T10:16:48Z</span> (2026-10-07T10:16:48Z)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; <span class="tag">UI</span> &middot; Est tokens 10900 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">U0</span></td><td><span class="desc">UAT pass over the whole feature: both collapsible-box kinds end to end on a real Listing (open/edit/save/reopen), the theme control (system default, explicit override, persistence, live OS-preference change), and the sidebar active-page highlight, exercised together in the running app, not task by task.</span></td><td><span data-at="2026-10-07T11:31:43Z" hidden></span>2026-10-07T11:31:43Z (20 min)</td><td><span data-at="2026-10-07T11:11:26Z">2026-10-07T11:11:26Z</span> (2026-10-07T11:11:26Z)</td></tr>
+<tr class="sub"><td colspan="5">uat &middot; <span class="tag">UI</span> &middot; Est tokens 26900 &middot; Actual tokens null</td></tr></tbody></table></div>
+<h2>Assumptions</h2><ul class="items"><li><span class="tag">A1</span><span>&quot;In an open listing&quot; (both collapsible-box requests) means viewing/editing an</span></li><li><span class="tag">A2</span><span>&quot;Darker shade so they show up more easily&quot; is read as &quot;visibly contrasts the page</span></li><li><span class="tag">A3</span><span>Collapsing/expanding an Expected Part row is a pure display toggle on already-live</span></li><li><span class="tag">A4</span><span>No &quot;collapse all&quot; / &quot;expand all&quot; control is added — the request only asks for each</span></li><li><span class="tag">A5</span><span><code>CollapsibleSection</code> exposes a strictly controlled <code>open</code>/<code>onOpenChange</code> API (no</span></li><li><span class="tag">A6</span><span><code>@radix-ui/react-collapsible</code> is pinned to <code>^1.1.21</code> (the latest release at the</span></li><li><span class="tag">A7</span><span><code>expectedPartToRow</code>&#x27;s literal instruction (&quot;always collapsed&quot;) was refined to leave</span></li><li><span class="tag">A8</span><span>The sidebar&#x27;s new theme control is placed as a labelled &quot;Theme&quot; row of three icon</span></li><li><span class="tag">A9</span><span>The theme control&#x27;s three options render as icon-only buttons (Sun/Moon/Monitor</span></li></ul>
+</section>
+</main><script>
+// One redraw every five minutes carries a republish to anyone already looking.
+// REFRESH_MS and LOADED_AT are shared with the countdown below, so the two
+// can never drift apart from each other.
+var REFRESH_MS=300000, LOADED_AT=Date.now();
+setTimeout(function(){location.reload();}, REFRESH_MS);
+
+// Durations count up client-side, so an in-progress row does not freeze between
+// publishes, and every timestamp reads in the viewer's own zone rather than one
+// chosen when the page was written.
+function fmt(ms){var s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),
+m=Math.floor(s%3600/60);return h?h+'h '+m+'m':m+'m';}
+function fmtCountdown(ms){var s=Math.max(0,Math.round(ms/1000)),
+m=Math.floor(s/60);return m+'m '+(s%60)+'s';}
+function tick(){
+  var now=Date.now();
+  document.querySelectorAll('[data-since]').forEach(function(el){
+    el.textContent=fmt(now-Date.parse(el.dataset.since));});
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){
+    el.textContent=fmtCountdown(REFRESH_MS-(now-LOADED_AT));});
+}
+document.querySelectorAll('[data-at]').forEach(function(el){
+  var d=new Date(el.dataset.at);
+  var today=new Date().toDateString()===d.toDateString();
+  el.textContent=today?d.toLocaleTimeString():d.toLocaleString();});
+tick(); setInterval(tick,1000);
+
+// A description gets an expand control only when it truly does not fit.
+document.querySelectorAll('.desc').forEach(function(el){
+  if(el.scrollWidth<=el.clientWidth) return;
+  var b=document.createElement('button');b.className='more';b.textContent='more';
+  b.onclick=function(){el.classList.toggle('open');
+    b.textContent=el.classList.contains('open')?'less':'more';};
+  el.parentNode.appendChild(b);});
+
+function showCycle(n){
+  document.querySelectorAll('[data-cycle-panel]').forEach(function(p){
+    p.hidden=(p.dataset.cyclePanel!==String(n));});
+  document.querySelectorAll('[data-cycle-tab]').forEach(function(t){
+    t.setAttribute('aria-selected',t.dataset.cycleTab===String(n));});
+}
+</script>

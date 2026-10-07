@@ -1,5 +1,7 @@
 import type { AiPartConfidence, AiPartSource, ComponentCategory, IdentityCandidate } from '@pc-parts-flipper/shared';
+import { AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { CollapsibleSection } from '@/components/ui/collapsible';
 import { AiSuggestedBadge } from '@/features/listings/ai-suggested-badge';
 import { IdentityCandidatesPicker } from '@/features/listings/identity-candidates-picker';
 
@@ -40,6 +42,14 @@ export interface ExpectedPartRow {
   // as primary (T1); always [] for rows never produced by AI
   // identification. Rendered via IdentityCandidatesPicker when non-empty.
   identityCandidates: IdentityCandidate[];
+  // Whether this row is showing only its compact identification summary
+  // (category/brand/part number/estimated value) or its full fields
+  // (description, AI badge, identity candidates). Purely a draft-state UI
+  // toggle — never sent to the backend, same treatment as aiSuggested/
+  // aiConfidence/aiSource above. Optional so a row built without it (e.g.
+  // directly in a test) behaves as expanded via `!row.collapsed`, matching
+  // a brand-new "Add Part" row.
+  collapsed?: boolean;
 }
 
 /** Per-row field errors, keyed the same way ListingForm's other field errors are. */
@@ -51,7 +61,7 @@ export interface ExpectedPartRowErrors {
 
 /** An empty draft row, used both for the initial row and "Add Part". */
 export function emptyExpectedPartRow(): ExpectedPartRow {
-  return { componentCategory: '', brand: '', partNumber: '', description: '', estimatedResaleValue: '', identityCandidates: [] };
+  return { componentCategory: '', brand: '', partNumber: '', description: '', estimatedResaleValue: '', identityCandidates: [], collapsed: false };
 }
 
 /** Human-readable wording for which evidence the model drew a suggestion from. */
@@ -100,6 +110,15 @@ export function ExpectedPartsEditor({ rows, rowErrors, onChange }: ExpectedParts
     onChange(rows.map((row, i) => (i === index ? { ...row, brand: candidate.brand ?? '', partNumber: candidate.partNumber ?? '' } : row)));
   }
 
+  // Flips only this row's collapsed flag — deliberately separate from
+  // updateRow, which also clears aiSuggested on the theory that any edit
+  // is the user reviewing a suggestion. Collapsing/expanding a row isn't
+  // reviewing anything, so this must never touch aiSuggested or any other
+  // field.
+  function toggleRowCollapsed(index: number) {
+    onChange(rows.map((row, i) => (i === index ? { ...row, collapsed: !row.collapsed } : row)));
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -113,83 +132,97 @@ export function ExpectedPartsEditor({ rows, rowErrors, onChange }: ExpectedParts
 
       {rows.map((row, index) => {
         const errors = rowErrors[index] ?? {};
+        const rowHasError = Boolean(errors.componentCategory || errors.description || errors.estimatedResaleValue);
         return (
-          // Two sub-lines inside one bordered row: five inputs on a single
-          // line left each one too narrow to read. Line 1 identifies the
-          // part (category / brand / part #), line 2 carries the free-text
-          // notes, the value and the row action.
-          <div key={index} className="space-y-2 rounded-md border border-border p-2">
-            {row.aiSuggested === true && (
-              <div className="flex items-center gap-2">
-                <AiSuggestedBadge />
-                <span className="text-xs text-muted-foreground">{aiProvenanceCaption(row)}</span>
+          <div key={index} className="space-y-1">
+            <CollapsibleSection
+              open={!row.collapsed}
+              onOpenChange={() => toggleRowCollapsed(index)}
+              trigger={
+                // Category/brand/part number/estimated value live in the
+                // trigger, not CollapsibleContent below, specifically so a
+                // collapsed row never unmounts them — CollapsibleContent
+                // unmounts its children while closed (collapsible.tsx), which
+                // would otherwise make a collapsed row's own identification
+                // fields unreachable without first expanding it. stopPropagation
+                // keeps clicking/typing in them from also toggling the row —
+                // only the chevron (outside this div) does that.
+                <div className="flex flex-1 flex-wrap items-start gap-2" onClick={(e) => e.stopPropagation()}>
+                  {rowHasError && <AlertCircle className="mt-2 h-4 w-4 shrink-0 text-destructive" aria-label={`Expected part ${index + 1} has an error`} />}
+                  <div className="space-y-1">
+                    <select
+                      value={row.componentCategory}
+                      onChange={(e) => updateRow(index, { componentCategory: e.target.value as ComponentCategory })}
+                      className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                      aria-label={`Expected part ${index + 1} category`}
+                    >
+                      <option value="">Category…</option>
+                      {CATEGORY_OPTIONS.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.componentCategory && <p className="text-xs text-destructive">{errors.componentCategory}</p>}
+                  </div>
+
+                  <input
+                    value={row.brand}
+                    onChange={(e) => updateRow(index, { brand: e.target.value })}
+                    placeholder="Brand (optional)"
+                    className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                    aria-label={`Expected part ${index + 1} brand`}
+                  />
+
+                  <input
+                    value={row.partNumber}
+                    onChange={(e) => updateRow(index, { partNumber: e.target.value })}
+                    placeholder="Part/Model # (optional)"
+                    className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                    aria-label={`Expected part ${index + 1} part number`}
+                  />
+
+                  <div className="space-y-1">
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={row.estimatedResaleValue}
+                      onChange={(e) => updateRow(index, { estimatedResaleValue: e.target.value })}
+                      placeholder="Est. value"
+                      className="w-24 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                      aria-label={`Expected part ${index + 1} estimated resale value`}
+                    />
+                    {errors.estimatedResaleValue && <p className="text-xs text-destructive">{errors.estimatedResaleValue}</p>}
+                  </div>
+                </div>
+              }
+            >
+              <div className="space-y-2">
+                {row.aiSuggested === true && (
+                  <div className="flex items-center gap-2">
+                    <AiSuggestedBadge />
+                    <span className="text-xs text-muted-foreground">{aiProvenanceCaption(row)}</span>
+                  </div>
+                )}
+
+                {row.identityCandidates.length > 0 && (
+                  <IdentityCandidatesPicker candidates={row.identityCandidates} brand={row.brand} partNumber={row.partNumber} onPick={(candidate) => pickIdentityCandidate(index, candidate)} />
+                )}
+
+                <div className="space-y-1">
+                  <input
+                    value={row.description}
+                    onChange={(e) => updateRow(index, { description: e.target.value })}
+                    placeholder="Description / condition notes"
+                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                    aria-label={`Expected part ${index + 1} description`}
+                  />
+                  {errors.description && <p className="text-xs text-destructive">{errors.description}</p>}
+                </div>
               </div>
-            )}
+            </CollapsibleSection>
 
-            <div className="grid grid-cols-3 items-start gap-2">
-              <div className="space-y-1">
-                <select
-                  value={row.componentCategory}
-                  onChange={(e) => updateRow(index, { componentCategory: e.target.value as ComponentCategory })}
-                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                  aria-label={`Expected part ${index + 1} category`}
-                >
-                  <option value="">Category…</option>
-                  {CATEGORY_OPTIONS.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
-                {errors.componentCategory && <p className="text-xs text-destructive">{errors.componentCategory}</p>}
-              </div>
-
-              <input
-                value={row.brand}
-                onChange={(e) => updateRow(index, { brand: e.target.value })}
-                placeholder="Brand (optional)"
-                className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                aria-label={`Expected part ${index + 1} brand`}
-              />
-
-              <input
-                value={row.partNumber}
-                onChange={(e) => updateRow(index, { partNumber: e.target.value })}
-                placeholder="Part/Model # (optional)"
-                className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                aria-label={`Expected part ${index + 1} part number`}
-              />
-            </div>
-
-            {row.identityCandidates.length > 0 && (
-              <IdentityCandidatesPicker candidates={row.identityCandidates} brand={row.brand} partNumber={row.partNumber} onPick={(candidate) => pickIdentityCandidate(index, candidate)} />
-            )}
-
-            <div className="grid grid-cols-[2fr_1fr_auto] items-start gap-2">
-              <div className="space-y-1">
-                <input
-                  value={row.description}
-                  onChange={(e) => updateRow(index, { description: e.target.value })}
-                  placeholder="Description / condition notes"
-                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                  aria-label={`Expected part ${index + 1} description`}
-                />
-                {errors.description && <p className="text-xs text-destructive">{errors.description}</p>}
-              </div>
-
-              <div className="space-y-1">
-                <input
-                  type="number"
-                  step="0.01"
-                  value={row.estimatedResaleValue}
-                  onChange={(e) => updateRow(index, { estimatedResaleValue: e.target.value })}
-                  placeholder="Est. value"
-                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                  aria-label={`Expected part ${index + 1} estimated resale value`}
-                />
-                {errors.estimatedResaleValue && <p className="text-xs text-destructive">{errors.estimatedResaleValue}</p>}
-              </div>
-
+            <div className="flex justify-end">
               <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => removeRow(index)}>
                 Remove
               </Button>

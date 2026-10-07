@@ -48,6 +48,9 @@ export function initialListingFormFields(initialValue?: ListingDetail): ListingF
  * touch) — not a one-time echo of whichever job happened to just
  * complete, so the badge survives reopening the Listing later, not only
  * the one poll that saw the job finish.
+ *
+ * `collapsed` defaults to true — already-reviewed data only needs its
+ * compact summary line.
  */
 function expectedPartToRow(part: ExpectedPart): ExpectedPartRow {
   return {
@@ -57,6 +60,7 @@ function expectedPartToRow(part: ExpectedPart): ExpectedPartRow {
     description: part.description,
     estimatedResaleValue: part.estimatedResaleValue === null ? '' : String(part.estimatedResaleValue),
     identityCandidates: part.identityCandidates ?? [],
+    collapsed: true,
     ...(part.aiConfidence != null && part.aiSource != null
       ? { aiSuggested: true, aiConfidence: part.aiConfidence, aiSource: part.aiSource }
       : {}),

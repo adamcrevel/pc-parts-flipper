@@ -249,8 +249,24 @@ function findIdentifyButton(el: HTMLElement): HTMLButtonElement | undefined {
   return Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.startsWith('Identify') || b.textContent === 'Identifying parts…');
 }
 
-/** Every row's description input, in render order — rows are what identification appends to. */
-function descriptionValues(el: HTMLElement): string[] {
+// Every row's description input, in render order. Expands any row that
+// started collapsed first (T3's per-row CollapsibleSection: every row
+// seeded from already-saved data starts collapsed, with no exception for
+// an unreviewed AI suggestion) — this helper's contract is "every row's
+// description value", which requires each row open to read at all. Clicks
+// one trigger at a time, re-querying after each: ExpectedPartsEditor's
+// toggleRowCollapsed calls the non-functional `onChange(rows.map(...))`,
+// so two clicks batched into the same tick (no render between them) would
+// each build their replacement array from the same stale `rows` closure
+// and the second click's result would clobber the first's.
+async function descriptionValues(el: HTMLElement): Promise<string[]> {
+  let collapsedTriggers = Array.from(el.querySelectorAll('button[aria-expanded="false"]')) as HTMLButtonElement[];
+  while (collapsedTriggers.length > 0) {
+    await act(async () => {
+      collapsedTriggers[0].click();
+    });
+    collapsedTriggers = Array.from(el.querySelectorAll('button[aria-expanded="false"]')) as HTMLButtonElement[];
+  }
   const inputs = Array.from(el.querySelectorAll('input')).filter((input) => input.getAttribute('aria-label')?.endsWith('description'));
   return inputs.map((input) => input.value);
 }
@@ -384,7 +400,7 @@ describe('Identify Parts results', () => {
 
     const el = await mountForm(savedListing);
 
-    expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X']);
+    expect(await descriptionValues(el)).toEqual(['Ryzen 5 5600X']);
 
     await act(async () => findIdentifyButton(el)!.click());
 
@@ -395,7 +411,7 @@ describe('Identify Parts results', () => {
 
     // The pre-existing row stays first and intact; the two suggestions are
     // added after it with the categories the response named.
-    expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
+    expect(await descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
     expect(categoryValues(el)).toEqual(['CPU', 'GPU', 'PSU']);
 
     // Only the two appended rows are badged — the user's own row is not.
@@ -431,7 +447,7 @@ describe('Identify Parts results', () => {
     expect(partNumberValues(el)).toEqual(['', 'RTX 3070', '']);
     // Row 3's nulls stay blank rather than becoming the string 'null' or a
     // copy of its description — the never-guess rule, end to end.
-    expect(descriptionValues(el)[2]).toBe('Corsair RM750');
+    expect((await descriptionValues(el))[2]).toBe('Corsair RM750');
   });
 
   it('renders non-empty notes as a dismissible banner that the user can clear', async () => {
@@ -472,7 +488,7 @@ describe('Identify Parts results', () => {
     });
 
     // Rows still arrived — this is the empty-notes case, not a failed call.
-    expect(descriptionValues(el)).toHaveLength(3);
+    expect(await descriptionValues(el)).toHaveLength(3);
     expect(el.querySelector('[role="status"]')).toBeNull();
   });
 });
@@ -496,7 +512,7 @@ describe('Identify Parts failure', () => {
     // has its own submit-error banner, and a generic fallback string would
     // satisfy a presence-only check while hiding the real cause.
     expect(alerts.some((alert) => alert.textContent === 'omp CLI is not logged in')).toBe(true);
-    expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X']);
+    expect(await descriptionValues(el)).toEqual(['Ryzen 5 5600X']);
     expect(findIdentifyButton(el)!.disabled).toBe(false);
     expect(ackIdentifyPartsJobMock).toHaveBeenCalledTimes(1);
   });
@@ -534,7 +550,7 @@ describe('Identify Parts 409 conflict recovery', () => {
 
     // Job completion re-fetches the Listing and reflects what the server
     // already saved, not a locally reconstructed copy.
-    expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
+    expect(await descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
     expect(ackIdentifyPartsJobMock).toHaveBeenCalledTimes(1);
   });
 });
@@ -558,7 +574,7 @@ describe('Identify Parts mount resume', () => {
 
     // Job completion re-fetches the Listing and reflects what the server
     // already saved, not a locally reconstructed copy.
-    expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
+    expect(await descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
     expect(ackIdentifyPartsJobMock).toHaveBeenCalledTimes(1);
   });
 
@@ -570,7 +586,7 @@ describe('Identify Parts mount resume', () => {
     const el = await mountForm(savedListing);
 
     // Should apply immediately without needing to poll.
-    expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
+    expect(await descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
     expect(ackIdentifyPartsJobMock).toHaveBeenCalledTimes(1);
     expect(fetchIdentifyPartsJobMock).not.toHaveBeenCalled();
   });
@@ -587,7 +603,7 @@ describe('Identify Parts mount resume', () => {
 
     // Only the one hand-entered row from before — the two AI suggestions
     // from this already-delivered job were never re-displayed a second time.
-    expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X']);
+    expect(await descriptionValues(el)).toEqual(['Ryzen 5 5600X']);
     expect(fetchListingMock).not.toHaveBeenCalled();
     expect(ackIdentifyPartsJobMock).not.toHaveBeenCalled();
     expect(fetchIdentifyPartsJobMock).not.toHaveBeenCalled();
@@ -618,7 +634,7 @@ describe('Identify Parts results are saved server-side, never via a form submit'
     expect(onSubmit).not.toHaveBeenCalled();
     expect(fetchListingMock).toHaveBeenCalledWith('listing-1');
     // The displayed rows still reflect exactly what the server returned.
-    expect(descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
+    expect(await descriptionValues(el)).toEqual(['Ryzen 5 5600X', 'triple-fan cooler visible', 'Corsair RM750']);
   });
 });
 

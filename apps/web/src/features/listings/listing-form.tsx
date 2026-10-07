@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import type { CreateListingInput, ExpectedPart, ExpectedPartInput, ListingDetail, Source } from '@pc-parts-flipper/shared';
 import { Button } from '@/components/ui/button';
+import { CollapsibleSection } from '@/components/ui/collapsible';
 import { ErrorBanner } from '@/components/error-banner';
 import { ApiError } from '@/lib/api-client';
 import { EbayScanBadge } from '@/features/listings/ebay-scan-badge';
@@ -41,6 +42,11 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
   // Tracks the saved Listing so the Photos section can appear immediately
   // after a successful create, without leaving create mode.
   const [saved, setSaved] = useState<ListingDetail | undefined>(initialValue);
+  // CollapsibleSection open state for listing fields: expanded by default when
+  // creating (no initialValue), collapsed when editing an existing listing.
+  // Uses a function initializer to ensure this default applies only once,
+  // matching the pattern of other state in this component.
+  const [listingFieldsOpen, setListingFieldsOpen] = useState(() => !initialValue);
 
   function setField<K extends keyof typeof fields>(key: K, value: (typeof fields)[K]) {
     setFields((prev) => ({ ...prev, [key]: value }));
@@ -156,24 +162,30 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
         <EbayScanBadge listingUrl={initialValue.listingUrl} />
       )}
 
-      <ListingFields
-        sources={sources}
-        title={fields.title}
-        onTitleChange={(value) => setField('title', value)}
-        description={fields.description}
-        onDescriptionChange={(value) => setField('description', value)}
-        listingUrl={fields.listingUrl}
-        onListingUrlChange={(value) => setField('listingUrl', value)}
-        sourceId={fields.sourceId}
-        onSourceIdChange={(value) => setField('sourceId', value)}
-        askingPrice={fields.askingPrice}
-        onAskingPriceChange={(value) => setField('askingPrice', value)}
-        listingDate={fields.listingDate}
-        onListingDateChange={(value) => setField('listingDate', value)}
-        acquisitionFees={fields.acquisitionFees}
-        onAcquisitionFeesChange={(value) => setField('acquisitionFees', value)}
-        fieldErrors={fieldErrors}
-      />
+      <CollapsibleSection
+        trigger="Listing Details"
+        open={listingFieldsOpen}
+        onOpenChange={setListingFieldsOpen}
+      >
+        <ListingFields
+          sources={sources}
+          title={fields.title}
+          onTitleChange={(value) => setField('title', value)}
+          description={fields.description}
+          onDescriptionChange={(value) => setField('description', value)}
+          listingUrl={fields.listingUrl}
+          onListingUrlChange={(value) => setField('listingUrl', value)}
+          sourceId={fields.sourceId}
+          onSourceIdChange={(value) => setField('sourceId', value)}
+          askingPrice={fields.askingPrice}
+          onAskingPriceChange={(value) => setField('askingPrice', value)}
+          listingDate={fields.listingDate}
+          onListingDateChange={(value) => setField('listingDate', value)}
+          acquisitionFees={fields.acquisitionFees}
+          onAcquisitionFeesChange={(value) => setField('acquisitionFees', value)}
+          fieldErrors={fieldErrors}
+        />
+      </CollapsibleSection>
 
       <ExpectedPartsEditor rows={rows} rowErrors={rowErrors} onChange={setRows} />
 

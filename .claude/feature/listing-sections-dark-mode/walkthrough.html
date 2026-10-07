@@ -1,0 +1,2172 @@
+<title>Walkthrough</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--add-bg:rgba(31,95,79,.10);--del-bg:rgba(163,49,42,.10);--radius:8px}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74;
+--add-bg:rgba(79,181,154,.14);--del-bg:rgba(224,123,116,.14)}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+h1{margin:0 0 8px;font-size:20px;letter-spacing:-.01em}
+.overview-text{margin:0;font-size:15px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.card-head,.file-head{width:100%;display:flex;justify-content:space-between;align-items:center;
+gap:12px;font:inherit;text-align:left;background:none;border:none;color:var(--ink);cursor:pointer;
+padding:14px 18px}
+.card-head{font-weight:600}
+.card-head .meta{font-size:12px;color:var(--muted);font-weight:400}
+.card-body{padding:0 18px 16px;display:grid;gap:12px}
+.summary{margin:0;font-size:14px}
+.note{font-size:12px;color:var(--muted);margin:2px 0}
+.flow{overflow-x:auto}
+.flow-svg{display:block}
+.flow-box{fill:var(--bg);stroke:var(--line)}
+.flow-box-text{width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;
+justify-content:center;align-items:center;gap:4px;padding:8px 12px;text-align:center;
+font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.flow-label{font-size:12px;font-weight:600;color:var(--ink);line-height:1.25;margin:0;
+display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+text-overflow:ellipsis;word-break:break-word}
+.flow-note{font-size:10.5px;color:var(--muted);line-height:1.3;margin:0;
+display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+text-overflow:ellipsis;word-break:break-word}
+.flow-arrow{stroke:var(--muted);stroke-width:1.5}
+.flow-arrowhead{fill:var(--muted)}
+.files{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.file-group{padding:10px 4px 12px}
+.file-group:not(:last-child){border-bottom:1px solid var(--line)}
+.file-note{margin:0 0 8px;font-size:13px}
+.file-rows{list-style:none;margin:0;padding:0}
+.file{border-top:1px solid var(--line)}
+.file:first-child{border-top:none}
+.file-head{padding:10px 4px;font-size:13px}
+.file-head .path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.tag{display:inline-block;padding:0 6px;border:1px solid var(--line);border-radius:999px;
+font-size:11px;color:var(--muted)}
+.file-body{padding:0 4px 12px;display:grid;gap:8px}
+.hunk{overflow-x:auto;border:1px solid var(--line);border-radius:6px}
+.hunk-head{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);
+padding:5px 9px;border-bottom:1px solid var(--line)}
+.hunk pre{margin:0;padding:6px 9px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+white-space:pre}
+.hunk pre span{display:block;padding:0 4px}
+.hunk pre .add{background:var(--add-bg);color:var(--good)}
+.hunk pre .del{background:var(--del-bg);color:var(--bad)}
+</style>
+<main>
+<section class="panel overview">
+<h1>Walkthrough</h1>
+<p class="overview-text">The Listing edit screen was the only place to see a Listing&#x27;s details, and a Listing with several Expected Parts read as one long form. This feature turns the listing-level fields and each Expected Part into collapsible boxes — collapsed for data already saved, expanded for anything new — so a long Listing reads as a short list instead. It also adds a Light/Dark/System theme control, reachable from every screen, that follows the device&#x27;s preference until the user picks one explicitly. Both changes share one new background token so the collapsible boxes and the sidebar&#x27;s active-page highlight visibly stand out from the plain page background, in both themes.</p>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Collapsible primitive and shared contrast token</span><span class="meta">6 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">A reusable `CollapsibleSection` component, built on a new Radix dependency, and one new CSS</p>
+<p class="note">Tasks: T1</p>
+<ul class="files"><li class="file-group">
+<p class="file-note">adds the `@radix-ui/react-collapsible` dependency this feature&#x27;s collapsible boxes are built on.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/package.json</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -13,6 +13,7 @@</div><pre><span class="ctx">   },</span>
+<span class="ctx">   &quot;dependencies&quot;: {</span>
+<span class="ctx">     &quot;@pc-parts-flipper/shared&quot;: &quot;*&quot;,</span>
+<span class="add">+    &quot;@radix-ui/react-collapsible&quot;: &quot;^1.1.21&quot;,</span>
+<span class="ctx">     &quot;@radix-ui/react-slot&quot;: &quot;^1.3.3&quot;,</span>
+<span class="ctx">     &quot;class-variance-authority&quot;: &quot;^0.7.1&quot;,</span>
+<span class="ctx">     &quot;clsx&quot;: &quot;^2.1.1&quot;,</span></pre></div></div></li>
+<li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">package-lock.json</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -53,6 +53,7 @@</div><pre><span class="ctx">       &quot;version&quot;: &quot;0.0.0&quot;,</span>
+<span class="ctx">       &quot;dependencies&quot;: {</span>
+<span class="ctx">         &quot;@pc-parts-flipper/shared&quot;: &quot;*&quot;,</span>
+<span class="add">+        &quot;@radix-ui/react-collapsible&quot;: &quot;^1.1.21&quot;,</span>
+<span class="ctx">         &quot;@radix-ui/react-slot&quot;: &quot;^1.3.3&quot;,</span>
+<span class="ctx">         &quot;class-variance-authority&quot;: &quot;^0.7.1&quot;,</span>
+<span class="ctx">         &quot;clsx&quot;: &quot;^2.1.1&quot;,</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -1897,6 +1898,42 @@</div><pre><span class="ctx">       &quot;integrity&quot;: &quot;sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==&quot;,</span>
+<span class="ctx">       &quot;license&quot;: &quot;MIT&quot;</span>
+<span class="ctx">     },</span>
+<span class="add">+    &quot;node_modules/@radix-ui/primitive&quot;: {</span>
+<span class="add">+      &quot;version&quot;: &quot;1.1.7&quot;,</span>
+<span class="add">+      &quot;resolved&quot;: &quot;https://registry.npmjs.org/@radix-ui/primitive/-/primitive-1.1.7.tgz&quot;,</span>
+<span class="add">+      &quot;integrity&quot;: &quot;sha512-rqWnm76nYT8HoNNqEjpgJ7Pw/DrBj5iBTrmEPo6HTX5+VJyBNOqTdv4g89G63HuR5g0AaENoAcH7Is5fF2kZ8Q==&quot;,</span>
+<span class="add">+      &quot;license&quot;: &quot;MIT&quot;</span>
+<span class="add">+    },</span>
+<span class="add">+    &quot;node_modules/@radix-ui/react-collapsible&quot;: {</span>
+<span class="add">+      &quot;version&quot;: &quot;1.1.21&quot;,</span>
+<span class="add">+      &quot;resolved&quot;: &quot;https://registry.npmjs.org/@radix-ui/react-collapsible/-/react-collapsible-1.1.21.tgz&quot;,</span>
+<span class="add">+      &quot;integrity&quot;: &quot;sha512-IzkusZHCZBnED5skW+b+syl8d+e3+zelvxZ2Ed9lfawqEBfa5osPj53sTJ+q/uNmGAj9e7wMYgyzwPu/luWJ4Q==&quot;,</span>
+<span class="add">+      &quot;license&quot;: &quot;MIT&quot;,</span>
+<span class="add">+      &quot;dependencies&quot;: {</span>
+<span class="add">+        &quot;@radix-ui/primitive&quot;: &quot;1.1.7&quot;,</span>
+<span class="add">+        &quot;@radix-ui/react-compose-refs&quot;: &quot;1.1.5&quot;,</span>
+<span class="add">+        &quot;@radix-ui/react-context&quot;: &quot;1.2.2&quot;,</span>
+<span class="add">+        &quot;@radix-ui/react-id&quot;: &quot;1.1.4&quot;,</span>
+<span class="add">+        &quot;@radix-ui/react-presence&quot;: &quot;1.1.11&quot;,</span>
+<span class="add">+        &quot;@radix-ui/react-primitive&quot;: &quot;2.1.11&quot;,</span>
+<span class="add">+        &quot;@radix-ui/react-use-controllable-state&quot;: &quot;1.2.6&quot;,</span>
+<span class="add">+        &quot;@radix-ui/react-use-layout-effect&quot;: &quot;1.1.4&quot;</span>
+<span class="add">+      },</span>
+<span class="add">+      &quot;peerDependencies&quot;: {</span>
+<span class="add">+        &quot;@types/react&quot;: &quot;*&quot;,</span>
+<span class="add">+        &quot;@types/react-dom&quot;: &quot;*&quot;,</span>
+<span class="add">+        &quot;react&quot;: &quot;^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc&quot;,</span>
+<span class="add">+        &quot;react-dom&quot;: &quot;^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc&quot;</span>
+<span class="add">+      },</span>
+<span class="add">+      &quot;peerDependenciesMeta&quot;: {</span>
+<span class="add">+        &quot;@types/react&quot;: {</span>
+<span class="add">+          &quot;optional&quot;: true</span>
+<span class="add">+        },</span>
+<span class="add">+        &quot;@types/react-dom&quot;: {</span>
+<span class="add">+          &quot;optional&quot;: true</span>
+<span class="add">+        }</span>
+<span class="add">+      }</span>
+<span class="add">+    },</span>
+<span class="ctx">     &quot;node_modules/@radix-ui/react-compose-refs&quot;: {</span>
+<span class="ctx">       &quot;version&quot;: &quot;1.1.5&quot;,</span>
+<span class="ctx">       &quot;resolved&quot;: &quot;https://registry.npmjs.org/@radix-ui/react-compose-refs/-/react-compose-refs-1.1.5.tgz&quot;,</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -1912,10 +1949,89 @@</div><pre><span class="ctx">         }</span>
+<span class="ctx">       }</span>
+<span class="ctx">     },</span>
+<span class="add">+    &quot;node_modules/@radix-ui/react-context&quot;: {</span>
+<span class="add">+      &quot;version&quot;: &quot;1.2.2&quot;,</span>
+<span class="add">+      &quot;resolved&quot;: &quot;https://registry.npmjs.org/@radix-ui/react-context/-/react-context-1.2.2.tgz&quot;,</span>
+<span class="add">+      &quot;integrity&quot;: &quot;sha512-RHCUGwKHDr0hDGg4X7ma4JG4/+12qxw8rkh5QKdDldlCvtja6nUx1Ef/8HVrJze81lEsgLQlqjzjGNHantgnQA==&quot;,</span>
+<span class="add">+      &quot;license&quot;: &quot;MIT&quot;,</span>
+<span class="add">+      &quot;peerDependencies&quot;: {</span>
+<span class="add">+        &quot;@types/react&quot;: &quot;*&quot;,</span>
+<span class="add">+        &quot;react&quot;: &quot;^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc&quot;</span>
+<span class="add">+      },</span>
+<span class="add">+      &quot;peerDependenciesMeta&quot;: {</span>
+<span class="add">+        &quot;@types/react&quot;: {</span>
+<span class="add">+          &quot;optional&quot;: true</span>
+<span class="add">+        }</span>
+<span class="add">+      }</span>
+<span class="add">+    },</span>
+<span class="add">+    &quot;node_modules/@radix-ui/react-id&quot;: {</span>
+<span class="add">+      &quot;version&quot;: &quot;1.1.4&quot;,</span>
+<span class="add">+      &quot;resolved&quot;: &quot;https://registry.npmjs.org/@radix-ui/react-id/-/react-id-1.1.4.tgz&quot;,</span>
+<span class="add">+      &quot;integrity&quot;: &quot;sha512-TMQp2llA+RYn7JcjnrMnz7wN4pcVttPZnRZo52PLQsoLVKzNlVwUeHmfePgTgRluXFvlD3GD5g5MOVVTJCO0qA==&quot;,</span>
+<span class="add">+      &quot;license&quot;: &quot;MIT&quot;,</span>
+<span class="add">+      &quot;dependencies&quot;: {</span>
+<span class="add">+        &quot;@radix-ui/react-use-layout-effect&quot;: &quot;1.1.4&quot;</span>
+<span class="add">+      },</span>
+<span class="add">+      &quot;peerDependencies&quot;: {</span>
+<span class="add">+        &quot;@types/react&quot;: &quot;*&quot;,</span>
+<span class="add">+        &quot;react&quot;: &quot;^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc&quot;</span>
+<span class="add">+      },</span>
+<span class="add">+      &quot;peerDependenciesMeta&quot;: {</span>
+<span class="add">+        &quot;@types/react&quot;: {</span>
+<span class="add">+          &quot;optional&quot;: true</span>
+<span class="add">+        }</span>
+<span class="add">+      }</span>
+<span class="add">+    },</span>
+<span class="add">+    &quot;node_modules/@radix-ui/react-presence&quot;: {</span>
+<span class="add">+      &quot;version&quot;: &quot;1.1.11&quot;,</span>
+<span class="add">+      &quot;resolved&quot;: &quot;https://registry.npmjs.org/@radix-ui/react-presence/-/react-presence-1.1.11.tgz&quot;,</span>
+<span class="add">+      &quot;integrity&quot;: &quot;sha512-Z7/atlkab36Z8hm+V8zYc79r0W+tiOB1o0tun1By94JyadkekLQmtEAnBSP9XKXBNQsStoStS4+gX10JpS5akA==&quot;,</span>
+<span class="add">+      &quot;license&quot;: &quot;MIT&quot;,</span>
+<span class="add">+      &quot;dependencies&quot;: {</span>
+<span class="add">+        &quot;@radix-ui/react-use-layout-effect&quot;: &quot;1.1.4&quot;</span>
+<span class="add">+      },</span>
+<span class="add">+      &quot;peerDependencies&quot;: {</span>
+<span class="add">+        &quot;@types/react&quot;: &quot;*&quot;,</span>
+<span class="add">+        &quot;@types/react-dom&quot;: &quot;*&quot;,</span>
+<span class="add">+        &quot;react&quot;: &quot;^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc&quot;,</span>
+<span class="add">+        &quot;react-dom&quot;: &quot;^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc&quot;</span>
+<span class="add">+      },</span>
+<span class="add">+      &quot;peerDependenciesMeta&quot;: {</span>
+<span class="add">+        &quot;@types/react&quot;: {</span>
+<span class="add">+          &quot;optional&quot;: true</span>
+<span class="add">+        },</span>
+<span class="add">+        &quot;@types/react-dom&quot;: {</span>
+<span class="add">+          &quot;optional&quot;: true</span>
+<span class="add">+        }</span>
+<span class="add">+      }</span>
+<span class="add">+    },</span>
+<span class="add">+    &quot;node_modules/@radix-ui/react-primitive&quot;: {</span>
+<span class="add">+      &quot;version&quot;: &quot;2.1.11&quot;,</span>
+<span class="add">+      &quot;resolved&quot;: &quot;https://registry.npmjs.org/@radix-ui/react-primitive/-/react-primitive-2.1.11.tgz&quot;,</span>
+<span class="add">+      &quot;integrity&quot;: &quot;sha512-RzcaSw5aKl0OPhBJ1wbolKSF6nVvN+0o/QLeIVq+09npiPdnCkPggy2k6gI6yetxl4ZyrlBPYFgCB8BQJZwXcQ==&quot;,</span>
+<span class="add">+      &quot;license&quot;: &quot;MIT&quot;,</span>
+<span class="add">+      &quot;dependencies&quot;: {</span>
+<span class="add">+        &quot;@radix-ui/react-slot&quot;: &quot;1.4.0&quot;</span>
+<span class="add">+      },</span>
+<span class="add">+      &quot;peerDependencies&quot;: {</span>
+<span class="add">+        &quot;@types/react&quot;: &quot;*&quot;,</span>
+<span class="add">+        &quot;@types/react-dom&quot;: &quot;*&quot;,</span>
+<span class="add">+        &quot;react&quot;: &quot;^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc&quot;,</span>
+<span class="add">+        &quot;react-dom&quot;: &quot;^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc&quot;</span>
+<span class="add">+      },</span>
+<span class="add">+      &quot;peerDependenciesMeta&quot;: {</span>
+<span class="add">+        &quot;@types/react&quot;: {</span>
+<span class="add">+          &quot;optional&quot;: true</span>
+<span class="add">+        },</span>
+<span class="add">+        &quot;@types/react-dom&quot;: {</span>
+<span class="add">+          &quot;optional&quot;: true</span>
+<span class="add">+        }</span>
+<span class="add">+      }</span>
+<span class="add">+    },</span>
+<span class="ctx">     &quot;node_modules/@radix-ui/react-slot&quot;: {</span>
+<span class="del">-      &quot;version&quot;: &quot;1.3.3&quot;,</span>
+<span class="del">-      &quot;resolved&quot;: &quot;https://registry.npmjs.org/@radix-ui/react-slot/-/react-slot-1.3.3.tgz&quot;,</span>
+<span class="del">-      &quot;integrity&quot;: &quot;sha512-qx7oqnYbxnK9kYI9m317qmFmEgo6ywqWvbTogdj7cL9p3/yx4M48p7Rnw5z3H890cL/ow/EeWJsuTykeZVXP5Q==&quot;,</span>
+<span class="add">+      &quot;version&quot;: &quot;1.4.0&quot;,</span>
+<span class="add">+      &quot;resolved&quot;: &quot;https://registry.npmjs.org/@radix-ui/react-slot/-/react-slot-1.4.0.tgz&quot;,</span>
+<span class="add">+      &quot;integrity&quot;: &quot;sha512-IuMVHZ+Ah5fkctu3X3qeFrV/ZrBcuWuDTFUUPfS/L5hvoTjzhp/HdWGE14CsQombPdEidsa33HVlYZXi49PZ1Q==&quot;,</span>
+<span class="ctx">       &quot;license&quot;: &quot;MIT&quot;,</span>
+<span class="ctx">       &quot;dependencies&quot;: {</span>
+<span class="ctx">         &quot;@radix-ui/react-compose-refs&quot;: &quot;1.1.5&quot;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -1930,6 +2046,59 @@</div><pre><span class="ctx">         }</span>
+<span class="ctx">       }</span>
+<span class="ctx">     },</span>
+<span class="add">+    &quot;node_modules/@radix-ui/react-use-controllable-state&quot;: {</span>
+<span class="add">+      &quot;version&quot;: &quot;1.2.6&quot;,</span>
+<span class="add">+      &quot;resolved&quot;: &quot;https://registry.npmjs.org/@radix-ui/react-use-controllable-state/-/react-use-controllable-state-1.2.6.tgz&quot;,</span>
+<span class="add">+      &quot;integrity&quot;: &quot;sha512-uEQJGT97ZA/TgP/Hydw47lHu+/vQj6z/0jA+WeTbK1o9Rx45GImjpD0tc3W5ad3D6XTSR6e1yEO0FvGq6WQfVQ==&quot;,</span>
+<span class="add">+      &quot;license&quot;: &quot;MIT&quot;,</span>
+<span class="add">+      &quot;dependencies&quot;: {</span>
+<span class="add">+        &quot;@radix-ui/primitive&quot;: &quot;1.1.7&quot;,</span>
+<span class="add">+        &quot;@radix-ui/react-use-effect-event&quot;: &quot;0.0.5&quot;,</span>
+<span class="add">+        &quot;@radix-ui/react-use-layout-effect&quot;: &quot;1.1.4&quot;</span>
+<span class="add">+      },</span>
+<span class="add">+      &quot;peerDependencies&quot;: {</span>
+<span class="add">+        &quot;@types/react&quot;: &quot;*&quot;,</span>
+<span class="add">+        &quot;react&quot;: &quot;^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc&quot;</span>
+<span class="add">+      },</span>
+<span class="add">+      &quot;peerDependenciesMeta&quot;: {</span>
+<span class="add">+        &quot;@types/react&quot;: {</span>
+<span class="add">+          &quot;optional&quot;: true</span>
+<span class="add">+        }</span>
+<span class="add">+      }</span>
+<span class="add">+    },</span>
+<span class="add">+    &quot;node_modules/@radix-ui/react-use-effect-event&quot;: {</span>
+<span class="add">+      &quot;version&quot;: &quot;0.0.5&quot;,</span>
+<span class="add">+      &quot;resolved&quot;: &quot;https://registry.npmjs.org/@radix-ui/react-use-effect-event/-/react-use-effect-event-0.0.5.tgz&quot;,</span>
+<span class="add">+      &quot;integrity&quot;: &quot;sha512-7cshFL8HGS/7HEiHH+9kL9HBwp2sa9yX18Knwek6KYWmXwM7pegMgta2AXMQKI+rq3JnfSj9x8wYqFMTdG1Jgg==&quot;,</span>
+<span class="add">+      &quot;license&quot;: &quot;MIT&quot;,</span>
+<span class="add">+      &quot;dependencies&quot;: {</span>
+<span class="add">+        &quot;@radix-ui/react-use-layout-effect&quot;: &quot;1.1.4&quot;</span>
+<span class="add">+      },</span>
+<span class="add">+      &quot;peerDependencies&quot;: {</span>
+<span class="add">+        &quot;@types/react&quot;: &quot;*&quot;,</span>
+<span class="add">+        &quot;react&quot;: &quot;^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc&quot;</span>
+<span class="add">+      },</span>
+<span class="add">+      &quot;peerDependenciesMeta&quot;: {</span>
+<span class="add">+        &quot;@types/react&quot;: {</span>
+<span class="add">+          &quot;optional&quot;: true</span>
+<span class="add">+        }</span>
+<span class="add">+      }</span>
+<span class="add">+    },</span>
+<span class="add">+    &quot;node_modules/@radix-ui/react-use-layout-effect&quot;: {</span>
+<span class="add">+      &quot;version&quot;: &quot;1.1.4&quot;,</span>
+<span class="add">+      &quot;resolved&quot;: &quot;https://registry.npmjs.org/@radix-ui/react-use-layout-effect/-/react-use-layout-effect-1.1.4.tgz&quot;,</span>
+<span class="add">+      &quot;integrity&quot;: &quot;sha512-K20DkRkUwDnxEYMBPcg3Y6voLkEy5p5QQmszZgLngKKiC7dzBR/aEuK3w1qlx2JWDUNH6FluahYdgR3BP+QbYw==&quot;,</span>
+<span class="add">+      &quot;license&quot;: &quot;MIT&quot;,</span>
+<span class="add">+      &quot;peerDependencies&quot;: {</span>
+<span class="add">+        &quot;@types/react&quot;: &quot;*&quot;,</span>
+<span class="add">+        &quot;react&quot;: &quot;^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc&quot;</span>
+<span class="add">+      },</span>
+<span class="add">+      &quot;peerDependenciesMeta&quot;: {</span>
+<span class="add">+        &quot;@types/react&quot;: {</span>
+<span class="add">+          &quot;optional&quot;: true</span>
+<span class="add">+        }</span>
+<span class="add">+      }</span>
+<span class="add">+    },</span>
+<span class="ctx">     &quot;node_modules/@remix-run/router&quot;: {</span>
+<span class="ctx">       &quot;version&quot;: &quot;1.23.4&quot;,</span>
+<span class="ctx">       &quot;resolved&quot;: &quot;https://registry.npmjs.org/@remix-run/router/-/router-1.23.4.tgz&quot;,</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -2426,7 +2595,7 @@</div><pre><span class="ctx">       &quot;version&quot;: &quot;18.3.7&quot;,</span>
+<span class="ctx">       &quot;resolved&quot;: &quot;https://registry.npmjs.org/@types/react-dom/-/react-dom-18.3.7.tgz&quot;,</span>
+<span class="ctx">       &quot;integrity&quot;: &quot;sha512-MEe3UeoENYVFXzoXEWsvcpg6ZvlrFNlOQ7EOsvhI3CfAXwzPfO8Qwuxd40nepsYKqyyVQnTdEfv68q91yLcKrQ==&quot;,</span>
+<span class="del">-      &quot;dev&quot;: true,</span>
+<span class="add">+      &quot;devOptional&quot;: true,</span>
+<span class="ctx">       &quot;license&quot;: &quot;MIT&quot;,</span>
+<span class="ctx">       &quot;peerDependencies&quot;: {</span>
+<span class="ctx">         &quot;@types/react&quot;: &quot;^18.0.0&quot;</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">the new `Collapsible`/`CollapsibleTrigger`/`CollapsibleContent`/`CollapsibleSection` primitives — a bordered trigger row with a rotating chevron and the `surfaceContrast` background, content unmounted while closed.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/components/ui/collapsible.tsx</span><span class="tag">added</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -0,0 +1,72 @@</div><pre><span class="add">+import * as React from &#x27;react&#x27;;</span>
+<span class="add">+import * as CollapsiblePrimitive from &#x27;@radix-ui/react-collapsible&#x27;;</span>
+<span class="add">+import { ChevronDown } from &#x27;lucide-react&#x27;;</span>
+<span class="add">+import { cn } from &#x27;@/lib/utils&#x27;;</span>
+<span class="add">+</span>
+<span class="add">+// shadcn/ui-style Collapsible primitives: thin re-exports of</span>
+<span class="add">+// @radix-ui/react-collapsible&#x27;s own root/trigger/content, named to match</span>
+<span class="add">+// the rest of this directory&#x27;s components/ui files so callers import them</span>
+<span class="add">+// the same way as Card or Button. Radix already owns open/close animation</span>
+<span class="add">+// hooks (via `data-state`) and the ARIA wiring (aria-expanded,</span>
+<span class="add">+// aria-controls) — these wrappers add nothing but the naming convention,</span>
+<span class="add">+// so later call sites (T2/T3/T5&#x27;s listing-form sections) can build on a</span>
+<span class="add">+// stable local import path instead of reaching into @radix-ui directly.</span>
+<span class="add">+const Collapsible = CollapsiblePrimitive.Root;</span>
+<span class="add">+const CollapsibleTrigger = CollapsiblePrimitive.CollapsibleTrigger;</span>
+<span class="add">+const CollapsibleContent = CollapsiblePrimitive.CollapsibleContent;</span>
+<span class="add">+</span>
+<span class="add">+export interface CollapsibleSectionProps {</span>
+<span class="add">+  // The trigger row&#x27;s own label/content — usually a short heading, but any</span>
+<span class="add">+  // node is accepted since callers may want to combine a title with a</span>
+<span class="add">+  // count or badge (e.g. &quot;Expected Parts (3)&quot;).</span>
+<span class="add">+  trigger: React.ReactNode;</span>
+<span class="add">+  // Controlled open state and its setter, mirroring Radix&#x27;s own</span>
+<span class="add">+  // Collapsible.Root API. Kept controlled-only (no uncontrolled</span>
+<span class="add">+  // defaultOpen fallback) because every known caller (T2/T3/T5) already</span>
+<span class="add">+  // owns a piece of form state it needs this section&#x27;s openness to stay</span>
+<span class="add">+  // in sync with — e.g. collapsing a section whose fields just failed</span>
+<span class="add">+  // validation would hide the error without a controlling parent.</span>
+<span class="add">+  open: boolean;</span>
+<span class="add">+  onOpenChange: (open: boolean) =&gt; void;</span>
+<span class="add">+  // The section&#x27;s body, rendered inside CollapsibleContent and therefore</span>
+<span class="add">+  // only mounted/visible while `open` is true.</span>
+<span class="add">+  children: React.ReactNode;</span>
+<span class="add">+  className?: string;</span>
+<span class="add">+  triggerClassName?: string;</span>
+<span class="add">+  contentClassName?: string;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+/**</span>
+<span class="add">+ * A bordered, titled section that expands/collapses its body on click,</span>
+<span class="add">+ * built from the Collapsible primitives above. The trigger row always</span>
+<span class="add">+ * renders — label plus a chevron that rotates to point down when open and</span>
+<span class="add">+ * right when closed — so the section&#x27;s current state is visible even</span>
+<span class="add">+ * before any animation finishes. The trigger row uses the `surfaceContrast`</span>
+<span class="add">+ * background token (a darker, visually distinct gray in light mode; equal</span>
+<span class="add">+ * to `--muted` in dark mode, so dark mode is unchanged by its introduction)</span>
+<span class="add">+ * to set it apart from the surrounding page background.</span>
+<span class="add">+ *</span>
+<span class="add">+ * Fully controlled: callers pass `open`/`onOpenChange` rather than this</span>
+<span class="add">+ * component owning its own state, so a parent form can keep a section</span>
+<span class="add">+ * open across a failed validation pass, or collapse every section but the</span>
+<span class="add">+ * one containing an error.</span>
+<span class="add">+ */</span>
+<span class="add">+function CollapsibleSection({ trigger, open, onOpenChange, children, className, triggerClassName, contentClassName }: CollapsibleSectionProps) {</span>
+<span class="add">+  return (</span>
+<span class="add">+    &lt;Collapsible open={open} onOpenChange={onOpenChange} className={cn(&#x27;rounded-md border&#x27;, className)}&gt;</span>
+<span class="add">+      &lt;CollapsibleTrigger</span>
+<span class="add">+        className={cn(</span>
+<span class="add">+          &#x27;flex w-full items-center justify-between gap-2 rounded-t-md bg-surfaceContrast px-4 py-2 text-left text-sm font-medium transition-colors hover:bg-surfaceContrast/80&#x27;,</span>
+<span class="add">+          !open &amp;&amp; &#x27;rounded-b-md&#x27;,</span>
+<span class="add">+          triggerClassName,</span>
+<span class="add">+        )}</span>
+<span class="add">+      &gt;</span>
+<span class="add">+        &lt;span&gt;{trigger}&lt;/span&gt;</span>
+<span class="add">+        &lt;ChevronDown className={cn(&#x27;h-4 w-4 shrink-0 transition-transform duration-200&#x27;, open ? &#x27;rotate-0&#x27; : &#x27;-rotate-90&#x27;)} aria-hidden=&quot;true&quot; /&gt;</span>
+<span class="add">+      &lt;/CollapsibleTrigger&gt;</span>
+<span class="add">+      &lt;CollapsibleContent className={cn(&#x27;px-4 py-3&#x27;, contentClassName)}&gt;{children}&lt;/CollapsibleContent&gt;</span>
+<span class="add">+    &lt;/Collapsible&gt;</span>
+<span class="add">+  );</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+export { Collapsible, CollapsibleTrigger, CollapsibleContent, CollapsibleSection };</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">defines `--surface-contrast` — noticeably darker than `--muted` in light mode, identical to `--muted` in dark mode (a dark box needs no extra darkening to stand out).</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/index.css</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -17,6 +17,7 @@</div><pre><span class="ctx">     --secondary: 210 40% 96.1%;</span>
+<span class="ctx">     --secondary-foreground: 222.2 47.4% 11.2%;</span>
+<span class="ctx">     --muted: 210 40% 96.1%;</span>
+<span class="add">+    --surface-contrast: 215 20% 85%;</span>
+<span class="ctx">     --muted-foreground: 215.4 16.3% 46.9%;</span>
+<span class="ctx">     --accent: 210 40% 96.1%;</span>
+<span class="ctx">     --accent-foreground: 222.2 47.4% 11.2%;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -40,6 +41,7 @@</div><pre><span class="ctx">     --secondary: 217.2 32.6% 17.5%;</span>
+<span class="ctx">     --secondary-foreground: 210 40% 98%;</span>
+<span class="ctx">     --muted: 217.2 32.6% 17.5%;</span>
+<span class="add">+    --surface-contrast: 217.2 32.6% 17.5%;</span>
+<span class="ctx">     --muted-foreground: 215 20.2% 65.1%;</span>
+<span class="ctx">     --accent: 217.2 32.6% 17.5%;</span>
+<span class="ctx">     --accent-foreground: 210 40% 98%;</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">wires `--surface-contrast` to a `surfaceContrast` Tailwind color so `bg-surfaceContrast` is usable as a class.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/tailwind.config.js</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -31,6 +31,7 @@ export default {</div><pre><span class="ctx">           DEFAULT: &#x27;hsl(var(--muted))&#x27;,</span>
+<span class="ctx">           foreground: &#x27;hsl(var(--muted-foreground))&#x27;,</span>
+<span class="ctx">         },</span>
+<span class="add">+        surfaceContrast: &#x27;hsl(var(--surface-contrast))&#x27;,</span>
+<span class="ctx">         accent: {</span>
+<span class="ctx">           DEFAULT: &#x27;hsl(var(--accent))&#x27;,</span>
+<span class="ctx">           foreground: &#x27;hsl(var(--accent-foreground))&#x27;,</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">proves open/close toggling, chevron rotation, the `bg-surfaceContrast` class, and that content unmounts while closed.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/collapsible.test.tsx</span><span class="tag">added</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -0,0 +1,102 @@</div><pre><span class="add">+// @vitest-environment jsdom</span>
+<span class="add">+//</span>
+<span class="add">+// Proof for T1&#x27;s new CollapsibleSection (components/ui/collapsible.tsx):</span>
+<span class="add">+// a closed section hides its content region and renders its chevron</span>
+<span class="add">+// rotated to point right, an open section shows its content and rotates</span>
+<span class="add">+// the chevron to point down, and clicking the trigger calls the</span>
+<span class="add">+// controlled onOpenChange callback with the toggled value rather than</span>
+<span class="add">+// managing its own internal state. Mounts the real component through</span>
+<span class="add">+// react-dom/client + act(), following expected-parts-editor.test.tsx&#x27;s</span>
+<span class="add">+// pattern — no RTL in this workspace.</span>
+<span class="add">+import { afterEach, describe, expect, it } from &#x27;vitest&#x27;;</span>
+<span class="add">+import { createRoot, type Root } from &#x27;react-dom/client&#x27;;</span>
+<span class="add">+import { act, useState } from &#x27;react&#x27;;</span>
+<span class="add">+import { CollapsibleSection } from &#x27;../src/components/ui/collapsible&#x27;;</span>
+<span class="add">+</span>
+<span class="add">+globalThis.IS_REACT_ACT_ENVIRONMENT = true;</span>
+<span class="add">+</span>
+<span class="add">+let container: HTMLDivElement | null = null;</span>
+<span class="add">+let root: Root | null = null;</span>
+<span class="add">+</span>
+<span class="add">+afterEach(() =&gt; {</span>
+<span class="add">+  act(() =&gt; {</span>
+<span class="add">+    root?.unmount();</span>
+<span class="add">+  });</span>
+<span class="add">+  container?.remove();</span>
+<span class="add">+  container = null;</span>
+<span class="add">+  root = null;</span>
+<span class="add">+});</span>
+<span class="add">+</span>
+<span class="add">+async function mount(element: React.ReactElement): Promise&lt;HTMLDivElement&gt; {</span>
+<span class="add">+  container = document.createElement(&#x27;div&#x27;);</span>
+<span class="add">+  document.body.appendChild(container);</span>
+<span class="add">+  await act(async () =&gt; {</span>
+<span class="add">+    root = createRoot(container!);</span>
+<span class="add">+    root.render(element);</span>
+<span class="add">+  });</span>
+<span class="add">+  return container;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+// Harness holding the section&#x27;s open state itself, exactly as a real</span>
+<span class="add">+// caller (a listing-form section) would — proves the controlled API</span>
+<span class="add">+// round-trips through a parent&#x27;s own useState rather than the component</span>
+<span class="add">+// quietly tracking open/closed on its own.</span>
+<span class="add">+function SectionHarness({ initialOpen }: { initialOpen: boolean }) {</span>
+<span class="add">+  const [open, setOpen] = useState(initialOpen);</span>
+<span class="add">+  return (</span>
+<span class="add">+    &lt;CollapsibleSection trigger=&quot;Expected Parts&quot; open={open} onOpenChange={setOpen}&gt;</span>
+<span class="add">+      &lt;div data-testid=&quot;section-body&quot;&gt;body content&lt;/div&gt;</span>
+<span class="add">+    &lt;/CollapsibleSection&gt;</span>
+<span class="add">+  );</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+function chevron(el: HTMLElement): SVGElement {</span>
+<span class="add">+  const svg = el.querySelector(&#x27;svg&#x27;);</span>
+<span class="add">+  if (!svg) throw new Error(&#x27;expected a chevron svg to be rendered&#x27;);</span>
+<span class="add">+  return svg;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+describe(&#x27;CollapsibleSection component&#x27;, () =&gt; {</span>
+<span class="add">+  it(&#x27;renders a closed section with hidden content and a right-pointing chevron&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount(&lt;SectionHarness initialOpen={false} /&gt;);</span>
+<span class="add">+    const body = el.querySelector(&#x27;[data-testid=&quot;section-body&quot;]&#x27;);</span>
+<span class="add">+    expect(body).toBeNull();</span>
+<span class="add">+    expect(chevron(el).className.baseVal).toContain(&#x27;-rotate-90&#x27;);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;renders an open section with visible content and a down-pointing chevron&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount(&lt;SectionHarness initialOpen={true} /&gt;);</span>
+<span class="add">+    const body = el.querySelector(&#x27;[data-testid=&quot;section-body&quot;]&#x27;);</span>
+<span class="add">+    expect(body?.textContent).toBe(&#x27;body content&#x27;);</span>
+<span class="add">+    expect(chevron(el).className.baseVal).not.toContain(&#x27;-rotate-90&#x27;);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;clicking the trigger toggles open state via the controlled onOpenChange callback, not internal state&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount(&lt;SectionHarness initialOpen={false} /&gt;);</span>
+<span class="add">+    expect(el.querySelector(&#x27;[data-testid=&quot;section-body&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    const trigger = el.querySelector(&#x27;button&#x27;);</span>
+<span class="add">+    if (!trigger) throw new Error(&#x27;expected a trigger button to be rendered&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      trigger.click();</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    expect(el.querySelector(&#x27;[data-testid=&quot;section-body&quot;]&#x27;)?.textContent).toBe(&#x27;body content&#x27;);</span>
+<span class="add">+    expect(chevron(el).className.baseVal).not.toContain(&#x27;-rotate-90&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      trigger.click();</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    expect(el.querySelector(&#x27;[data-testid=&quot;section-body&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+    expect(chevron(el).className.baseVal).toContain(&#x27;-rotate-90&#x27;);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;renders the trigger with the bg-surfaceContrast background token, regardless of open state&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount(&lt;SectionHarness initialOpen={false} /&gt;);</span>
+<span class="add">+    const trigger = el.querySelector(&#x27;button&#x27;);</span>
+<span class="add">+    if (!trigger) throw new Error(&#x27;expected a trigger button to be rendered&#x27;);</span>
+<span class="add">+    expect(trigger.className).toContain(&#x27;bg-surfaceContrast&#x27;);</span>
+<span class="add">+  });</span>
+<span class="add">+});</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Listing details box</span><span class="meta">3 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">The Title/Source/Description/URL/Price/Date/Fees block now renders inside one</p>
+<p class="note">Tasks: T2</p>
+<div class="flow"><svg viewBox="0 0 678 108" role="img" aria-label="data flow" class="flow-svg">
+<rect x="8" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="8" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Open a Listing</div><div class="flow-note">Fields box renders collapsed</div></div></foreignObject>
+<line x1="198" y1="54" x2="238" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="244" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="244" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Click trigger</div><div class="flow-note">Fields box expands, values unchanged</div></div></foreignObject>
+<line x1="434" y1="54" x2="474" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="480" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="480" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Create new Listing</div><div class="flow-note">Fields box renders expanded immediately</div></div></foreignObject>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" class="flow-arrowhead"/></marker></defs>
+</svg></div>
+<ul class="files"><li class="file-group">
+<p class="file-note">wraps `ListingFields` in `CollapsibleSection`, with `listingFieldsOpen` initialized from whether `initialValue` is set.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/features/listings/listing-form.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -1,6 +1,7 @@</div><pre><span class="ctx"> import { useState, type FormEvent } from &#x27;react&#x27;;</span>
+<span class="ctx"> import type { CreateListingInput, ExpectedPart, ExpectedPartInput, ListingDetail, Source } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> import { Button } from &#x27;@/components/ui/button&#x27;;</span>
+<span class="add">+import { CollapsibleSection } from &#x27;@/components/ui/collapsible&#x27;;</span>
+<span class="ctx"> import { ErrorBanner } from &#x27;@/components/error-banner&#x27;;</span>
+<span class="ctx"> import { ApiError } from &#x27;@/lib/api-client&#x27;;</span>
+<span class="ctx"> import { EbayScanBadge } from &#x27;@/features/listings/ebay-scan-badge&#x27;;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -41,6 +42,11 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved</div><pre><span class="ctx">   // Tracks the saved Listing so the Photos section can appear immediately</span>
+<span class="ctx">   // after a successful create, without leaving create mode.</span>
+<span class="ctx">   const [saved, setSaved] = useState&lt;ListingDetail | undefined&gt;(initialValue);</span>
+<span class="add">+  // CollapsibleSection open state for listing fields: expanded by default when</span>
+<span class="add">+  // creating (no initialValue), collapsed when editing an existing listing.</span>
+<span class="add">+  // Uses a function initializer to ensure this default applies only once,</span>
+<span class="add">+  // matching the pattern of other state in this component.</span>
+<span class="add">+  const [listingFieldsOpen, setListingFieldsOpen] = useState(() =&gt; !initialValue);</span>
+<span class="ctx"> </span>
+<span class="ctx">   function setField&lt;K extends keyof typeof fields&gt;(key: K, value: (typeof fields)[K]) {</span>
+<span class="ctx">     setFields((prev) =&gt; ({ ...prev, [key]: value }));</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -156,24 +162,30 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved</div><pre><span class="ctx">         &lt;EbayScanBadge listingUrl={initialValue.listingUrl} /&gt;</span>
+<span class="ctx">       )}</span>
+<span class="ctx"> </span>
+<span class="del">-      &lt;ListingFields</span>
+<span class="del">-        sources={sources}</span>
+<span class="del">-        title={fields.title}</span>
+<span class="del">-        onTitleChange={(value) =&gt; setField(&#x27;title&#x27;, value)}</span>
+<span class="del">-        description={fields.description}</span>
+<span class="del">-        onDescriptionChange={(value) =&gt; setField(&#x27;description&#x27;, value)}</span>
+<span class="del">-        listingUrl={fields.listingUrl}</span>
+<span class="del">-        onListingUrlChange={(value) =&gt; setField(&#x27;listingUrl&#x27;, value)}</span>
+<span class="del">-        sourceId={fields.sourceId}</span>
+<span class="del">-        onSourceIdChange={(value) =&gt; setField(&#x27;sourceId&#x27;, value)}</span>
+<span class="del">-        askingPrice={fields.askingPrice}</span>
+<span class="del">-        onAskingPriceChange={(value) =&gt; setField(&#x27;askingPrice&#x27;, value)}</span>
+<span class="del">-        listingDate={fields.listingDate}</span>
+<span class="del">-        onListingDateChange={(value) =&gt; setField(&#x27;listingDate&#x27;, value)}</span>
+<span class="del">-        acquisitionFees={fields.acquisitionFees}</span>
+<span class="del">-        onAcquisitionFeesChange={(value) =&gt; setField(&#x27;acquisitionFees&#x27;, value)}</span>
+<span class="del">-        fieldErrors={fieldErrors}</span>
+<span class="del">-      /&gt;</span>
+<span class="add">+      &lt;CollapsibleSection</span>
+<span class="add">+        trigger=&quot;Listing Details&quot;</span>
+<span class="add">+        open={listingFieldsOpen}</span>
+<span class="add">+        onOpenChange={setListingFieldsOpen}</span>
+<span class="add">+      &gt;</span>
+<span class="add">+        &lt;ListingFields</span>
+<span class="add">+          sources={sources}</span>
+<span class="add">+          title={fields.title}</span>
+<span class="add">+          onTitleChange={(value) =&gt; setField(&#x27;title&#x27;, value)}</span>
+<span class="add">+          description={fields.description}</span>
+<span class="add">+          onDescriptionChange={(value) =&gt; setField(&#x27;description&#x27;, value)}</span>
+<span class="add">+          listingUrl={fields.listingUrl}</span>
+<span class="add">+          onListingUrlChange={(value) =&gt; setField(&#x27;listingUrl&#x27;, value)}</span>
+<span class="add">+          sourceId={fields.sourceId}</span>
+<span class="add">+          onSourceIdChange={(value) =&gt; setField(&#x27;sourceId&#x27;, value)}</span>
+<span class="add">+          askingPrice={fields.askingPrice}</span>
+<span class="add">+          onAskingPriceChange={(value) =&gt; setField(&#x27;askingPrice&#x27;, value)}</span>
+<span class="add">+          listingDate={fields.listingDate}</span>
+<span class="add">+          onListingDateChange={(value) =&gt; setField(&#x27;listingDate&#x27;, value)}</span>
+<span class="add">+          acquisitionFees={fields.acquisitionFees}</span>
+<span class="add">+          onAcquisitionFeesChange={(value) =&gt; setField(&#x27;acquisitionFees&#x27;, value)}</span>
+<span class="add">+          fieldErrors={fieldErrors}</span>
+<span class="add">+        /&gt;</span>
+<span class="add">+      &lt;/CollapsibleSection&gt;</span>
+<span class="ctx"> </span>
+<span class="ctx">       &lt;ExpectedPartsEditor rows={rows} rowErrors={rowErrors} onChange={setRows} /&gt;</span>
+<span class="ctx"> </span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">proves the collapsed-when-editing / expanded-when-creating defaults, toggle behavior, value survival across collapse/expand, and the `bg-surfaceContrast` token&#x27;s presence.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/listing-form.test.tsx</span><span class="tag">added</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -0,0 +1,310 @@</div><pre><span class="add">+// @vitest-environment jsdom</span>
+<span class="add">+//</span>
+<span class="add">+// Proof for T2&#x27;s ListingFields wrapping in CollapsibleSection</span>
+<span class="add">+// (listing-form.tsx): when creating a new Listing (no initialValue),</span>
+<span class="add">+// the Listing Details section starts expanded; when editing an existing</span>
+<span class="add">+// Listing (initialValue provided), the section starts collapsed. Both</span>
+<span class="add">+// defaults apply only once per mount. Field values survive toggling the</span>
+<span class="add">+// section&#x27;s collapsed/expanded state, and the fields remain mounted</span>
+<span class="add">+// (present in the DOM) even when the section is collapsed.</span>
+<span class="add">+import { afterEach, describe, expect, it, vi } from &#x27;vitest&#x27;;</span>
+<span class="add">+import { createRoot, type Root } from &#x27;react-dom/client&#x27;;</span>
+<span class="add">+import { act } from &#x27;react&#x27;;</span>
+<span class="add">+import type { ListingDetail, Source } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="add">+import { ListingForm } from &#x27;../src/features/listings/listing-form&#x27;;</span>
+<span class="add">+</span>
+<span class="add">+globalThis.IS_REACT_ACT_ENVIRONMENT = true;</span>
+<span class="add">+</span>
+<span class="add">+let container: HTMLDivElement | null = null;</span>
+<span class="add">+let root: Root | null = null;</span>
+<span class="add">+</span>
+<span class="add">+afterEach(() =&gt; {</span>
+<span class="add">+  act(() =&gt; {</span>
+<span class="add">+    root?.unmount();</span>
+<span class="add">+  });</span>
+<span class="add">+  container?.remove();</span>
+<span class="add">+  container = null;</span>
+<span class="add">+  root = null;</span>
+<span class="add">+});</span>
+<span class="add">+</span>
+<span class="add">+async function mount(element: React.ReactElement): Promise&lt;HTMLDivElement&gt; {</span>
+<span class="add">+  container = document.createElement(&#x27;div&#x27;);</span>
+<span class="add">+  document.body.appendChild(container);</span>
+<span class="add">+  await act(async () =&gt; {</span>
+<span class="add">+    root = createRoot(container!);</span>
+<span class="add">+    root.render(element);</span>
+<span class="add">+  });</span>
+<span class="add">+  return container;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+function mockSource(): Source {</span>
+<span class="add">+  return {</span>
+<span class="add">+    id: &#x27;source-1&#x27;,</span>
+<span class="add">+    name: &#x27;eBay&#x27;,</span>
+<span class="add">+    platformType: &#x27;ebay&#x27;,</span>
+<span class="add">+    url: &#x27;https://ebay.com&#x27;,</span>
+<span class="add">+    notes: null,</span>
+<span class="add">+    active: true,</span>
+<span class="add">+    connectorConfig: null,</span>
+<span class="add">+    lastScannedAt: null,</span>
+<span class="add">+    lastScanFoundCount: null,</span>
+<span class="add">+    createdAt: new Date().toISOString(),</span>
+<span class="add">+    updatedAt: new Date().toISOString(),</span>
+<span class="add">+  };</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+function mockListingDetail(): ListingDetail {</span>
+<span class="add">+  return {</span>
+<span class="add">+    id: &#x27;listing-1&#x27;,</span>
+<span class="add">+    sourceId: &#x27;source-1&#x27;,</span>
+<span class="add">+    title: &#x27;Test Gaming PC&#x27;,</span>
+<span class="add">+    description: &#x27;A high-end gaming PC&#x27;,</span>
+<span class="add">+    listingUrl: &#x27;https://ebay.com/itm/123456&#x27;,</span>
+<span class="add">+    askingPrice: 1500,</span>
+<span class="add">+    listingDate: &#x27;2024-01-01&#x27;,</span>
+<span class="add">+    status: &#x27;open&#x27;,</span>
+<span class="add">+    acquisitionFees: 50,</span>
+<span class="add">+    photoPaths: [],</span>
+<span class="add">+    externalSource: &#x27;ebay&#x27;,</span>
+<span class="add">+    externalItemId: &#x27;123456&#x27;,</span>
+<span class="add">+    createdAt: new Date().toISOString(),</span>
+<span class="add">+    updatedAt: new Date().toISOString(),</span>
+<span class="add">+    comparison: {</span>
+<span class="add">+      totalExpectedResaleValue: 2000,</span>
+<span class="add">+      totalCost: 1550,</span>
+<span class="add">+      difference: 450,</span>
+<span class="add">+    },</span>
+<span class="add">+    expectedParts: [],</span>
+<span class="add">+  };</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+function getTitleInput(el: HTMLElement): HTMLInputElement | null {</span>
+<span class="add">+  return el.querySelector(&#x27;input#listing-title&#x27;) as HTMLInputElement | null;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+function getTriggerButton(el: HTMLElement): HTMLButtonElement | null {</span>
+<span class="add">+  return el.querySelector(&#x27;button[type=&quot;button&quot;]&#x27;) as HTMLButtonElement | null;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+function getChevronIcon(el: HTMLElement): SVGElement | null {</span>
+<span class="add">+  return el.querySelector(&#x27;button svg&#x27;) as SVGElement | null;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+describe(&#x27;ListingForm Listing Details section collapse behavior&#x27;, () =&gt; {</span>
+<span class="add">+  it(&#x27;starts expanded when creating a new listing (no initialValue)&#x27;, async () =&gt; {</span>
+<span class="add">+    const onSubmit = vi.fn();</span>
+<span class="add">+    const onCancel = vi.fn();</span>
+<span class="add">+    const onSaved = vi.fn();</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount(</span>
+<span class="add">+      &lt;ListingForm</span>
+<span class="add">+        sources={[mockSource()]}</span>
+<span class="add">+        onSubmit={onSubmit}</span>
+<span class="add">+        onCancel={onCancel}</span>
+<span class="add">+        onSaved={onSaved}</span>
+<span class="add">+      /&gt;</span>
+<span class="add">+    );</span>
+<span class="add">+</span>
+<span class="add">+    // When creating, title input should be visible in the DOM (section expanded)</span>
+<span class="add">+    const titleInput = getTitleInput(el);</span>
+<span class="add">+    expect(titleInput).not.toBeNull();</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;starts collapsed when editing an existing listing (with initialValue)&#x27;, async () =&gt; {</span>
+<span class="add">+    const listing = mockListingDetail();</span>
+<span class="add">+    const onSubmit = vi.fn();</span>
+<span class="add">+    const onCancel = vi.fn();</span>
+<span class="add">+    const onSaved = vi.fn();</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount(</span>
+<span class="add">+      &lt;ListingForm</span>
+<span class="add">+        initialValue={listing}</span>
+<span class="add">+        sources={[mockSource()]}</span>
+<span class="add">+        onSubmit={onSubmit}</span>
+<span class="add">+        onCancel={onCancel}</span>
+<span class="add">+        onSaved={onSaved}</span>
+<span class="add">+      /&gt;</span>
+<span class="add">+    );</span>
+<span class="add">+</span>
+<span class="add">+    // When editing, section starts collapsed, so the content should not be in the DOM</span>
+<span class="add">+    const titleInput = getTitleInput(el);</span>
+<span class="add">+    expect(titleInput).toBeNull();</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;clicking the trigger toggles the collapsed/expanded state&#x27;, async () =&gt; {</span>
+<span class="add">+    const listing = mockListingDetail();</span>
+<span class="add">+    const onSubmit = vi.fn();</span>
+<span class="add">+    const onCancel = vi.fn();</span>
+<span class="add">+    const onSaved = vi.fn();</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount(</span>
+<span class="add">+      &lt;ListingForm</span>
+<span class="add">+        initialValue={listing}</span>
+<span class="add">+        sources={[mockSource()]}</span>
+<span class="add">+        onSubmit={onSubmit}</span>
+<span class="add">+        onCancel={onCancel}</span>
+<span class="add">+        onSaved={onSaved}</span>
+<span class="add">+      /&gt;</span>
+<span class="add">+    );</span>
+<span class="add">+</span>
+<span class="add">+    // Starts collapsed</span>
+<span class="add">+    let titleInput = getTitleInput(el);</span>
+<span class="add">+    expect(titleInput).toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    // Click trigger to expand</span>
+<span class="add">+    const trigger = getTriggerButton(el);</span>
+<span class="add">+    expect(trigger).not.toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      trigger?.click();</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    // After expanding, content should be visible</span>
+<span class="add">+    titleInput = getTitleInput(el);</span>
+<span class="add">+    expect(titleInput).not.toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    // Click trigger again to collapse</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      trigger?.click();</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    // After collapsing, content should not be in the DOM</span>
+<span class="add">+    titleInput = getTitleInput(el);</span>
+<span class="add">+    expect(titleInput).toBeNull();</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;field values survive toggling the section collapsed/expanded&#x27;, async () =&gt; {</span>
+<span class="add">+    const onSubmit = vi.fn();</span>
+<span class="add">+    const onCancel = vi.fn();</span>
+<span class="add">+    const onSaved = vi.fn();</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount(</span>
+<span class="add">+      &lt;ListingForm</span>
+<span class="add">+        sources={[mockSource()]}</span>
+<span class="add">+        onSubmit={onSubmit}</span>
+<span class="add">+        onCancel={onCancel}</span>
+<span class="add">+        onSaved={onSaved}</span>
+<span class="add">+      /&gt;</span>
+<span class="add">+    );</span>
+<span class="add">+</span>
+<span class="add">+    // Section starts expanded when creating</span>
+<span class="add">+    let titleInput = getTitleInput(el);</span>
+<span class="add">+    expect(titleInput).not.toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    // Set a value in the title field</span>
+<span class="add">+    const testTitle = &#x27;My Test Gaming PC&#x27;;</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      if (titleInput) {</span>
+<span class="add">+        // Use the same pattern as expected-parts-editor.test.tsx</span>
+<span class="add">+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, &#x27;value&#x27;)?.set;</span>
+<span class="add">+        if (setter) {</span>
+<span class="add">+          setter.call(titleInput, testTitle);</span>
+<span class="add">+        } else {</span>
+<span class="add">+          titleInput.value = testTitle;</span>
+<span class="add">+        }</span>
+<span class="add">+        titleInput.dispatchEvent(new Event(&#x27;input&#x27;, { bubbles: true }));</span>
+<span class="add">+        titleInput.dispatchEvent(new Event(&#x27;change&#x27;, { bubbles: true }));</span>
+<span class="add">+      }</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    // Verify value was set</span>
+<span class="add">+    titleInput = getTitleInput(el);</span>
+<span class="add">+    expect(titleInput?.value).toBe(testTitle);</span>
+<span class="add">+</span>
+<span class="add">+    // Get the trigger button and click to collapse</span>
+<span class="add">+    const trigger = getTriggerButton(el);</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      trigger?.click();</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    // Section is now collapsed, input not in DOM</span>
+<span class="add">+    titleInput = getTitleInput(el);</span>
+<span class="add">+    expect(titleInput).toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    // Click trigger to expand again</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      trigger?.click();</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    // After re-expanding, the value should still be there</span>
+<span class="add">+    titleInput = getTitleInput(el);</span>
+<span class="add">+    expect(titleInput).not.toBeNull();</span>
+<span class="add">+    expect(titleInput?.value).toBe(testTitle);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;chevron icon rotates to indicate open/closed state&#x27;, async () =&gt; {</span>
+<span class="add">+    const listing = mockListingDetail();</span>
+<span class="add">+    const onSubmit = vi.fn();</span>
+<span class="add">+    const onCancel = vi.fn();</span>
+<span class="add">+    const onSaved = vi.fn();</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount(</span>
+<span class="add">+      &lt;ListingForm</span>
+<span class="add">+        initialValue={listing}</span>
+<span class="add">+        sources={[mockSource()]}</span>
+<span class="add">+        onSubmit={onSubmit}</span>
+<span class="add">+        onCancel={onCancel}</span>
+<span class="add">+        onSaved={onSaved}</span>
+<span class="add">+      /&gt;</span>
+<span class="add">+    );</span>
+<span class="add">+</span>
+<span class="add">+    // Starts collapsed (-rotate-90)</span>
+<span class="add">+    let chevron = getChevronIcon(el);</span>
+<span class="add">+    expect(chevron?.className.baseVal).toContain(&#x27;-rotate-90&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    // Click to expand</span>
+<span class="add">+    const trigger = getTriggerButton(el);</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      trigger?.click();</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    // Chevron should not contain -rotate-90 when open</span>
+<span class="add">+    chevron = getChevronIcon(el);</span>
+<span class="add">+    expect(chevron?.className.baseVal).not.toContain(&#x27;-rotate-90&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    // Click to collapse again</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      trigger?.click();</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    // Chevron should contain -rotate-90 again</span>
+<span class="add">+    chevron = getChevronIcon(el);</span>
+<span class="add">+    expect(chevron?.className.baseVal).toContain(&#x27;-rotate-90&#x27;);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;trigger displays &quot;Listing Details&quot; label&#x27;, async () =&gt; {</span>
+<span class="add">+    const onSubmit = vi.fn();</span>
+<span class="add">+    const onCancel = vi.fn();</span>
+<span class="add">+    const onSaved = vi.fn();</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount(</span>
+<span class="add">+      &lt;ListingForm</span>
+<span class="add">+        sources={[mockSource()]}</span>
+<span class="add">+        onSubmit={onSubmit}</span>
+<span class="add">+        onCancel={onCancel}</span>
+<span class="add">+        onSaved={onSaved}</span>
+<span class="add">+      /&gt;</span>
+<span class="add">+    );</span>
+<span class="add">+</span>
+<span class="add">+    const trigger = getTriggerButton(el);</span>
+<span class="add">+    expect(trigger?.textContent).toContain(&#x27;Listing Details&#x27;);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;Listing Details box renders with the bg-surfaceContrast token (Req 12), not overridden by listing-form.tsx&#x27;, async () =&gt; {</span>
+<span class="add">+    const onSubmit = vi.fn();</span>
+<span class="add">+    const onCancel = vi.fn();</span>
+<span class="add">+    const onSaved = vi.fn();</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount(</span>
+<span class="add">+      &lt;ListingForm</span>
+<span class="add">+        sources={[mockSource()]}</span>
+<span class="add">+        onSubmit={onSubmit}</span>
+<span class="add">+        onCancel={onCancel}</span>
+<span class="add">+        onSaved={onSaved}</span>
+<span class="add">+      /&gt;</span>
+<span class="add">+    );</span>
+<span class="add">+</span>
+<span class="add">+    const trigger = getTriggerButton(el);</span>
+<span class="add">+    expect(trigger?.className.split(/\s+/)).toContain(&#x27;bg-surfaceContrast&#x27;);</span>
+<span class="add">+  });</span>
+<span class="add">+});</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">updated to expand the now-collapsed Listing Details box before reading its inputs, so the existing stale-fetch-race tests still reach the fields they assert on.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/listings-page.test.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Listing details box, Expected Part rows) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -176,6 +176,18 @@ describe(&#x27;ListingsPage inline edit stale-fetch race (MUST FIX)&#x27;, () =&gt; {</div><pre><span class="ctx">       findTitleButton(el, listingB.title).click();</span>
+<span class="ctx">     });</span>
+<span class="ctx">     expect(fetchListingMock).toHaveBeenCalledWith(listingB.id);</span>
+<span class="add">+</span>
+<span class="add">+    // T2&#x27;s CollapsibleSection for Listing Details: starts collapsed when</span>
+<span class="add">+    // editing, so title/price inputs aren&#x27;t mounted until expanded.</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      const listingDetailsButton = Array.from(el.querySelectorAll(&#x27;button&#x27;)).find(</span>
+<span class="add">+        (btn) =&gt; btn.textContent?.includes(&#x27;Listing Details&#x27;),</span>
+<span class="add">+      ) as HTMLButtonElement | null;</span>
+<span class="add">+      if (listingDetailsButton?.getAttribute(&#x27;aria-expanded&#x27;) === &#x27;false&#x27;) {</span>
+<span class="add">+        listingDetailsButton.click();</span>
+<span class="add">+      }</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="ctx">     await waitFor(() =&gt; (el.querySelector(&#x27;#listing-title&#x27;) as HTMLInputElement | null)?.value === listingB.title);</span>
+<span class="ctx"> </span>
+<span class="ctx">     // Now let A&#x27;s slower fetch resolve, after B has already opened and</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -198,6 +210,12 @@ describe(&#x27;ListingsPage inline edit stale-fetch race (MUST FIX)&#x27;, () =&gt; {</div><pre><span class="ctx"> </span>
+<span class="ctx">     const titleInput = el.querySelector(&#x27;#listing-title&#x27;) as HTMLInputElement | null;</span>
+<span class="ctx">     const priceInput = el.querySelector(&#x27;#listing-asking-price&#x27;) as HTMLInputElement | null;</span>
+<span class="add">+    // T3&#x27;s per-row CollapsibleSection: a row seeded from already-saved data</span>
+<span class="add">+    // starts collapsed, so its description input isn&#x27;t mounted until the</span>
+<span class="add">+    // row is expanded — expand it to read the staleness-proving value.</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      (el.querySelector(&#x27;button[aria-expanded=&quot;false&quot;]&#x27;) as HTMLButtonElement | null)?.click();</span>
+<span class="add">+    });</span>
+<span class="ctx">     const partDescriptionInput = el.querySelector(&#x27;[aria-label=&quot;Expected part 1 description&quot;]&#x27;) as HTMLInputElement | null;</span>
+<span class="ctx">     if (!titleInput || !priceInput || !partDescriptionInput) {</span>
+<span class="ctx">       throw new Error(&#x27;Expected the inline edit form to still be open after A resolves&#x27;);</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -271,9 +289,34 @@ describe(&#x27;ListingsPage inline edit stale-fetch race (MUST FIX)&#x27;, () =&gt; {</div><pre><span class="ctx">       setTimeout(resolve, 10);</span>
+<span class="ctx">       await promise;</span>
+<span class="ctx">     });</span>
+<span class="add">+    // T2&#x27;s CollapsibleSection for Listing Details: starts collapsed when</span>
+<span class="add">+    // editing, so title/price inputs aren&#x27;t mounted until expanded.</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      const listingDetailsButton = Array.from(el.querySelectorAll(&#x27;button&#x27;)).find(</span>
+<span class="add">+        (btn) =&gt; btn.textContent?.includes(&#x27;Listing Details&#x27;),</span>
+<span class="add">+      ) as HTMLButtonElement | null;</span>
+<span class="add">+      if (listingDetailsButton?.getAttribute(&#x27;aria-expanded&#x27;) === &#x27;false&#x27;) {</span>
+<span class="add">+        listingDetailsButton.click();</span>
+<span class="add">+      }</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    // T2&#x27;s CollapsibleSection for Listing Details: starts collapsed when</span>
+<span class="add">+    // editing, so title/price inputs aren&#x27;t mounted until expanded.</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      const listingDetailsButton = Array.from(el.querySelectorAll(&#x27;button&#x27;)).find(</span>
+<span class="add">+        (btn) =&gt; btn.textContent?.includes(&#x27;Listing Details&#x27;),</span>
+<span class="add">+      ) as HTMLButtonElement | null;</span>
+<span class="add">+      if (listingDetailsButton?.getAttribute(&#x27;aria-expanded&#x27;) === &#x27;false&#x27;) {</span>
+<span class="add">+        listingDetailsButton.click();</span>
+<span class="add">+      }</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="ctx"> </span>
+<span class="ctx">     const titleInput = el.querySelector(&#x27;#listing-title&#x27;) as HTMLInputElement | null;</span>
+<span class="ctx">     const priceInput = el.querySelector(&#x27;#listing-asking-price&#x27;) as HTMLInputElement | null;</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      (el.querySelector(&#x27;button[aria-expanded=&quot;false&quot;]&#x27;) as HTMLButtonElement | null)?.click();</span>
+<span class="add">+    });</span>
+<span class="ctx">     const partDescriptionInput = el.querySelector(&#x27;[aria-label=&quot;Expected part 1 description&quot;]&#x27;) as HTMLInputElement | null;</span>
+<span class="ctx">     if (!titleInput || !priceInput || !partDescriptionInput) {</span>
+<span class="ctx">       throw new Error(&#x27;Expected the inline edit form to be open after the second (reopen) fetch resolves&#x27;);</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Expected Part rows</span><span class="meta">6 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">Each Expected Part row becomes its own collapsible box — collapsed by default for rows</p>
+<p class="note">Tasks: T3</p>
+<div class="flow"><svg viewBox="0 0 1150 108" role="img" aria-label="data flow" class="flow-svg">
+<rect x="8" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="8" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Row seeded from saved data</div><div class="flow-note">starts collapsed</div></div></foreignObject>
+<line x1="198" y1="54" x2="238" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="244" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="244" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Row added via Add Part</div><div class="flow-note">starts expanded</div></div></foreignObject>
+<line x1="434" y1="54" x2="474" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="480" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="480" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Collapsed trigger</div><div class="flow-note">shows category/brand/part#/value</div></div></foreignObject>
+<line x1="670" y1="54" x2="710" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="716" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="716" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Expand</div><div class="flow-note">reveals description, AI badge, identity candidates</div></div></foreignObject>
+<line x1="906" y1="54" x2="946" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="952" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="952" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Toggle collapse</div><div class="flow-note">field values and aiSuggested flag untouched</div></div></foreignObject>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" class="flow-arrowhead"/></marker></defs>
+</svg></div>
+<ul class="files"><li class="file-group">
+<p class="file-note">moves category/brand/part#/value into the `CollapsibleSection` trigger (so they stay mounted while collapsed), moves description/AI badge/identity candidates into its content, adds `toggleRowCollapsed` (separate from `updateRow` so toggling never clears `aiSuggested`), and an `AlertCircle` error indicator on a collapsed row with a field error.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/features/listings/expected-parts-editor.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -1,5 +1,7 @@</div><pre><span class="ctx"> import type { AiPartConfidence, AiPartSource, ComponentCategory, IdentityCandidate } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="add">+import { AlertCircle } from &#x27;lucide-react&#x27;;</span>
+<span class="ctx"> import { Button } from &#x27;@/components/ui/button&#x27;;</span>
+<span class="add">+import { CollapsibleSection } from &#x27;@/components/ui/collapsible&#x27;;</span>
+<span class="ctx"> import { AiSuggestedBadge } from &#x27;@/features/listings/ai-suggested-badge&#x27;;</span>
+<span class="ctx"> import { IdentityCandidatesPicker } from &#x27;@/features/listings/identity-candidates-picker&#x27;;</span>
+<span class="ctx"> </span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -40,6 +42,14 @@ export interface ExpectedPartRow {</div><pre><span class="ctx">   // as primary (T1); always [] for rows never produced by AI</span>
+<span class="ctx">   // identification. Rendered via IdentityCandidatesPicker when non-empty.</span>
+<span class="ctx">   identityCandidates: IdentityCandidate[];</span>
+<span class="add">+  // Whether this row is showing only its compact identification summary</span>
+<span class="add">+  // (category/brand/part number/estimated value) or its full fields</span>
+<span class="add">+  // (description, AI badge, identity candidates). Purely a draft-state UI</span>
+<span class="add">+  // toggle — never sent to the backend, same treatment as aiSuggested/</span>
+<span class="add">+  // aiConfidence/aiSource above. Optional so a row built without it (e.g.</span>
+<span class="add">+  // directly in a test) behaves as expanded via `!row.collapsed`, matching</span>
+<span class="add">+  // a brand-new &quot;Add Part&quot; row.</span>
+<span class="add">+  collapsed?: boolean;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** Per-row field errors, keyed the same way ListingForm&#x27;s other field errors are. */</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -51,7 +61,7 @@ export interface ExpectedPartRowErrors {</div><pre><span class="ctx"> </span>
+<span class="ctx"> /** An empty draft row, used both for the initial row and &quot;Add Part&quot;. */</span>
+<span class="ctx"> export function emptyExpectedPartRow(): ExpectedPartRow {</span>
+<span class="del">-  return { componentCategory: &#x27;&#x27;, brand: &#x27;&#x27;, partNumber: &#x27;&#x27;, description: &#x27;&#x27;, estimatedResaleValue: &#x27;&#x27;, identityCandidates: [] };</span>
+<span class="add">+  return { componentCategory: &#x27;&#x27;, brand: &#x27;&#x27;, partNumber: &#x27;&#x27;, description: &#x27;&#x27;, estimatedResaleValue: &#x27;&#x27;, identityCandidates: [], collapsed: false };</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** Human-readable wording for which evidence the model drew a suggestion from. */</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -100,6 +110,15 @@ export function ExpectedPartsEditor({ rows, rowErrors, onChange }: ExpectedParts</div><pre><span class="ctx">     onChange(rows.map((row, i) =&gt; (i === index ? { ...row, brand: candidate.brand ?? &#x27;&#x27;, partNumber: candidate.partNumber ?? &#x27;&#x27; } : row)));</span>
+<span class="ctx">   }</span>
+<span class="ctx"> </span>
+<span class="add">+  // Flips only this row&#x27;s collapsed flag — deliberately separate from</span>
+<span class="add">+  // updateRow, which also clears aiSuggested on the theory that any edit</span>
+<span class="add">+  // is the user reviewing a suggestion. Collapsing/expanding a row isn&#x27;t</span>
+<span class="add">+  // reviewing anything, so this must never touch aiSuggested or any other</span>
+<span class="add">+  // field.</span>
+<span class="add">+  function toggleRowCollapsed(index: number) {</span>
+<span class="add">+    onChange(rows.map((row, i) =&gt; (i === index ? { ...row, collapsed: !row.collapsed } : row)));</span>
+<span class="add">+  }</span>
+<span class="add">+</span>
+<span class="ctx">   return (</span>
+<span class="ctx">     &lt;div className=&quot;space-y-3&quot;&gt;</span>
+<span class="ctx">       &lt;div className=&quot;flex items-center justify-between&quot;&gt;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -113,83 +132,97 @@ export function ExpectedPartsEditor({ rows, rowErrors, onChange }: ExpectedParts</div><pre><span class="ctx"> </span>
+<span class="ctx">       {rows.map((row, index) =&gt; {</span>
+<span class="ctx">         const errors = rowErrors[index] ?? {};</span>
+<span class="add">+        const rowHasError = Boolean(errors.componentCategory || errors.description || errors.estimatedResaleValue);</span>
+<span class="ctx">         return (</span>
+<span class="del">-          // Two sub-lines inside one bordered row: five inputs on a single</span>
+<span class="del">-          // line left each one too narrow to read. Line 1 identifies the</span>
+<span class="del">-          // part (category / brand / part #), line 2 carries the free-text</span>
+<span class="del">-          // notes, the value and the row action.</span>
+<span class="del">-          &lt;div key={index} className=&quot;space-y-2 rounded-md border border-border p-2&quot;&gt;</span>
+<span class="del">-            {row.aiSuggested === true &amp;&amp; (</span>
+<span class="del">-              &lt;div className=&quot;flex items-center gap-2&quot;&gt;</span>
+<span class="del">-                &lt;AiSuggestedBadge /&gt;</span>
+<span class="del">-                &lt;span className=&quot;text-xs text-muted-foreground&quot;&gt;{aiProvenanceCaption(row)}&lt;/span&gt;</span>
+<span class="del">-              &lt;/div&gt;</span>
+<span class="del">-            )}</span>
+<span class="del">-</span>
+<span class="del">-            &lt;div className=&quot;grid grid-cols-3 items-start gap-2&quot;&gt;</span>
+<span class="del">-              &lt;div className=&quot;space-y-1&quot;&gt;</span>
+<span class="del">-                &lt;select</span>
+<span class="del">-                  value={row.componentCategory}</span>
+<span class="del">-                  onChange={(e) =&gt; updateRow(index, { componentCategory: e.target.value as ComponentCategory })}</span>
+<span class="del">-                  className=&quot;w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm&quot;</span>
+<span class="del">-                  aria-label={`Expected part ${index + 1} category`}</span>
+<span class="del">-                &gt;</span>
+<span class="del">-                  &lt;option value=&quot;&quot;&gt;Category…&lt;/option&gt;</span>
+<span class="del">-                  {CATEGORY_OPTIONS.map((category) =&gt; (</span>
+<span class="del">-                    &lt;option key={category} value={category}&gt;</span>
+<span class="del">-                      {category}</span>
+<span class="del">-                    &lt;/option&gt;</span>
+<span class="del">-                  ))}</span>
+<span class="del">-                &lt;/select&gt;</span>
+<span class="del">-                {errors.componentCategory &amp;&amp; &lt;p className=&quot;text-xs text-destructive&quot;&gt;{errors.componentCategory}&lt;/p&gt;}</span>
+<span class="del">-              &lt;/div&gt;</span>
+<span class="del">-</span>
+<span class="del">-              &lt;input</span>
+<span class="del">-                value={row.brand}</span>
+<span class="del">-                onChange={(e) =&gt; updateRow(index, { brand: e.target.value })}</span>
+<span class="del">-                placeholder=&quot;Brand (optional)&quot;</span>
+<span class="del">-                className=&quot;w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm&quot;</span>
+<span class="del">-                aria-label={`Expected part ${index + 1} brand`}</span>
+<span class="del">-              /&gt;</span>
+<span class="del">-</span>
+<span class="del">-              &lt;input</span>
+<span class="del">-                value={row.partNumber}</span>
+<span class="del">-                onChange={(e) =&gt; updateRow(index, { partNumber: e.target.value })}</span>
+<span class="del">-                placeholder=&quot;Part/Model # (optional)&quot;</span>
+<span class="del">-                className=&quot;w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm&quot;</span>
+<span class="del">-                aria-label={`Expected part ${index + 1} part number`}</span>
+<span class="del">-              /&gt;</span>
+<span class="del">-            &lt;/div&gt;</span>
+<span class="del">-</span>
+<span class="del">-            {row.identityCandidates.length &gt; 0 &amp;&amp; (</span>
+<span class="del">-              &lt;IdentityCandidatesPicker candidates={row.identityCandidates} brand={row.brand} partNumber={row.partNumber} onPick={(candidate) =&gt; pickIdentityCandidate(index, candidate)} /&gt;</span>
+<span class="del">-            )}</span>
+<span class="del">-</span>
+<span class="del">-            &lt;div className=&quot;grid grid-cols-[2fr_1fr_auto] items-start gap-2&quot;&gt;</span>
+<span class="del">-              &lt;div className=&quot;space-y-1&quot;&gt;</span>
+<span class="del">-                &lt;input</span>
+<span class="del">-                  value={row.description}</span>
+<span class="del">-                  onChange={(e) =&gt; updateRow(index, { description: e.target.value })}</span>
+<span class="del">-                  placeholder=&quot;Description / condition notes&quot;</span>
+<span class="del">-                  className=&quot;w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm&quot;</span>
+<span class="del">-                  aria-label={`Expected part ${index + 1} description`}</span>
+<span class="del">-                /&gt;</span>
+<span class="del">-                {errors.description &amp;&amp; &lt;p className=&quot;text-xs text-destructive&quot;&gt;{errors.description}&lt;/p&gt;}</span>
+<span class="del">-              &lt;/div&gt;</span>
+<span class="del">-</span>
+<span class="del">-              &lt;div className=&quot;space-y-1&quot;&gt;</span>
+<span class="del">-                &lt;input</span>
+<span class="del">-                  type=&quot;number&quot;</span>
+<span class="del">-                  step=&quot;0.01&quot;</span>
+<span class="del">-                  value={row.estimatedResaleValue}</span>
+<span class="del">-                  onChange={(e) =&gt; updateRow(index, { estimatedResaleValue: e.target.value })}</span>
+<span class="del">-                  placeholder=&quot;Est. value&quot;</span>
+<span class="del">-                  className=&quot;w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm&quot;</span>
+<span class="del">-                  aria-label={`Expected part ${index + 1} estimated resale value`}</span>
+<span class="del">-                /&gt;</span>
+<span class="del">-                {errors.estimatedResaleValue &amp;&amp; &lt;p className=&quot;text-xs text-destructive&quot;&gt;{errors.estimatedResaleValue}&lt;/p&gt;}</span>
+<span class="add">+          &lt;div key={index} className=&quot;space-y-1&quot;&gt;</span>
+<span class="add">+            &lt;CollapsibleSection</span>
+<span class="add">+              open={!row.collapsed}</span>
+<span class="add">+              onOpenChange={() =&gt; toggleRowCollapsed(index)}</span>
+<span class="add">+              trigger={</span>
+<span class="add">+                // Category/brand/part number/estimated value live in the</span>
+<span class="add">+                // trigger, not CollapsibleContent below, specifically so a</span>
+<span class="add">+                // collapsed row never unmounts them — CollapsibleContent</span>
+<span class="add">+                // unmounts its children while closed (collapsible.tsx), which</span>
+<span class="add">+                // would otherwise make a collapsed row&#x27;s own identification</span>
+<span class="add">+                // fields unreachable without first expanding it. stopPropagation</span>
+<span class="add">+                // keeps clicking/typing in them from also toggling the row —</span>
+<span class="add">+                // only the chevron (outside this div) does that.</span>
+<span class="add">+                &lt;div className=&quot;flex flex-1 flex-wrap items-start gap-2&quot; onClick={(e) =&gt; e.stopPropagation()}&gt;</span>
+<span class="add">+                  {rowHasError &amp;&amp; &lt;AlertCircle className=&quot;mt-2 h-4 w-4 shrink-0 text-destructive&quot; aria-label={`Expected part ${index + 1} has an error`} /&gt;}</span>
+<span class="add">+                  &lt;div className=&quot;space-y-1&quot;&gt;</span>
+<span class="add">+                    &lt;select</span>
+<span class="add">+                      value={row.componentCategory}</span>
+<span class="add">+                      onChange={(e) =&gt; updateRow(index, { componentCategory: e.target.value as ComponentCategory })}</span>
+<span class="add">+                      className=&quot;rounded-md border border-input bg-background px-2 py-1.5 text-sm&quot;</span>
+<span class="add">+                      aria-label={`Expected part ${index + 1} category`}</span>
+<span class="add">+                    &gt;</span>
+<span class="add">+                      &lt;option value=&quot;&quot;&gt;Category…&lt;/option&gt;</span>
+<span class="add">+                      {CATEGORY_OPTIONS.map((category) =&gt; (</span>
+<span class="add">+                        &lt;option key={category} value={category}&gt;</span>
+<span class="add">+                          {category}</span>
+<span class="add">+                        &lt;/option&gt;</span>
+<span class="add">+                      ))}</span>
+<span class="add">+                    &lt;/select&gt;</span>
+<span class="add">+                    {errors.componentCategory &amp;&amp; &lt;p className=&quot;text-xs text-destructive&quot;&gt;{errors.componentCategory}&lt;/p&gt;}</span>
+<span class="add">+                  &lt;/div&gt;</span>
+<span class="add">+</span>
+<span class="add">+                  &lt;input</span>
+<span class="add">+                    value={row.brand}</span>
+<span class="add">+                    onChange={(e) =&gt; updateRow(index, { brand: e.target.value })}</span>
+<span class="add">+                    placeholder=&quot;Brand (optional)&quot;</span>
+<span class="add">+                    className=&quot;rounded-md border border-input bg-background px-2 py-1.5 text-sm&quot;</span>
+<span class="add">+                    aria-label={`Expected part ${index + 1} brand`}</span>
+<span class="add">+                  /&gt;</span>
+<span class="add">+</span>
+<span class="add">+                  &lt;input</span>
+<span class="add">+                    value={row.partNumber}</span>
+<span class="add">+                    onChange={(e) =&gt; updateRow(index, { partNumber: e.target.value })}</span>
+<span class="add">+                    placeholder=&quot;Part/Model # (optional)&quot;</span>
+<span class="add">+                    className=&quot;rounded-md border border-input bg-background px-2 py-1.5 text-sm&quot;</span>
+<span class="add">+                    aria-label={`Expected part ${index + 1} part number`}</span>
+<span class="add">+                  /&gt;</span>
+<span class="add">+</span>
+<span class="add">+                  &lt;div className=&quot;space-y-1&quot;&gt;</span>
+<span class="add">+                    &lt;input</span>
+<span class="add">+                      type=&quot;number&quot;</span>
+<span class="add">+                      step=&quot;0.01&quot;</span>
+<span class="add">+                      value={row.estimatedResaleValue}</span>
+<span class="add">+                      onChange={(e) =&gt; updateRow(index, { estimatedResaleValue: e.target.value })}</span>
+<span class="add">+                      placeholder=&quot;Est. value&quot;</span>
+<span class="add">+                      className=&quot;w-24 rounded-md border border-input bg-background px-2 py-1.5 text-sm&quot;</span>
+<span class="add">+                      aria-label={`Expected part ${index + 1} estimated resale value`}</span>
+<span class="add">+                    /&gt;</span>
+<span class="add">+                    {errors.estimatedResaleValue &amp;&amp; &lt;p className=&quot;text-xs text-destructive&quot;&gt;{errors.estimatedResaleValue}&lt;/p&gt;}</span>
+<span class="add">+                  &lt;/div&gt;</span>
+<span class="add">+                &lt;/div&gt;</span>
+<span class="add">+              }</span>
+<span class="add">+            &gt;</span>
+<span class="add">+              &lt;div className=&quot;space-y-2&quot;&gt;</span>
+<span class="add">+                {row.aiSuggested === true &amp;&amp; (</span>
+<span class="add">+                  &lt;div className=&quot;flex items-center gap-2&quot;&gt;</span>
+<span class="add">+                    &lt;AiSuggestedBadge /&gt;</span>
+<span class="add">+                    &lt;span className=&quot;text-xs text-muted-foreground&quot;&gt;{aiProvenanceCaption(row)}&lt;/span&gt;</span>
+<span class="add">+                  &lt;/div&gt;</span>
+<span class="add">+                )}</span>
+<span class="add">+</span>
+<span class="add">+                {row.identityCandidates.length &gt; 0 &amp;&amp; (</span>
+<span class="add">+                  &lt;IdentityCandidatesPicker candidates={row.identityCandidates} brand={row.brand} partNumber={row.partNumber} onPick={(candidate) =&gt; pickIdentityCandidate(index, candidate)} /&gt;</span>
+<span class="add">+                )}</span>
+<span class="add">+</span>
+<span class="add">+                &lt;div className=&quot;space-y-1&quot;&gt;</span>
+<span class="add">+                  &lt;input</span>
+<span class="add">+                    value={row.description}</span>
+<span class="add">+                    onChange={(e) =&gt; updateRow(index, { description: e.target.value })}</span>
+<span class="add">+                    placeholder=&quot;Description / condition notes&quot;</span>
+<span class="add">+                    className=&quot;w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm&quot;</span>
+<span class="add">+                    aria-label={`Expected part ${index + 1} description`}</span>
+<span class="add">+                  /&gt;</span>
+<span class="add">+                  {errors.description &amp;&amp; &lt;p className=&quot;text-xs text-destructive&quot;&gt;{errors.description}&lt;/p&gt;}</span>
+<span class="add">+                &lt;/div&gt;</span>
+<span class="ctx">               &lt;/div&gt;</span>
+<span class="add">+            &lt;/CollapsibleSection&gt;</span>
+<span class="ctx"> </span>
+<span class="add">+            &lt;div className=&quot;flex justify-end&quot;&gt;</span>
+<span class="ctx">               &lt;Button type=&quot;button&quot; variant=&quot;ghost&quot; size=&quot;sm&quot; className=&quot;text-destructive&quot; onClick={() =&gt; removeRow(index)}&gt;</span>
+<span class="ctx">                 Remove</span>
+<span class="ctx">               &lt;/Button&gt;</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">adds the optional `collapsed` field to `ExpectedPartRow`; `emptyExpectedPartRow()` sets it `false` (Add Part starts expanded), `expectedPartToRow()` sets it `true` unconditionally for every row built from saved data — including AI-suggested ones, after a mid-cycle fix (see Notable decisions).</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/features/listings/listing-form-state.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -48,6 +48,9 @@ export function initialListingFormFields(initialValue?: ListingDetail): ListingF</div><pre><span class="ctx">  * touch) — not a one-time echo of whichever job happened to just</span>
+<span class="ctx">  * complete, so the badge survives reopening the Listing later, not only</span>
+<span class="ctx">  * the one poll that saw the job finish.</span>
+<span class="add">+ *</span>
+<span class="add">+ * `collapsed` defaults to true — already-reviewed data only needs its</span>
+<span class="add">+ * compact summary line.</span>
+<span class="ctx">  */</span>
+<span class="ctx"> function expectedPartToRow(part: ExpectedPart): ExpectedPartRow {</span>
+<span class="ctx">   return {</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -57,6 +60,7 @@ function expectedPartToRow(part: ExpectedPart): ExpectedPartRow {</div><pre><span class="ctx">     description: part.description,</span>
+<span class="ctx">     estimatedResaleValue: part.estimatedResaleValue === null ? &#x27;&#x27; : String(part.estimatedResaleValue),</span>
+<span class="ctx">     identityCandidates: part.identityCandidates ?? [],</span>
+<span class="add">+    collapsed: true,</span>
+<span class="ctx">     ...(part.aiConfidence != null &amp;&amp; part.aiSource != null</span>
+<span class="ctx">       ? { aiSuggested: true, aiConfidence: part.aiConfidence, aiSource: part.aiSource }</span>
+<span class="ctx">       : {}),</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">proves the collapsed defaults for saved rows (AI-suggested or not) versus the single expanded fallback row for a Listing with no Expected Parts yet.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/listing-form-state.test.ts</span><span class="tag">added</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -0,0 +1,100 @@</div><pre><span class="add">+// @vitest-environment jsdom</span>
+<span class="add">+//</span>
+<span class="add">+// Proof for T3&#x27;s `collapsed` wiring in listing-form-state.ts: a row built</span>
+<span class="add">+// from an already-saved Listing (expectedPartToRow, reached via</span>
+<span class="add">+// initialExpectedPartRows/expectedPartsToRows) always starts collapsed,</span>
+<span class="add">+// regardless of AI provenance (aiConfidence + aiSource), unlike the single</span>
+<span class="add">+// blank row either function falls back to for a Listing with no Expected</span>
+<span class="add">+// Parts yet (emptyExpectedPartRow) and the same default &quot;Add Part&quot; itself</span>
+<span class="add">+// produces, which starts expanded. No React mounting needed here; these</span>
+<span class="add">+// are plain data-transform functions, not components.</span>
+<span class="add">+import { describe, expect, it } from &#x27;vitest&#x27;;</span>
+<span class="add">+import type { ExpectedPart, ListingDetail } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="add">+import { initialExpectedPartRows, expectedPartsToRows } from &#x27;../src/features/listings/listing-form-state&#x27;;</span>
+<span class="add">+</span>
+<span class="add">+function makeExpectedPart(overrides: Partial&lt;ExpectedPart&gt; = {}): ExpectedPart {</span>
+<span class="add">+  return {</span>
+<span class="add">+    id: &#x27;part-1&#x27;,</span>
+<span class="add">+    listingId: &#x27;listing-1&#x27;,</span>
+<span class="add">+    componentCategory: &#x27;GPU&#x27;,</span>
+<span class="add">+    brand: &#x27;NVIDIA&#x27;,</span>
+<span class="add">+    partNumber: &#x27;RTX 3070&#x27;,</span>
+<span class="add">+    description: &#x27;pulled from a working rig&#x27;,</span>
+<span class="add">+    estimatedResaleValue: 300,</span>
+<span class="add">+    identityCandidates: [],</span>
+<span class="add">+    createdAt: &#x27;2024-01-01&#x27;,</span>
+<span class="add">+    updatedAt: &#x27;2024-01-01&#x27;,</span>
+<span class="add">+    ...overrides,</span>
+<span class="add">+  };</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+function makeListingDetail(expectedParts: ExpectedPart[]): ListingDetail {</span>
+<span class="add">+  return {</span>
+<span class="add">+    id: &#x27;listing-1&#x27;,</span>
+<span class="add">+    sourceId: &#x27;source-1&#x27;,</span>
+<span class="add">+    title: &#x27;Test Listing&#x27;,</span>
+<span class="add">+    description: null,</span>
+<span class="add">+    listingUrl: null,</span>
+<span class="add">+    askingPrice: 100,</span>
+<span class="add">+    listingDate: &#x27;2024-01-01&#x27;,</span>
+<span class="add">+    status: &#x27;open&#x27;,</span>
+<span class="add">+    acquisitionFees: 0,</span>
+<span class="add">+    photoPaths: [],</span>
+<span class="add">+    externalSource: null,</span>
+<span class="add">+    externalItemId: null,</span>
+<span class="add">+    createdAt: &#x27;2024-01-01&#x27;,</span>
+<span class="add">+    updatedAt: &#x27;2024-01-01&#x27;,</span>
+<span class="add">+    comparison: { totalExpectedResaleValue: 300, totalCost: 100, difference: 200 },</span>
+<span class="add">+    expectedParts,</span>
+<span class="add">+  };</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+describe(&#x27;initialExpectedPartRows row-collapsing defaults&#x27;, () =&gt; {</span>
+<span class="add">+  it(&#x27;starts an already-reviewed row (no AI provenance) collapsed when seeded from a Listing that already has Expected Parts&#x27;, () =&gt; {</span>
+<span class="add">+    const rows = initialExpectedPartRows(makeListingDetail([makeExpectedPart(), makeExpectedPart({ id: &#x27;part-2&#x27;, componentCategory: &#x27;PSU&#x27; })]));</span>
+<span class="add">+</span>
+<span class="add">+    expect(rows).toHaveLength(2);</span>
+<span class="add">+    expect(rows[0].collapsed).toBe(true);</span>
+<span class="add">+    expect(rows[1].collapsed).toBe(true);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;collapses an AI-suggested row like any other saved row&#x27;, () =&gt; {</span>
+<span class="add">+    const rows = initialExpectedPartRows(</span>
+<span class="add">+      makeListingDetail([makeExpectedPart(), makeExpectedPart({ id: &#x27;part-2&#x27;, aiConfidence: &#x27;high&#x27;, aiSource: &#x27;image&#x27; })]),</span>
+<span class="add">+    );</span>
+<span class="add">+</span>
+<span class="add">+    // Row identity matters, not just &quot;some row collapsed&quot; — both rows</span>
+<span class="add">+    // collapsed, and the AI-suggested one still carries aiSuggested.</span>
+<span class="add">+    expect(rows[0].collapsed).toBe(true);</span>
+<span class="add">+    expect(rows[1].collapsed).toBe(true);</span>
+<span class="add">+    expect(rows[1].aiSuggested).toBe(true);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;starts the single fallback row expanded for a brand-new Listing (no initialValue)&#x27;, () =&gt; {</span>
+<span class="add">+    const rows = initialExpectedPartRows(undefined);</span>
+<span class="add">+    expect(rows).toHaveLength(1);</span>
+<span class="add">+    expect(rows[0].collapsed).toBe(false);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;starts the single fallback row expanded for a Listing with no Expected Parts yet&#x27;, () =&gt; {</span>
+<span class="add">+    const rows = initialExpectedPartRows(makeListingDetail([]));</span>
+<span class="add">+    expect(rows).toHaveLength(1);</span>
+<span class="add">+    expect(rows[0].collapsed).toBe(false);</span>
+<span class="add">+  });</span>
+<span class="add">+});</span>
+<span class="add">+</span>
+<span class="add">+describe(&#x27;expectedPartsToRows row-collapsing defaults&#x27;, () =&gt; {</span>
+<span class="add">+  it(&#x27;collapses an already-reviewed re-synced row and a freshly AI-identified one alike&#x27;, () =&gt; {</span>
+<span class="add">+    const rows = expectedPartsToRows([makeExpectedPart(), makeExpectedPart({ id: &#x27;part-2&#x27;, aiConfidence: &#x27;high&#x27;, aiSource: &#x27;image&#x27; })]);</span>
+<span class="add">+</span>
+<span class="add">+    expect(rows).toHaveLength(2);</span>
+<span class="add">+    expect(rows[0].collapsed).toBe(true);</span>
+<span class="add">+    expect(rows[1].collapsed).toBe(true);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;falls back to a single expanded blank row when the re-synced set is empty&#x27;, () =&gt; {</span>
+<span class="add">+    const rows = expectedPartsToRows([]);</span>
+<span class="add">+    expect(rows).toHaveLength(1);</span>
+<span class="add">+    expect(rows[0].collapsed).toBe(false);</span>
+<span class="add">+  });</span>
+<span class="add">+});</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">`descriptionValues()` now expands collapsed rows (awaited) before reading their description values, since those inputs are no longer mounted on a collapsed row.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/identify-parts.test.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -249,8 +249,24 @@ function findIdentifyButton(el: HTMLElement): HTMLButtonElement | undefined {</div><pre><span class="ctx">   return Array.from(el.querySelectorAll(&#x27;button&#x27;)).find((b) =&gt; b.textContent?.startsWith(&#x27;Identify&#x27;) || b.textContent === &#x27;Identifying parts…&#x27;);</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="del">-/** Every row&#x27;s description input, in render order — rows are what identification appends to. */</span>
+<span class="del">-function descriptionValues(el: HTMLElement): string[] {</span>
+<span class="add">+// Every row&#x27;s description input, in render order. Expands any row that</span>
+<span class="add">+// started collapsed first (T3&#x27;s per-row CollapsibleSection: every row</span>
+<span class="add">+// seeded from already-saved data starts collapsed, with no exception for</span>
+<span class="add">+// an unreviewed AI suggestion) — this helper&#x27;s contract is &quot;every row&#x27;s</span>
+<span class="add">+// description value&quot;, which requires each row open to read at all. Clicks</span>
+<span class="add">+// one trigger at a time, re-querying after each: ExpectedPartsEditor&#x27;s</span>
+<span class="add">+// toggleRowCollapsed calls the non-functional `onChange(rows.map(...))`,</span>
+<span class="add">+// so two clicks batched into the same tick (no render between them) would</span>
+<span class="add">+// each build their replacement array from the same stale `rows` closure</span>
+<span class="add">+// and the second click&#x27;s result would clobber the first&#x27;s.</span>
+<span class="add">+async function descriptionValues(el: HTMLElement): Promise&lt;string[]&gt; {</span>
+<span class="add">+  let collapsedTriggers = Array.from(el.querySelectorAll(&#x27;button[aria-expanded=&quot;false&quot;]&#x27;)) as HTMLButtonElement[];</span>
+<span class="add">+  while (collapsedTriggers.length &gt; 0) {</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      collapsedTriggers[0].click();</span>
+<span class="add">+    });</span>
+<span class="add">+    collapsedTriggers = Array.from(el.querySelectorAll(&#x27;button[aria-expanded=&quot;false&quot;]&#x27;)) as HTMLButtonElement[];</span>
+<span class="add">+  }</span>
+<span class="ctx">   const inputs = Array.from(el.querySelectorAll(&#x27;input&#x27;)).filter((input) =&gt; input.getAttribute(&#x27;aria-label&#x27;)?.endsWith(&#x27;description&#x27;));</span>
+<span class="ctx">   return inputs.map((input) =&gt; input.value);</span>
+<span class="ctx"> }</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -384,7 +400,7 @@ describe(&#x27;Identify Parts results&#x27;, () =&gt; {</div><pre><span class="ctx"> </span>
+<span class="ctx">     const el = await mountForm(savedListing);</span>
+<span class="ctx"> </span>
+<span class="del">-    expect(descriptionValues(el)).toEqual([&#x27;Ryzen 5 5600X&#x27;]);</span>
+<span class="add">+    expect(await descriptionValues(el)).toEqual([&#x27;Ryzen 5 5600X&#x27;]);</span>
+<span class="ctx"> </span>
+<span class="ctx">     await act(async () =&gt; findIdentifyButton(el)!.click());</span>
+<span class="ctx"> </span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -395,7 +411,7 @@ describe(&#x27;Identify Parts results&#x27;, () =&gt; {</div><pre><span class="ctx"> </span>
+<span class="ctx">     // The pre-existing row stays first and intact; the two suggestions are</span>
+<span class="ctx">     // added after it with the categories the response named.</span>
+<span class="del">-    expect(descriptionValues(el)).toEqual([&#x27;Ryzen 5 5600X&#x27;, &#x27;triple-fan cooler visible&#x27;, &#x27;Corsair RM750&#x27;]);</span>
+<span class="add">+    expect(await descriptionValues(el)).toEqual([&#x27;Ryzen 5 5600X&#x27;, &#x27;triple-fan cooler visible&#x27;, &#x27;Corsair RM750&#x27;]);</span>
+<span class="ctx">     expect(categoryValues(el)).toEqual([&#x27;CPU&#x27;, &#x27;GPU&#x27;, &#x27;PSU&#x27;]);</span>
+<span class="ctx"> </span>
+<span class="ctx">     // Only the two appended rows are badged — the user&#x27;s own row is not.</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -431,7 +447,7 @@ describe(&#x27;Identify Parts results&#x27;, () =&gt; {</div><pre><span class="ctx">     expect(partNumberValues(el)).toEqual([&#x27;&#x27;, &#x27;RTX 3070&#x27;, &#x27;&#x27;]);</span>
+<span class="ctx">     // Row 3&#x27;s nulls stay blank rather than becoming the string &#x27;null&#x27; or a</span>
+<span class="ctx">     // copy of its description — the never-guess rule, end to end.</span>
+<span class="del">-    expect(descriptionValues(el)[2]).toBe(&#x27;Corsair RM750&#x27;);</span>
+<span class="add">+    expect((await descriptionValues(el))[2]).toBe(&#x27;Corsair RM750&#x27;);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> </span>
+<span class="ctx">   it(&#x27;renders non-empty notes as a dismissible banner that the user can clear&#x27;, async () =&gt; {</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -472,7 +488,7 @@ describe(&#x27;Identify Parts results&#x27;, () =&gt; {</div><pre><span class="ctx">     });</span>
+<span class="ctx"> </span>
+<span class="ctx">     // Rows still arrived — this is the empty-notes case, not a failed call.</span>
+<span class="del">-    expect(descriptionValues(el)).toHaveLength(3);</span>
+<span class="add">+    expect(await descriptionValues(el)).toHaveLength(3);</span>
+<span class="ctx">     expect(el.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).toBeNull();</span>
+<span class="ctx">   });</span>
+<span class="ctx"> });</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -496,7 +512,7 @@ describe(&#x27;Identify Parts failure&#x27;, () =&gt; {</div><pre><span class="ctx">     // has its own submit-error banner, and a generic fallback string would</span>
+<span class="ctx">     // satisfy a presence-only check while hiding the real cause.</span>
+<span class="ctx">     expect(alerts.some((alert) =&gt; alert.textContent === &#x27;omp CLI is not logged in&#x27;)).toBe(true);</span>
+<span class="del">-    expect(descriptionValues(el)).toEqual([&#x27;Ryzen 5 5600X&#x27;]);</span>
+<span class="add">+    expect(await descriptionValues(el)).toEqual([&#x27;Ryzen 5 5600X&#x27;]);</span>
+<span class="ctx">     expect(findIdentifyButton(el)!.disabled).toBe(false);</span>
+<span class="ctx">     expect(ackIdentifyPartsJobMock).toHaveBeenCalledTimes(1);</span>
+<span class="ctx">   });</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -534,7 +550,7 @@ describe(&#x27;Identify Parts 409 conflict recovery&#x27;, () =&gt; {</div><pre><span class="ctx"> </span>
+<span class="ctx">     // Job completion re-fetches the Listing and reflects what the server</span>
+<span class="ctx">     // already saved, not a locally reconstructed copy.</span>
+<span class="del">-    expect(descriptionValues(el)).toEqual([&#x27;Ryzen 5 5600X&#x27;, &#x27;triple-fan cooler visible&#x27;, &#x27;Corsair RM750&#x27;]);</span>
+<span class="add">+    expect(await descriptionValues(el)).toEqual([&#x27;Ryzen 5 5600X&#x27;, &#x27;triple-fan cooler visible&#x27;, &#x27;Corsair RM750&#x27;]);</span>
+<span class="ctx">     expect(ackIdentifyPartsJobMock).toHaveBeenCalledTimes(1);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> });</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -558,7 +574,7 @@ describe(&#x27;Identify Parts mount resume&#x27;, () =&gt; {</div><pre><span class="ctx"> </span>
+<span class="ctx">     // Job completion re-fetches the Listing and reflects what the server</span>
+<span class="ctx">     // already saved, not a locally reconstructed copy.</span>
+<span class="del">-    expect(descriptionValues(el)).toEqual([&#x27;Ryzen 5 5600X&#x27;, &#x27;triple-fan cooler visible&#x27;, &#x27;Corsair RM750&#x27;]);</span>
+<span class="add">+    expect(await descriptionValues(el)).toEqual([&#x27;Ryzen 5 5600X&#x27;, &#x27;triple-fan cooler visible&#x27;, &#x27;Corsair RM750&#x27;]);</span>
+<span class="ctx">     expect(ackIdentifyPartsJobMock).toHaveBeenCalledTimes(1);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> </span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -570,7 +586,7 @@ describe(&#x27;Identify Parts mount resume&#x27;, () =&gt; {</div><pre><span class="ctx">     const el = await mountForm(savedListing);</span>
+<span class="ctx"> </span>
+<span class="ctx">     // Should apply immediately without needing to poll.</span>
+<span class="del">-    expect(descriptionValues(el)).toEqual([&#x27;Ryzen 5 5600X&#x27;, &#x27;triple-fan cooler visible&#x27;, &#x27;Corsair RM750&#x27;]);</span>
+<span class="add">+    expect(await descriptionValues(el)).toEqual([&#x27;Ryzen 5 5600X&#x27;, &#x27;triple-fan cooler visible&#x27;, &#x27;Corsair RM750&#x27;]);</span>
+<span class="ctx">     expect(ackIdentifyPartsJobMock).toHaveBeenCalledTimes(1);</span>
+<span class="ctx">     expect(fetchIdentifyPartsJobMock).not.toHaveBeenCalled();</span>
+<span class="ctx">   });</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -587,7 +603,7 @@ describe(&#x27;Identify Parts mount resume&#x27;, () =&gt; {</div><pre><span class="ctx"> </span>
+<span class="ctx">     // Only the one hand-entered row from before — the two AI suggestions</span>
+<span class="ctx">     // from this already-delivered job were never re-displayed a second time.</span>
+<span class="del">-    expect(descriptionValues(el)).toEqual([&#x27;Ryzen 5 5600X&#x27;]);</span>
+<span class="add">+    expect(await descriptionValues(el)).toEqual([&#x27;Ryzen 5 5600X&#x27;]);</span>
+<span class="ctx">     expect(fetchListingMock).not.toHaveBeenCalled();</span>
+<span class="ctx">     expect(ackIdentifyPartsJobMock).not.toHaveBeenCalled();</span>
+<span class="ctx">     expect(fetchIdentifyPartsJobMock).not.toHaveBeenCalled();</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -618,7 +634,7 @@ describe(&#x27;Identify Parts results are saved server-side, never via a form submit&#x27;</div><pre><span class="ctx">     expect(onSubmit).not.toHaveBeenCalled();</span>
+<span class="ctx">     expect(fetchListingMock).toHaveBeenCalledWith(&#x27;listing-1&#x27;);</span>
+<span class="ctx">     // The displayed rows still reflect exactly what the server returned.</span>
+<span class="del">-    expect(descriptionValues(el)).toEqual([&#x27;Ryzen 5 5600X&#x27;, &#x27;triple-fan cooler visible&#x27;, &#x27;Corsair RM750&#x27;]);</span>
+<span class="add">+    expect(await descriptionValues(el)).toEqual([&#x27;Ryzen 5 5600X&#x27;, &#x27;triple-fan cooler visible&#x27;, &#x27;Corsair RM750&#x27;]);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> });</span>
+<span class="ctx"> </span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">its candidate-button filter now also excludes the row&#x27;s own collapsible trigger button (identified by `aria-expanded`), so it isn&#x27;t mistaken for a candidate chip.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/identity-candidates-picker.test.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -42,11 +42,13 @@ async function mount(element: React.ReactElement): Promise&lt;HTMLDivElement&gt; {</div><pre><span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="ctx"> // Candidate chips render as &lt;button type=&quot;button&quot;&gt; elements inside the</span>
+<span class="del">-// &quot;Also possible:&quot; group — every other button on the row (Add Part, Remove)</span>
+<span class="del">-// carries its own distinct label, so filtering on text excludes them.</span>
+<span class="add">+// &quot;Also possible:&quot; group — every other button on the row (Add Part, Remove,</span>
+<span class="add">+// and T3&#x27;s per-row CollapsibleSection trigger, identified by the</span>
+<span class="add">+// aria-expanded attribute Radix sets only on that button) carries its own</span>
+<span class="add">+// distinct label or marker, so filtering excludes all three.</span>
+<span class="ctx"> function candidateButtons(el: HTMLElement): HTMLButtonElement[] {</span>
+<span class="ctx">   return (Array.from(el.querySelectorAll(&#x27;button&#x27;)) as HTMLButtonElement[]).filter(</span>
+<span class="del">-    (button) =&gt; button.textContent !== &#x27;Add Part&#x27; &amp;&amp; button.textContent !== &#x27;Remove&#x27;,</span>
+<span class="add">+    (button) =&gt; button.textContent !== &#x27;Add Part&#x27; &amp;&amp; button.textContent !== &#x27;Remove&#x27; &amp;&amp; !button.hasAttribute(&#x27;aria-expanded&#x27;),</span>
+<span class="ctx">   );</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">expands a row&#x27;s trigger before reading its description input, for the same reason as `identify-parts.test.tsx`.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/listings-page.test.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Listing details box, Expected Part rows) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -176,6 +176,18 @@ describe(&#x27;ListingsPage inline edit stale-fetch race (MUST FIX)&#x27;, () =&gt; {</div><pre><span class="ctx">       findTitleButton(el, listingB.title).click();</span>
+<span class="ctx">     });</span>
+<span class="ctx">     expect(fetchListingMock).toHaveBeenCalledWith(listingB.id);</span>
+<span class="add">+</span>
+<span class="add">+    // T2&#x27;s CollapsibleSection for Listing Details: starts collapsed when</span>
+<span class="add">+    // editing, so title/price inputs aren&#x27;t mounted until expanded.</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      const listingDetailsButton = Array.from(el.querySelectorAll(&#x27;button&#x27;)).find(</span>
+<span class="add">+        (btn) =&gt; btn.textContent?.includes(&#x27;Listing Details&#x27;),</span>
+<span class="add">+      ) as HTMLButtonElement | null;</span>
+<span class="add">+      if (listingDetailsButton?.getAttribute(&#x27;aria-expanded&#x27;) === &#x27;false&#x27;) {</span>
+<span class="add">+        listingDetailsButton.click();</span>
+<span class="add">+      }</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="ctx">     await waitFor(() =&gt; (el.querySelector(&#x27;#listing-title&#x27;) as HTMLInputElement | null)?.value === listingB.title);</span>
+<span class="ctx"> </span>
+<span class="ctx">     // Now let A&#x27;s slower fetch resolve, after B has already opened and</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -198,6 +210,12 @@ describe(&#x27;ListingsPage inline edit stale-fetch race (MUST FIX)&#x27;, () =&gt; {</div><pre><span class="ctx"> </span>
+<span class="ctx">     const titleInput = el.querySelector(&#x27;#listing-title&#x27;) as HTMLInputElement | null;</span>
+<span class="ctx">     const priceInput = el.querySelector(&#x27;#listing-asking-price&#x27;) as HTMLInputElement | null;</span>
+<span class="add">+    // T3&#x27;s per-row CollapsibleSection: a row seeded from already-saved data</span>
+<span class="add">+    // starts collapsed, so its description input isn&#x27;t mounted until the</span>
+<span class="add">+    // row is expanded — expand it to read the staleness-proving value.</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      (el.querySelector(&#x27;button[aria-expanded=&quot;false&quot;]&#x27;) as HTMLButtonElement | null)?.click();</span>
+<span class="add">+    });</span>
+<span class="ctx">     const partDescriptionInput = el.querySelector(&#x27;[aria-label=&quot;Expected part 1 description&quot;]&#x27;) as HTMLInputElement | null;</span>
+<span class="ctx">     if (!titleInput || !priceInput || !partDescriptionInput) {</span>
+<span class="ctx">       throw new Error(&#x27;Expected the inline edit form to still be open after A resolves&#x27;);</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -271,9 +289,34 @@ describe(&#x27;ListingsPage inline edit stale-fetch race (MUST FIX)&#x27;, () =&gt; {</div><pre><span class="ctx">       setTimeout(resolve, 10);</span>
+<span class="ctx">       await promise;</span>
+<span class="ctx">     });</span>
+<span class="add">+    // T2&#x27;s CollapsibleSection for Listing Details: starts collapsed when</span>
+<span class="add">+    // editing, so title/price inputs aren&#x27;t mounted until expanded.</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      const listingDetailsButton = Array.from(el.querySelectorAll(&#x27;button&#x27;)).find(</span>
+<span class="add">+        (btn) =&gt; btn.textContent?.includes(&#x27;Listing Details&#x27;),</span>
+<span class="add">+      ) as HTMLButtonElement | null;</span>
+<span class="add">+      if (listingDetailsButton?.getAttribute(&#x27;aria-expanded&#x27;) === &#x27;false&#x27;) {</span>
+<span class="add">+        listingDetailsButton.click();</span>
+<span class="add">+      }</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    // T2&#x27;s CollapsibleSection for Listing Details: starts collapsed when</span>
+<span class="add">+    // editing, so title/price inputs aren&#x27;t mounted until expanded.</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      const listingDetailsButton = Array.from(el.querySelectorAll(&#x27;button&#x27;)).find(</span>
+<span class="add">+        (btn) =&gt; btn.textContent?.includes(&#x27;Listing Details&#x27;),</span>
+<span class="add">+      ) as HTMLButtonElement | null;</span>
+<span class="add">+      if (listingDetailsButton?.getAttribute(&#x27;aria-expanded&#x27;) === &#x27;false&#x27;) {</span>
+<span class="add">+        listingDetailsButton.click();</span>
+<span class="add">+      }</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="ctx"> </span>
+<span class="ctx">     const titleInput = el.querySelector(&#x27;#listing-title&#x27;) as HTMLInputElement | null;</span>
+<span class="ctx">     const priceInput = el.querySelector(&#x27;#listing-asking-price&#x27;) as HTMLInputElement | null;</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      (el.querySelector(&#x27;button[aria-expanded=&quot;false&quot;]&#x27;) as HTMLButtonElement | null)?.click();</span>
+<span class="add">+    });</span>
+<span class="ctx">     const partDescriptionInput = el.querySelector(&#x27;[aria-label=&quot;Expected part 1 description&quot;]&#x27;) as HTMLInputElement | null;</span>
+<span class="ctx">     if (!titleInput || !priceInput || !partDescriptionInput) {</span>
+<span class="ctx">       throw new Error(&#x27;Expected the inline edit form to be open after the second (reopen) fetch resolves&#x27;);</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Theme control</span><span class="meta">2 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">A Light/Dark/System preference, reachable from every screen via the sidebar, defaulting to</p>
+<p class="note">Tasks: T4</p>
+<div class="flow"><svg viewBox="0 0 914 108" role="img" aria-label="data flow" class="flow-svg">
+<rect x="8" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="8" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">No stored preference</div><div class="flow-note">follows OS `prefers-color-scheme`</div></div></foreignObject>
+<line x1="198" y1="54" x2="238" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="244" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="244" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">OS preference changes live, still on System</div><div class="flow-note">class updates immediately</div></div></foreignObject>
+<line x1="434" y1="54" x2="474" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="480" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="480" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">User picks Light or Dark</div><div class="flow-note">writes to localStorage, applies instantly</div></div></foreignObject>
+<line x1="670" y1="54" x2="710" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="716" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="716" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Reload</div><div class="flow-note">stored choice is read back and re-applied</div></div></foreignObject>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" class="flow-arrowhead"/></marker></defs>
+</svg></div>
+<ul class="files"><li class="file-group">
+<p class="file-note">the `useThemePreference` hook — reads/writes the `pc-parts-flipper:theme` localStorage key, applies the `dark` class on `document.documentElement`, and subscribes to `matchMedia`&#x27;s `change` event while on System so a live OS flip updates the class without touching the stored preference.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/lib/use-theme-preference.ts</span><span class="tag">added</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -0,0 +1,81 @@</div><pre><span class="add">+import { useCallback, useEffect, useState } from &#x27;react&#x27;;</span>
+<span class="add">+</span>
+<span class="add">+// The three choices the sidebar&#x27;s theme control offers. &#x27;system&#x27; means</span>
+<span class="add">+// &quot;follow the OS&quot;, not a fixed value — it is re-derived from matchMedia</span>
+<span class="add">+// every time it&#x27;s applied, not stored as whichever of light/dark it</span>
+<span class="add">+// resolved to at the moment it was picked.</span>
+<span class="add">+export type ThemePreference = &#x27;light&#x27; | &#x27;dark&#x27; | &#x27;system&#x27;;</span>
+<span class="add">+</span>
+<span class="add">+const STORAGE_KEY = &#x27;pc-parts-flipper:theme&#x27;;</span>
+<span class="add">+</span>
+<span class="add">+/** Narrows an arbitrary localStorage read to a valid ThemePreference, defaulting to &#x27;system&#x27;. */</span>
+<span class="add">+function isThemePreference(value: string | null): value is ThemePreference {</span>
+<span class="add">+  return value === &#x27;light&#x27; || value === &#x27;dark&#x27; || value === &#x27;system&#x27;;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+/** Reads the stored preference, defaulting to &#x27;system&#x27; when nothing (or something invalid) is stored. */</span>
+<span class="add">+function readStoredTheme(): ThemePreference {</span>
+<span class="add">+  const stored = window.localStorage.getItem(STORAGE_KEY);</span>
+<span class="add">+  return isThemePreference(stored) ? stored : &#x27;system&#x27;;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+/**</span>
+<span class="add">+ * Resolves a stored preference to the concrete light/dark value that should</span>
+<span class="add">+ * actually be applied: &#x27;light&#x27;/&#x27;dark&#x27; pass through unchanged, &#x27;system&#x27; is</span>
+<span class="add">+ * re-derived from the OS&#x27;s current prefers-color-scheme every call (never</span>
+<span class="add">+ * cached), so a later call after an OS change returns the new value.</span>
+<span class="add">+ */</span>
+<span class="add">+function resolveEffectiveTheme(theme: ThemePreference): &#x27;light&#x27; | &#x27;dark&#x27; {</span>
+<span class="add">+  if (theme !== &#x27;system&#x27;) return theme;</span>
+<span class="add">+  return window.matchMedia(&#x27;(prefers-color-scheme: dark)&#x27;).matches ? &#x27;dark&#x27; : &#x27;light&#x27;;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+/** Applies (or removes) Tailwind&#x27;s `dark` class on the document root to match the resolved effective theme. */</span>
+<span class="add">+function applyEffectiveTheme(effective: &#x27;light&#x27; | &#x27;dark&#x27;) {</span>
+<span class="add">+  document.documentElement.classList.toggle(&#x27;dark&#x27;, effective === &#x27;dark&#x27;);</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+/**</span>
+<span class="add">+ * Theme preference hook: reads/writes the user&#x27;s Light/Dark/System choice</span>
+<span class="add">+ * under the `pc-parts-flipper:theme` localStorage key and keeps the `dark`</span>
+<span class="add">+ * class on &lt;html&gt; in sync with it.</span>
+<span class="add">+ *</span>
+<span class="add">+ * Flow:</span>
+<span class="add">+ *  - Initial state is read synchronously from localStorage (defaulting to</span>
+<span class="add">+ *    &#x27;system&#x27;) so the very first render already has the right preference —</span>
+<span class="add">+ *    the effect below then applies the matching class as its one-time</span>
+<span class="add">+ *    side effect of touching the DOM.</span>
+<span class="add">+ *  - While the preference is &#x27;system&#x27;, an effect subscribes to</span>
+<span class="add">+ *    matchMedia(&#x27;(prefers-color-scheme: dark)&#x27;)&#x27;s `change` event so a live</span>
+<span class="add">+ *    OS-level flip (no reload) re-applies the `dark` class immediately; the</span>
+<span class="add">+ *    stored preference itself stays &#x27;system&#x27; throughout — only the applied</span>
+<span class="add">+ *    class moves. The subscription is torn down on cleanup/preference</span>
+<span class="add">+ *    change, same as any other effect-owned listener.</span>
+<span class="add">+ *  - `setTheme` is used for an explicit &#x27;light&#x27;/&#x27;dark&#x27; choice: it writes to</span>
+<span class="add">+ *    localStorage and applies the resolved class synchronously, in the</span>
+<span class="add">+ *    same tick as the call, rather than leaving the DOM stale until the</span>
+<span class="add">+ *    effect below next runs — that would otherwise show a one-frame flash</span>
+<span class="add">+ *    of the old theme before the effect catches up.</span>
+<span class="add">+ */</span>
+<span class="add">+export function useThemePreference() {</span>
+<span class="add">+  const [theme, setThemeState] = useState&lt;ThemePreference&gt;(() =&gt; readStoredTheme());</span>
+<span class="add">+</span>
+<span class="add">+  useEffect(() =&gt; {</span>
+<span class="add">+    applyEffectiveTheme(resolveEffectiveTheme(theme));</span>
+<span class="add">+</span>
+<span class="add">+    if (theme !== &#x27;system&#x27;) return;</span>
+<span class="add">+</span>
+<span class="add">+    const media = window.matchMedia(&#x27;(prefers-color-scheme: dark)&#x27;);</span>
+<span class="add">+    const handleChange = () =&gt; applyEffectiveTheme(resolveEffectiveTheme(&#x27;system&#x27;));</span>
+<span class="add">+    media.addEventListener(&#x27;change&#x27;, handleChange);</span>
+<span class="add">+    return () =&gt; media.removeEventListener(&#x27;change&#x27;, handleChange);</span>
+<span class="add">+  }, [theme]);</span>
+<span class="add">+</span>
+<span class="add">+  const setTheme = useCallback((next: ThemePreference) =&gt; {</span>
+<span class="add">+    window.localStorage.setItem(STORAGE_KEY, next);</span>
+<span class="add">+    applyEffectiveTheme(resolveEffectiveTheme(next));</span>
+<span class="add">+    setThemeState(next);</span>
+<span class="add">+  }, []);</span>
+<span class="add">+</span>
+<span class="add">+  return { theme, setTheme };</span>
+<span class="add">+}</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">proves the system default, synchronous class/localStorage update on an explicit choice, persistence across a simulated reload, and the live `matchMedia` change reaction while staying in System mode.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/use-theme-preference.test.tsx</span><span class="tag">added</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -0,0 +1,175 @@</div><pre><span class="add">+// @vitest-environment jsdom</span>
+<span class="add">+//</span>
+<span class="add">+// Proof for useThemePreference (use-theme-preference.ts): defaulting to</span>
+<span class="add">+// &#x27;system&#x27; with nothing stored, an explicit choice persisting to</span>
+<span class="add">+// localStorage and applying the `dark` class synchronously (ahead of any</span>
+<span class="add">+// effect/re-render), and a live matchMedia &#x27;change&#x27; event updating the</span>
+<span class="add">+// applied class while still in &#x27;system&#x27; mode. Mounts the real hook inside a</span>
+<span class="add">+// tiny probe component with react-dom/client + act(), following</span>
+<span class="add">+// error-boundary.test.tsx / photo-upload.test.tsx&#x27;s pattern (no React</span>
+<span class="add">+// Testing Library in this workspace). jsdom does not implement</span>
+<span class="add">+// window.matchMedia at all, so each test installs a controllable stub.</span>
+<span class="add">+import { afterEach, beforeEach, describe, expect, it } from &#x27;vitest&#x27;;</span>
+<span class="add">+import { createRoot, type Root } from &#x27;react-dom/client&#x27;;</span>
+<span class="add">+import { act } from &#x27;react&#x27;;</span>
+<span class="add">+import { useThemePreference, type ThemePreference } from &#x27;../src/lib/use-theme-preference&#x27;;</span>
+<span class="add">+</span>
+<span class="add">+globalThis.IS_REACT_ACT_ENVIRONMENT = true;</span>
+<span class="add">+</span>
+<span class="add">+const STORAGE_KEY = &#x27;pc-parts-flipper:theme&#x27;;</span>
+<span class="add">+</span>
+<span class="add">+type ChangeListener = (event: MediaQueryListEvent) =&gt; void;</span>
+<span class="add">+</span>
+<span class="add">+/**</span>
+<span class="add">+ * Minimal controllable stand-in for `window.matchMedia(&#x27;(prefers-color-scheme: dark)&#x27;)`,</span>
+<span class="add">+ * which jsdom does not implement. Only the subset the hook actually calls</span>
+<span class="add">+ * (reading `.matches`, `addEventListener(&#x27;change&#x27;, ...)`,</span>
+<span class="add">+ * `removeEventListener(&#x27;change&#x27;, ...)`) is real; everything else is cast</span>
+<span class="add">+ * away since no test here drives it.</span>
+<span class="add">+ */</span>
+<span class="add">+function installMatchMediaMock(initialMatches: boolean) {</span>
+<span class="add">+  let matches = initialMatches;</span>
+<span class="add">+  const listeners = new Set&lt;ChangeListener&gt;();</span>
+<span class="add">+</span>
+<span class="add">+  const mediaQueryList = {</span>
+<span class="add">+    get matches() {</span>
+<span class="add">+      return matches;</span>
+<span class="add">+    },</span>
+<span class="add">+    media: &#x27;(prefers-color-scheme: dark)&#x27;,</span>
+<span class="add">+    addEventListener: (type: string, listener: ChangeListener) =&gt; {</span>
+<span class="add">+      if (type === &#x27;change&#x27;) listeners.add(listener);</span>
+<span class="add">+    },</span>
+<span class="add">+    removeEventListener: (type: string, listener: ChangeListener) =&gt; {</span>
+<span class="add">+      if (type === &#x27;change&#x27;) listeners.delete(listener);</span>
+<span class="add">+    },</span>
+<span class="add">+    // Cast reason: jsdom has no real MediaQueryList to satisfy structurally</span>
+<span class="add">+    // (no addListener/removeListener/dispatchEvent/onchange implementation</span>
+<span class="add">+    // exists here), and this test only ever drives the three members above.</span>
+<span class="add">+  } as unknown as MediaQueryList;</span>
+<span class="add">+</span>
+<span class="add">+  window.matchMedia = () =&gt; mediaQueryList;</span>
+<span class="add">+</span>
+<span class="add">+  return {</span>
+<span class="add">+    setMatches: (next: boolean) =&gt; {</span>
+<span class="add">+      matches = next;</span>
+<span class="add">+      listeners.forEach((listener) =&gt; listener({ matches: next } as MediaQueryListEvent));</span>
+<span class="add">+    },</span>
+<span class="add">+    listenerCount: () =&gt; listeners.size,</span>
+<span class="add">+  };</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+let container: HTMLDivElement | null = null;</span>
+<span class="add">+let root: Root | null = null;</span>
+<span class="add">+let probeApi: { theme: ThemePreference; setTheme: (next: ThemePreference) =&gt; void } | null = null;</span>
+<span class="add">+</span>
+<span class="add">+function ThemeProbe() {</span>
+<span class="add">+  probeApi = useThemePreference();</span>
+<span class="add">+  return &lt;span data-testid=&quot;theme-value&quot;&gt;{probeApi.theme}&lt;/span&gt;;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+async function mount(): Promise&lt;HTMLDivElement&gt; {</span>
+<span class="add">+  container = document.createElement(&#x27;div&#x27;);</span>
+<span class="add">+  await act(async () =&gt; {</span>
+<span class="add">+    root = createRoot(container!);</span>
+<span class="add">+    root.render(&lt;ThemeProbe /&gt;);</span>
+<span class="add">+  });</span>
+<span class="add">+  return container;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+beforeEach(() =&gt; {</span>
+<span class="add">+  window.localStorage.clear();</span>
+<span class="add">+  document.documentElement.classList.remove(&#x27;dark&#x27;);</span>
+<span class="add">+});</span>
+<span class="add">+</span>
+<span class="add">+afterEach(() =&gt; {</span>
+<span class="add">+  act(() =&gt; {</span>
+<span class="add">+    root?.unmount();</span>
+<span class="add">+  });</span>
+<span class="add">+  container?.remove();</span>
+<span class="add">+  container = null;</span>
+<span class="add">+  root = null;</span>
+<span class="add">+  probeApi = null;</span>
+<span class="add">+  window.localStorage.clear();</span>
+<span class="add">+  document.documentElement.classList.remove(&#x27;dark&#x27;);</span>
+<span class="add">+});</span>
+<span class="add">+</span>
+<span class="add">+describe(&#x27;useThemePreference&#x27;, () =&gt; {</span>
+<span class="add">+  it(&#x27;defaults to system with nothing stored, and applies the OS-resolved class without writing to localStorage&#x27;, async () =&gt; {</span>
+<span class="add">+    installMatchMediaMock(false);</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount();</span>
+<span class="add">+</span>
+<span class="add">+    expect(el.querySelector(&#x27;[data-testid=&quot;theme-value&quot;]&#x27;)?.textContent).toBe(&#x27;system&#x27;);</span>
+<span class="add">+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();</span>
+<span class="add">+    expect(document.documentElement.classList.contains(&#x27;dark&#x27;)).toBe(false);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;writes an explicit choice to localStorage and applies the dark class synchronously, ahead of any effect/re-render&#x27;, async () =&gt; {</span>
+<span class="add">+    installMatchMediaMock(false);</span>
+<span class="add">+    await mount();</span>
+<span class="add">+</span>
+<span class="add">+    expect(document.documentElement.classList.contains(&#x27;dark&#x27;)).toBe(false);</span>
+<span class="add">+</span>
+<span class="add">+    // Calling setTheme directly here, outside of act(), is deliberate: it</span>
+<span class="add">+    // proves the class/localStorage write happen inside setTheme&#x27;s own</span>
+<span class="add">+    // synchronous call stack rather than depending on React scheduling a</span>
+<span class="add">+    // re-render and flushing the theme-applying effect afterward. If that</span>
+<span class="add">+    // write were moved into the effect instead, this assertion would still</span>
+<span class="add">+    // see the pre-update DOM, since no act()/flush has run yet.</span>
+<span class="add">+    probeApi!.setTheme(&#x27;dark&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(&#x27;dark&#x27;);</span>
+<span class="add">+    expect(document.documentElement.classList.contains(&#x27;dark&#x27;)).toBe(true);</span>
+<span class="add">+</span>
+<span class="add">+    // Flush the resulting re-render so afterEach&#x27;s unmount doesn&#x27;t warn.</span>
+<span class="add">+    await act(async () =&gt; {});</span>
+<span class="add">+    expect(probeApi!.theme).toBe(&#x27;dark&#x27;);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;survives a fresh hook mount simulating a page reload: a prior explicit choice is read back and applied on first render&#x27;, async () =&gt; {</span>
+<span class="add">+    installMatchMediaMock(false);</span>
+<span class="add">+    await mount();</span>
+<span class="add">+</span>
+<span class="add">+    probeApi!.setTheme(&#x27;dark&#x27;);</span>
+<span class="add">+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(&#x27;dark&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    // Flush the setTheme-triggered re-render, then unmount this instance</span>
+<span class="add">+    // and discard its state entirely, so the next mount below has nothing</span>
+<span class="add">+    // to inherit from except what&#x27;s actually sitting in localStorage —</span>
+<span class="add">+    // the same thing a real page reload would start from.</span>
+<span class="add">+    await act(async () =&gt; {});</span>
+<span class="add">+    act(() =&gt; {</span>
+<span class="add">+      root?.unmount();</span>
+<span class="add">+    });</span>
+<span class="add">+    container?.remove();</span>
+<span class="add">+    probeApi = null;</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount();</span>
+<span class="add">+</span>
+<span class="add">+    // The fresh instance&#x27;s very first render already reflects the stored</span>
+<span class="add">+    // choice: both the hook&#x27;s returned value and the DOM class it applied</span>
+<span class="add">+    // as its initial-render side effect, with no setTheme call in this</span>
+<span class="add">+    // second mount at all.</span>
+<span class="add">+    expect(el.querySelector(&#x27;[data-testid=&quot;theme-value&quot;]&#x27;)?.textContent).toBe(&#x27;dark&#x27;);</span>
+<span class="add">+    expect(probeApi!.theme).toBe(&#x27;dark&#x27;);</span>
+<span class="add">+    expect(document.documentElement.classList.contains(&#x27;dark&#x27;)).toBe(true);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;reacts to a live matchMedia change event while in system mode, without touching the stored preference&#x27;, async () =&gt; {</span>
+<span class="add">+    const media = installMatchMediaMock(false);</span>
+<span class="add">+    await mount();</span>
+<span class="add">+</span>
+<span class="add">+    expect(document.documentElement.classList.contains(&#x27;dark&#x27;)).toBe(false);</span>
+<span class="add">+    expect(media.listenerCount()).toBe(1);</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      media.setMatches(true);</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    expect(document.documentElement.classList.contains(&#x27;dark&#x27;)).toBe(true);</span>
+<span class="add">+    // The stored/returned preference is still &#x27;system&#x27; — only the applied</span>
+<span class="add">+    // class moved, matching the OS, not a silently-promoted explicit choice.</span>
+<span class="add">+    expect(probeApi!.theme).toBe(&#x27;system&#x27;);</span>
+<span class="add">+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();</span>
+<span class="add">+  });</span>
+<span class="add">+});</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Sidebar: theme control placement and active-link highlight</span><span class="meta">2 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">The theme control is added to the sidebar as three icon buttons below the nav list; the</p>
+<p class="note">Tasks: T4, T5</p>
+<ul class="files"><li class="file-group">
+<p class="file-note">T4 adds the Light/Dark/System icon-button row (Sun/Moon/Monitor) wired to `useThemePreference`; T5 changes only the `isActive` nav-link branch from `bg-accent` to `bg-surfaceContrast`, leaving the separate hover classes untouched.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/routes/root-layout.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -1,6 +1,9 @@</div><pre><span class="add">+import { Monitor, Moon, Sun } from &#x27;lucide-react&#x27;;</span>
+<span class="ctx"> import { NavLink, Outlet } from &#x27;react-router-dom&#x27;;</span>
+<span class="add">+import { Button } from &#x27;@/components/ui/button&#x27;;</span>
+<span class="ctx"> import { cn } from &#x27;@/lib/utils&#x27;;</span>
+<span class="ctx"> import { ErrorBoundary } from &#x27;@/components/error-boundary&#x27;;</span>
+<span class="add">+import { useThemePreference, type ThemePreference } from &#x27;@/lib/use-theme-preference&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> // Full nav contract from the feature plan (Goal/Tasks T5-T13): one entry per</span>
+<span class="ctx"> // top-level screen, in the order the sidebar renders them.</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -14,12 +17,23 @@ const NAV_ITEMS = [</div><pre><span class="ctx">   { to: &#x27;/profit-dashboard&#x27;, label: &#x27;Profit Dashboard&#x27; },</span>
+<span class="ctx"> ] as const;</span>
+<span class="ctx"> </span>
+<span class="add">+// The sidebar&#x27;s theme control: one icon button per ThemePreference value,</span>
+<span class="add">+// in the order rendered. The icon alone (plus an aria-label) identifies</span>
+<span class="add">+// each option — keeps the control compact next to the nav list above it.</span>
+<span class="add">+const THEME_OPTIONS: ReadonlyArray&lt;{ value: ThemePreference; label: string; icon: typeof Sun }&gt; = [</span>
+<span class="add">+  { value: &#x27;light&#x27;, label: &#x27;Light&#x27;, icon: Sun },</span>
+<span class="add">+  { value: &#x27;dark&#x27;, label: &#x27;Dark&#x27;, icon: Moon },</span>
+<span class="add">+  { value: &#x27;system&#x27;, label: &#x27;System&#x27;, icon: Monitor },</span>
+<span class="add">+];</span>
+<span class="add">+</span>
+<span class="ctx"> // App shell: a persistent left sidebar nav plus a main content area. Every</span>
+<span class="ctx"> // top-level screen renders inside the &lt;Outlet/&gt; via the route tree in</span>
+<span class="ctx"> // router.tsx; this layout itself never changes per-screen. The &lt;Outlet/&gt; is</span>
+<span class="ctx"> // wrapped in an &lt;ErrorBoundary/&gt; so a render crash in one screen shows an</span>
+<span class="ctx"> // error banner in the content area without taking down the sidebar nav.</span>
+<span class="ctx"> export function RootLayout() {</span>
+<span class="add">+  const { theme, setTheme } = useThemePreference();</span>
+<span class="add">+</span>
+<span class="ctx">   return (</span>
+<span class="ctx">     &lt;div className=&quot;flex min-h-screen bg-background text-foreground&quot;&gt;</span>
+<span class="ctx">       &lt;nav className=&quot;w-56 shrink-0 border-r border-border p-4&quot;&gt;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -34,7 +48,7 @@ export function RootLayout() {</div><pre><span class="ctx">                   // entry matches the current route.</span>
+<span class="ctx">                   cn(</span>
+<span class="ctx">                     &#x27;block rounded-md px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground&#x27;,</span>
+<span class="del">-                    isActive &amp;&amp; &#x27;bg-accent text-accent-foreground&#x27;,</span>
+<span class="add">+                    isActive &amp;&amp; &#x27;bg-surfaceContrast text-accent-foreground&#x27;,</span>
+<span class="ctx">                   )</span>
+<span class="ctx">                 }</span>
+<span class="ctx">               &gt;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -43,6 +57,24 @@ export function RootLayout() {</div><pre><span class="ctx">             &lt;/li&gt;</span>
+<span class="ctx">           ))}</span>
+<span class="ctx">         &lt;/ul&gt;</span>
+<span class="add">+        &lt;div className=&quot;mt-6 border-t border-border pt-4&quot;&gt;</span>
+<span class="add">+          &lt;p className=&quot;mb-2 text-xs font-semibold uppercase text-muted-foreground&quot;&gt;Theme&lt;/p&gt;</span>
+<span class="add">+          &lt;div className=&quot;flex gap-1&quot;&gt;</span>
+<span class="add">+            {THEME_OPTIONS.map(({ value, label, icon: Icon }) =&gt; (</span>
+<span class="add">+              &lt;Button</span>
+<span class="add">+                key={value}</span>
+<span class="add">+                type=&quot;button&quot;</span>
+<span class="add">+                variant={theme === value ? &#x27;default&#x27; : &#x27;outline&#x27;}</span>
+<span class="add">+                size=&quot;icon&quot;</span>
+<span class="add">+                aria-label={label}</span>
+<span class="add">+                aria-pressed={theme === value}</span>
+<span class="add">+                onClick={() =&gt; setTheme(value)}</span>
+<span class="add">+              &gt;</span>
+<span class="add">+                &lt;Icon className=&quot;h-4 w-4&quot; /&gt;</span>
+<span class="add">+              &lt;/Button&gt;</span>
+<span class="add">+            ))}</span>
+<span class="add">+          &lt;/div&gt;</span>
+<span class="add">+        &lt;/div&gt;</span>
+<span class="ctx">       &lt;/nav&gt;</span>
+<span class="ctx">       &lt;main className=&quot;flex-1 overflow-y-auto p-6&quot;&gt;</span>
+<span class="ctx">         &lt;ErrorBoundary&gt;</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">proves the active link carries `bg-surfaceContrast` (not `bg-accent`) while hover classes are preserved on every link, active or not.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/root-layout.test.tsx</span><span class="tag">added</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -0,0 +1,130 @@</div><pre><span class="add">+// @vitest-environment jsdom</span>
+<span class="add">+//</span>
+<span class="add">+// Proof for root-layout&#x27;s nav-link styling: the active nav link now renders</span>
+<span class="add">+// with the surfaceContrast background token (instead of the old accent</span>
+<span class="add">+// background), while hover classes remain unchanged. Mounts RootLayout with</span>
+<span class="add">+// MemoryRouter to control the active route, following the react-router pattern.</span>
+<span class="add">+// RootLayout also mounts useThemePreference internally (T4&#x27;s sidebar theme</span>
+<span class="add">+// control), which reads window.matchMedia — jsdom does not implement it, so</span>
+<span class="add">+// every test here installs a minimal stub before mounting, the same way</span>
+<span class="add">+// use-theme-preference.test.tsx does.</span>
+<span class="add">+import { afterEach, beforeEach, describe, expect, it } from &#x27;vitest&#x27;;</span>
+<span class="add">+import { createRoot, type Root } from &#x27;react-dom/client&#x27;;</span>
+<span class="add">+import { act } from &#x27;react&#x27;;</span>
+<span class="add">+import { MemoryRouter } from &#x27;react-router-dom&#x27;;</span>
+<span class="add">+import { RootLayout } from &#x27;../src/routes/root-layout&#x27;;</span>
+<span class="add">+</span>
+<span class="add">+globalThis.IS_REACT_ACT_ENVIRONMENT = true;</span>
+<span class="add">+</span>
+<span class="add">+let container: HTMLDivElement | null = null;</span>
+<span class="add">+let root: Root | null = null;</span>
+<span class="add">+</span>
+<span class="add">+beforeEach(() =&gt; {</span>
+<span class="add">+  // Minimal stand-in for window.matchMedia: these tests never drive a live</span>
+<span class="add">+  // OS-level theme change, so only `.matches` needs to resolve to something</span>
+<span class="add">+  // and addEventListener/removeEventListener need to exist as no-ops.</span>
+<span class="add">+  window.matchMedia = ((query: string) =&gt; ({</span>
+<span class="add">+    matches: false,</span>
+<span class="add">+    media: query,</span>
+<span class="add">+    addEventListener: () =&gt; {},</span>
+<span class="add">+    removeEventListener: () =&gt; {},</span>
+<span class="add">+  })) as unknown as typeof window.matchMedia;</span>
+<span class="add">+});</span>
+<span class="add">+</span>
+<span class="add">+afterEach(() =&gt; {</span>
+<span class="add">+  act(() =&gt; {</span>
+<span class="add">+    root?.unmount();</span>
+<span class="add">+  });</span>
+<span class="add">+  container?.remove();</span>
+<span class="add">+  container = null;</span>
+<span class="add">+  root = null;</span>
+<span class="add">+});</span>
+<span class="add">+</span>
+<span class="add">+async function mount(element: React.ReactElement): Promise&lt;HTMLDivElement&gt; {</span>
+<span class="add">+  container = document.createElement(&#x27;div&#x27;);</span>
+<span class="add">+  document.body.appendChild(container);</span>
+<span class="add">+  await act(async () =&gt; {</span>
+<span class="add">+    root = createRoot(container!);</span>
+<span class="add">+    root.render(element);</span>
+<span class="add">+  });</span>
+<span class="add">+  return container;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+describe(&#x27;RootLayout nav-link styling&#x27;, () =&gt; {</span>
+<span class="add">+  it(&#x27;renders the active nav link with bg-surfaceContrast class, not bg-accent&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount(</span>
+<span class="add">+      &lt;MemoryRouter initialEntries={[&#x27;/sources&#x27;]}&gt;</span>
+<span class="add">+        &lt;RootLayout /&gt;</span>
+<span class="add">+      &lt;/MemoryRouter&gt;,</span>
+<span class="add">+    );</span>
+<span class="add">+</span>
+<span class="add">+    // Find the &quot;Sources&quot; nav link, which should be active.</span>
+<span class="add">+    const navLinks = el.querySelectorAll(&#x27;nav a&#x27;);</span>
+<span class="add">+    let sourcesLink: HTMLElement | null = null;</span>
+<span class="add">+    for (const link of navLinks) {</span>
+<span class="add">+      if (link.textContent?.trim() === &#x27;Sources&#x27;) {</span>
+<span class="add">+        sourcesLink = link;</span>
+<span class="add">+        break;</span>
+<span class="add">+      }</span>
+<span class="add">+    }</span>
+<span class="add">+</span>
+<span class="add">+    expect(sourcesLink).not.toBeNull();</span>
+<span class="add">+    if (!sourcesLink) return; // TypeScript guard</span>
+<span class="add">+</span>
+<span class="add">+    // The active link must have bg-surfaceContrast and text-accent-foreground,</span>
+<span class="add">+    // but NOT the standalone bg-accent class (only hover:bg-accent).</span>
+<span class="add">+    expect(sourcesLink.className).toContain(&#x27;bg-surfaceContrast&#x27;);</span>
+<span class="add">+    expect(sourcesLink.className).toContain(&#x27;text-accent-foreground&#x27;);</span>
+<span class="add">+    // Check for standalone bg-accent using word boundaries: must not appear</span>
+<span class="add">+    // unless it&#x27;s part of &quot;hover:bg-accent&quot;</span>
+<span class="add">+    expect(sourcesLink.className).toMatch(/\bhover:bg-accent\b/);</span>
+<span class="add">+    // Assert that bg-accent by itself (without prefix) is NOT present</span>
+<span class="add">+    const classArray = sourcesLink.className.split(/\s+/);</span>
+<span class="add">+    expect(classArray).not.toContain(&#x27;bg-accent&#x27;);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;preserves hover:bg-accent and hover:text-accent-foreground classes on all nav links&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount(</span>
+<span class="add">+      &lt;MemoryRouter initialEntries={[&#x27;/sources&#x27;]}&gt;</span>
+<span class="add">+        &lt;RootLayout /&gt;</span>
+<span class="add">+      &lt;/MemoryRouter&gt;,</span>
+<span class="add">+    );</span>
+<span class="add">+</span>
+<span class="add">+    // All nav links should have the hover classes, whether active or not.</span>
+<span class="add">+    const navLinks = el.querySelectorAll(&#x27;nav a&#x27;);</span>
+<span class="add">+    expect(navLinks.length).toBeGreaterThan(0);</span>
+<span class="add">+</span>
+<span class="add">+    for (const link of navLinks) {</span>
+<span class="add">+      expect(link.className).toContain(&#x27;hover:bg-accent&#x27;);</span>
+<span class="add">+      expect(link.className).toContain(&#x27;hover:text-accent-foreground&#x27;);</span>
+<span class="add">+    }</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;inactive nav link does not have bg-surfaceContrast or standalone bg-accent&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount(</span>
+<span class="add">+      &lt;MemoryRouter initialEntries={[&#x27;/sources&#x27;]}&gt;</span>
+<span class="add">+        &lt;RootLayout /&gt;</span>
+<span class="add">+      &lt;/MemoryRouter&gt;,</span>
+<span class="add">+    );</span>
+<span class="add">+</span>
+<span class="add">+    // Find an inactive link (e.g., &quot;Listings&quot; when we&#x27;re on &quot;/sources&quot;).</span>
+<span class="add">+    const navLinks = el.querySelectorAll(&#x27;nav a&#x27;);</span>
+<span class="add">+    let listingsLink: HTMLElement | null = null;</span>
+<span class="add">+    for (const link of navLinks) {</span>
+<span class="add">+      if (link.textContent?.trim() === &#x27;Listings&#x27;) {</span>
+<span class="add">+        listingsLink = link;</span>
+<span class="add">+        break;</span>
+<span class="add">+      }</span>
+<span class="add">+    }</span>
+<span class="add">+</span>
+<span class="add">+    expect(listingsLink).not.toBeNull();</span>
+<span class="add">+    if (!listingsLink) return; // TypeScript guard</span>
+<span class="add">+</span>
+<span class="add">+    // Inactive link should NOT have bg-surfaceContrast</span>
+<span class="add">+    expect(listingsLink.className).not.toContain(&#x27;bg-surfaceContrast&#x27;);</span>
+<span class="add">+    // Check that hover:bg-accent is present but standalone bg-accent is not</span>
+<span class="add">+    expect(listingsLink.className).toContain(&#x27;hover:bg-accent&#x27;);</span>
+<span class="add">+    const classArray = listingsLink.className.split(/\s+/);</span>
+<span class="add">+    expect(classArray).not.toContain(&#x27;bg-accent&#x27;);</span>
+<span class="add">+  });</span>
+<span class="add">+});</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Notable decisions</span><span class="meta">0 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="note">No file in this feature's diff matched this section's file list.</p>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Unattributed</span><span class="meta">1 file(s)</span></button>
+<div class="card-body" hidden><p class="note">No drafted section named these files.</p><ul class="files"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/expected-parts-editor.test.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -12,7 +12,7 @@</div><pre><span class="ctx"> import { afterEach, describe, expect, it } from &#x27;vitest&#x27;;</span>
+<span class="ctx"> import { createRoot, type Root } from &#x27;react-dom/client&#x27;;</span>
+<span class="ctx"> import { act, useState } from &#x27;react&#x27;;</span>
+<span class="del">-import { ExpectedPartsEditor, type ExpectedPartRow } from &#x27;../src/features/listings/expected-parts-editor&#x27;;</span>
+<span class="add">+import { ExpectedPartsEditor, type ExpectedPartRow, type ExpectedPartRowErrors } from &#x27;../src/features/listings/expected-parts-editor&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> globalThis.IS_REACT_ACT_ENVIRONMENT = true;</span>
+<span class="ctx"> </span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -60,9 +60,9 @@ function inputsLabelled(el: HTMLElement, suffix: string): HTMLInputElement[] {</div><pre><span class="ctx"> </span>
+<span class="ctx"> // Holds the rows in state so the controlled editor&#x27;s onChange actually</span>
+<span class="ctx"> // round-trips, exactly as ListingForm&#x27;s own `setRows` does.</span>
+<span class="del">-function EditorHarness({ initialRows }: { initialRows: ExpectedPartRow[] }) {</span>
+<span class="add">+function EditorHarness({ initialRows, rowErrors = [] }: { initialRows: ExpectedPartRow[]; rowErrors?: ExpectedPartRowErrors[] }) {</span>
+<span class="ctx">   const [rows, setRows] = useState&lt;ExpectedPartRow[]&gt;(initialRows);</span>
+<span class="del">-  return &lt;ExpectedPartsEditor rows={rows} rowErrors={[]} onChange={setRows} /&gt;;</span>
+<span class="add">+  return &lt;ExpectedPartsEditor rows={rows} rowErrors={rowErrors} onChange={setRows} /&gt;;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="ctx"> function aiRow(overrides: Partial&lt;ExpectedPartRow&gt; = {}): ExpectedPartRow {</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -231,4 +231,121 @@ describe(&#x27;ExpectedPartsEditor brand and part number fields&#x27;, () =&gt; {</div><pre><span class="ctx">     expect(rowContainers[0].textContent).not.toContain(&#x27;AI suggested&#x27;);</span>
+<span class="ctx">     expect(rowContainers[1].textContent).toContain(&#x27;AI suggested&#x27;);</span>
+<span class="ctx">   });</span>
+<span class="add">+});</span>
+<span class="add">+</span>
+<span class="add">+// Radix&#x27;s CollapsibleTrigger is the only button in a row that carries</span>
+<span class="add">+// aria-expanded — Remove doesn&#x27;t, so this reliably finds each row&#x27;s own</span>
+<span class="add">+// toggle regardless of how many other buttons the row renders.</span>
+<span class="add">+function triggerButtons(el: HTMLElement): HTMLButtonElement[] {</span>
+<span class="add">+  return Array.from(el.querySelectorAll(&#x27;button[aria-expanded]&#x27;)) as HTMLButtonElement[];</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+describe(&#x27;ExpectedPartsEditor collapsible rows (T3)&#x27;, () =&gt; {</span>
+<span class="add">+  it(&#x27;a row built with collapsed: true starts closed — identification fields shown, description/badge/picker not mounted&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount(</span>
+<span class="add">+      &lt;EditorHarness initialRows={[aiRow({ collapsed: true, identityCandidates: [{ brand: &#x27;NVIDIA&#x27;, partNumber: &#x27;RTX 3070 Ti&#x27; }] })]} /&gt;,</span>
+<span class="add">+    );</span>
+<span class="add">+</span>
+<span class="add">+    expect(triggerButtons(el)[0].getAttribute(&#x27;aria-expanded&#x27;)).toBe(&#x27;false&#x27;);</span>
+<span class="add">+    // Identification fields stay mounted and showing their real values even</span>
+<span class="add">+    // while collapsed — the whole point of keeping them in the trigger</span>
+<span class="add">+    // rather than CollapsibleContent.</span>
+<span class="add">+    expect(inputsLabelled(el, &#x27;brand&#x27;)[0]?.value).toBe(&#x27;NVIDIA&#x27;);</span>
+<span class="add">+    expect(inputsLabelled(el, &#x27;part number&#x27;)[0]?.value).toBe(&#x27;RTX 3070&#x27;);</span>
+<span class="add">+    // Content-only fields are unmounted while collapsed.</span>
+<span class="add">+    expect(inputsLabelled(el, &#x27;description&#x27;)).toHaveLength(0);</span>
+<span class="add">+    expect(badgeCount(el)).toBe(0);</span>
+<span class="add">+    expect(el.textContent).not.toContain(&#x27;Also possible:&#x27;);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;a row built with collapsed: false (or omitted) starts open — description/badge/picker mounted&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount(&lt;EditorHarness initialRows={[aiRow({ collapsed: false })]} /&gt;);</span>
+<span class="add">+</span>
+<span class="add">+    expect(triggerButtons(el)[0].getAttribute(&#x27;aria-expanded&#x27;)).toBe(&#x27;true&#x27;);</span>
+<span class="add">+    expect(inputsLabelled(el, &#x27;description&#x27;)).toHaveLength(1);</span>
+<span class="add">+    expect(badgeCount(el)).toBe(1);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;clicking &quot;Add Part&quot; appends a row that starts expanded, not collapsed&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount(&lt;EditorHarness initialRows={[manualRow({ collapsed: true })]} /&gt;);</span>
+<span class="add">+    expect(triggerButtons(el)[0].getAttribute(&#x27;aria-expanded&#x27;)).toBe(&#x27;false&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    const addButton = Array.from(el.querySelectorAll(&#x27;button&#x27;)).find((b) =&gt; b.textContent === &#x27;Add Part&#x27;) as HTMLButtonElement;</span>
+<span class="add">+    await act(async () =&gt; addButton.click());</span>
+<span class="add">+</span>
+<span class="add">+    // Row 1 (pre-existing, built collapsed) is untouched; row 2 (new) opens</span>
+<span class="add">+    // by default — a shared default would make one of these two fail.</span>
+<span class="add">+    expect(triggerButtons(el)[0].getAttribute(&#x27;aria-expanded&#x27;)).toBe(&#x27;false&#x27;);</span>
+<span class="add">+    expect(triggerButtons(el)[1].getAttribute(&#x27;aria-expanded&#x27;)).toBe(&#x27;true&#x27;);</span>
+<span class="add">+    expect(inputsLabelled(el, &#x27;description&#x27;)).toHaveLength(1);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;clicking a row\&#x27;s trigger toggles only that row\&#x27;s open state, leaving its sibling untouched&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount(&lt;EditorHarness initialRows={[manualRow({ collapsed: false }), manualRow({ collapsed: false, brand: &#x27;Intel&#x27; })]} /&gt;);</span>
+<span class="add">+    expect(triggerButtons(el).map((b) =&gt; b.getAttribute(&#x27;aria-expanded&#x27;))).toEqual([&#x27;true&#x27;, &#x27;true&#x27;]);</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; triggerButtons(el)[0].click());</span>
+<span class="add">+</span>
+<span class="add">+    expect(triggerButtons(el).map((b) =&gt; b.getAttribute(&#x27;aria-expanded&#x27;))).toEqual([&#x27;false&#x27;, &#x27;true&#x27;]);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;toggling a row collapsed and back open never clears its aiSuggested flag or any field value&#x27;, async () =&gt; {</span>
+<span class="add">+    const candidates = [{ brand: &#x27;NVIDIA&#x27;, partNumber: &#x27;RTX 3080&#x27; }];</span>
+<span class="add">+    const el = await mount(&lt;EditorHarness initialRows={[aiRow({ collapsed: false, identityCandidates: candidates })]} /&gt;);</span>
+<span class="add">+    expect(badgeCount(el)).toBe(1);</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; triggerButtons(el)[0].click()); // collapse</span>
+<span class="add">+    expect(triggerButtons(el)[0].getAttribute(&#x27;aria-expanded&#x27;)).toBe(&#x27;false&#x27;);</span>
+<span class="add">+    // Trigger-line values must survive the round trip unchanged.</span>
+<span class="add">+    expect(inputsLabelled(el, &#x27;brand&#x27;)[0].value).toBe(&#x27;NVIDIA&#x27;);</span>
+<span class="add">+    expect(inputsLabelled(el, &#x27;part number&#x27;)[0].value).toBe(&#x27;RTX 3070&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; triggerButtons(el)[0].click()); // re-expand</span>
+<span class="add">+    expect(triggerButtons(el)[0].getAttribute(&#x27;aria-expanded&#x27;)).toBe(&#x27;true&#x27;);</span>
+<span class="add">+    // If toggling had gone through updateRow (or added its own `aiSuggested:</span>
+<span class="add">+    // false`), the badge would be gone here even though nothing was edited.</span>
+<span class="add">+    expect(badgeCount(el)).toBe(1);</span>
+<span class="add">+    expect(el.textContent).toContain(&#x27;Also possible:&#x27;);</span>
+<span class="add">+    expect(inputsLabelled(el, &#x27;brand&#x27;)[0].value).toBe(&#x27;NVIDIA&#x27;);</span>
+<span class="add">+    expect(inputsLabelled(el, &#x27;part number&#x27;)[0].value).toBe(&#x27;RTX 3070&#x27;);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;shows a destructive error indicator on a collapsed row with an active validation error, independent of its open state&#x27;, async () =&gt; {</span>
+<span class="add">+    const row = manualRow({ collapsed: true });</span>
+<span class="add">+    const el = await mount(&lt;EditorHarness initialRows={[row]} rowErrors={[{ estimatedResaleValue: &#x27;Must be a number&#x27; }]} /&gt;);</span>
+<span class="add">+</span>
+<span class="add">+    expect(triggerButtons(el)[0].getAttribute(&#x27;aria-expanded&#x27;)).toBe(&#x27;false&#x27;);</span>
+<span class="add">+    expect(el.querySelector(&#x27;[aria-label=&quot;Expected part 1 has an error&quot;]&#x27;)).not.toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    // The indicator must not force the row open, and the row must still</span>
+<span class="add">+    // toggle normally — both directions, from this same error state.</span>
+<span class="add">+    await act(async () =&gt; triggerButtons(el)[0].click());</span>
+<span class="add">+    expect(triggerButtons(el)[0].getAttribute(&#x27;aria-expanded&#x27;)).toBe(&#x27;true&#x27;);</span>
+<span class="add">+    expect(el.querySelector(&#x27;[aria-label=&quot;Expected part 1 has an error&quot;]&#x27;)).not.toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; triggerButtons(el)[0].click());</span>
+<span class="add">+    expect(triggerButtons(el)[0].getAttribute(&#x27;aria-expanded&#x27;)).toBe(&#x27;false&#x27;);</span>
+<span class="add">+    expect(el.querySelector(&#x27;[aria-label=&quot;Expected part 1 has an error&quot;]&#x27;)).not.toBeNull();</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;shows no error indicator on a row with no validation errors&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount(&lt;EditorHarness initialRows={[manualRow({ collapsed: true })]} rowErrors={[{}]} /&gt;);</span>
+<span class="add">+    expect(el.querySelector(&#x27;[aria-label=&quot;Expected part 1 has an error&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;expanding a collapsed row reveals its description, AI badge, and identity-candidates picker&#x27;, async () =&gt; {</span>
+<span class="add">+    const candidates = [{ brand: &#x27;NVIDIA&#x27;, partNumber: &#x27;RTX 3080 Ti&#x27; }];</span>
+<span class="add">+    const el = await mount(&lt;EditorHarness initialRows={[aiRow({ collapsed: true, identityCandidates: candidates })]} /&gt;);</span>
+<span class="add">+</span>
+<span class="add">+    expect(inputsLabelled(el, &#x27;description&#x27;)).toHaveLength(0);</span>
+<span class="add">+    expect(badgeCount(el)).toBe(0);</span>
+<span class="add">+    expect(el.textContent).not.toContain(&#x27;Also possible:&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; triggerButtons(el)[0].click());</span>
+<span class="add">+</span>
+<span class="add">+    expect(inputsLabelled(el, &#x27;description&#x27;)).toHaveLength(1);</span>
+<span class="add">+    expect(inputsLabelled(el, &#x27;description&#x27;)[0].value).toBe(&#x27;pulled from a working rig&#x27;);</span>
+<span class="add">+    expect(badgeCount(el)).toBe(1);</span>
+<span class="add">+    expect(el.textContent).toContain(&#x27;Also possible:&#x27;);</span>
+<span class="add">+  });</span>
+<span class="ctx"> });</span></pre></div></div></li></ul></div>
+</section>
+</main><script>
+function toggleSection(btn){
+  var body = btn.nextElementSibling;
+  body.hidden = !body.hidden;
+  btn.setAttribute('aria-expanded', String(!body.hidden));
+}
+function toggleFile(btn){
+  var body = btn.nextElementSibling;
+  body.hidden = !body.hidden;
+  btn.setAttribute('aria-expanded', String(!body.hidden));
+}
+</script>

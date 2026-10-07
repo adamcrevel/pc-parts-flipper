@@ -176,6 +176,18 @@ describe('ListingsPage inline edit stale-fetch race (MUST FIX)', () => {
       findTitleButton(el, listingB.title).click();
     });
     expect(fetchListingMock).toHaveBeenCalledWith(listingB.id);
+
+    // T2's CollapsibleSection for Listing Details: starts collapsed when
+    // editing, so title/price inputs aren't mounted until expanded.
+    await act(async () => {
+      const listingDetailsButton = Array.from(el.querySelectorAll('button')).find(
+        (btn) => btn.textContent?.includes('Listing Details'),
+      ) as HTMLButtonElement | null;
+      if (listingDetailsButton?.getAttribute('aria-expanded') === 'false') {
+        listingDetailsButton.click();
+      }
+    });
+
     await waitFor(() => (el.querySelector('#listing-title') as HTMLInputElement | null)?.value === listingB.title);
 
     // Now let A's slower fetch resolve, after B has already opened and
@@ -198,6 +210,12 @@ describe('ListingsPage inline edit stale-fetch race (MUST FIX)', () => {
 
     const titleInput = el.querySelector('#listing-title') as HTMLInputElement | null;
     const priceInput = el.querySelector('#listing-asking-price') as HTMLInputElement | null;
+    // T3's per-row CollapsibleSection: a row seeded from already-saved data
+    // starts collapsed, so its description input isn't mounted until the
+    // row is expanded — expand it to read the staleness-proving value.
+    await act(async () => {
+      (el.querySelector('button[aria-expanded="false"]') as HTMLButtonElement | null)?.click();
+    });
     const partDescriptionInput = el.querySelector('[aria-label="Expected part 1 description"]') as HTMLInputElement | null;
     if (!titleInput || !priceInput || !partDescriptionInput) {
       throw new Error('Expected the inline edit form to still be open after A resolves');
@@ -271,9 +289,34 @@ describe('ListingsPage inline edit stale-fetch race (MUST FIX)', () => {
       setTimeout(resolve, 10);
       await promise;
     });
+    // T2's CollapsibleSection for Listing Details: starts collapsed when
+    // editing, so title/price inputs aren't mounted until expanded.
+    await act(async () => {
+      const listingDetailsButton = Array.from(el.querySelectorAll('button')).find(
+        (btn) => btn.textContent?.includes('Listing Details'),
+      ) as HTMLButtonElement | null;
+      if (listingDetailsButton?.getAttribute('aria-expanded') === 'false') {
+        listingDetailsButton.click();
+      }
+    });
+
+    // T2's CollapsibleSection for Listing Details: starts collapsed when
+    // editing, so title/price inputs aren't mounted until expanded.
+    await act(async () => {
+      const listingDetailsButton = Array.from(el.querySelectorAll('button')).find(
+        (btn) => btn.textContent?.includes('Listing Details'),
+      ) as HTMLButtonElement | null;
+      if (listingDetailsButton?.getAttribute('aria-expanded') === 'false') {
+        listingDetailsButton.click();
+      }
+    });
+
 
     const titleInput = el.querySelector('#listing-title') as HTMLInputElement | null;
     const priceInput = el.querySelector('#listing-asking-price') as HTMLInputElement | null;
+    await act(async () => {
+      (el.querySelector('button[aria-expanded="false"]') as HTMLButtonElement | null)?.click();
+    });
     const partDescriptionInput = el.querySelector('[aria-label="Expected part 1 description"]') as HTMLInputElement | null;
     if (!titleInput || !priceInput || !partDescriptionInput) {
       throw new Error('Expected the inline edit form to be open after the second (reopen) fetch resolves');

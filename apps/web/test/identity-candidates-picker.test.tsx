@@ -42,11 +42,13 @@ async function mount(element: React.ReactElement): Promise<HTMLDivElement> {
 }
 
 // Candidate chips render as <button type="button"> elements inside the
-// "Also possible:" group — every other button on the row (Add Part, Remove)
-// carries its own distinct label, so filtering on text excludes them.
+// "Also possible:" group — every other button on the row (Add Part, Remove,
+// and T3's per-row CollapsibleSection trigger, identified by the
+// aria-expanded attribute Radix sets only on that button) carries its own
+// distinct label or marker, so filtering excludes all three.
 function candidateButtons(el: HTMLElement): HTMLButtonElement[] {
   return (Array.from(el.querySelectorAll('button')) as HTMLButtonElement[]).filter(
-    (button) => button.textContent !== 'Add Part' && button.textContent !== 'Remove',
+    (button) => button.textContent !== 'Add Part' && button.textContent !== 'Remove' && !button.hasAttribute('aria-expanded'),
   );
 }
 

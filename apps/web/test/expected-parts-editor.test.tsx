@@ -12,7 +12,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { act, useState } from 'react';
-import { ExpectedPartsEditor, type ExpectedPartRow } from '../src/features/listings/expected-parts-editor';
+import { ExpectedPartsEditor, type ExpectedPartRow, type ExpectedPartRowErrors } from '../src/features/listings/expected-parts-editor';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -60,9 +60,9 @@ function inputsLabelled(el: HTMLElement, suffix: string): HTMLInputElement[] {
 
 // Holds the rows in state so the controlled editor's onChange actually
 // round-trips, exactly as ListingForm's own `setRows` does.
-function EditorHarness({ initialRows }: { initialRows: ExpectedPartRow[] }) {
+function EditorHarness({ initialRows, rowErrors = [] }: { initialRows: ExpectedPartRow[]; rowErrors?: ExpectedPartRowErrors[] }) {
   const [rows, setRows] = useState<ExpectedPartRow[]>(initialRows);
-  return <ExpectedPartsEditor rows={rows} rowErrors={[]} onChange={setRows} />;
+  return <ExpectedPartsEditor rows={rows} rowErrors={rowErrors} onChange={setRows} />;
 }
 
 function aiRow(overrides: Partial<ExpectedPartRow> = {}): ExpectedPartRow {
@@ -230,5 +230,122 @@ describe('ExpectedPartsEditor brand and part number fields', () => {
     const rowContainers = Array.from(el.querySelectorAll('select')).map((select) => select.closest('div.rounded-md')!);
     expect(rowContainers[0].textContent).not.toContain('AI suggested');
     expect(rowContainers[1].textContent).toContain('AI suggested');
+  });
+});
+
+// Radix's CollapsibleTrigger is the only button in a row that carries
+// aria-expanded — Remove doesn't, so this reliably finds each row's own
+// toggle regardless of how many other buttons the row renders.
+function triggerButtons(el: HTMLElement): HTMLButtonElement[] {
+  return Array.from(el.querySelectorAll('button[aria-expanded]')) as HTMLButtonElement[];
+}
+
+describe('ExpectedPartsEditor collapsible rows (T3)', () => {
+  it('a row built with collapsed: true starts closed — identification fields shown, description/badge/picker not mounted', async () => {
+    const el = await mount(
+      <EditorHarness initialRows={[aiRow({ collapsed: true, identityCandidates: [{ brand: 'NVIDIA', partNumber: 'RTX 3070 Ti' }] })]} />,
+    );
+
+    expect(triggerButtons(el)[0].getAttribute('aria-expanded')).toBe('false');
+    // Identification fields stay mounted and showing their real values even
+    // while collapsed — the whole point of keeping them in the trigger
+    // rather than CollapsibleContent.
+    expect(inputsLabelled(el, 'brand')[0]?.value).toBe('NVIDIA');
+    expect(inputsLabelled(el, 'part number')[0]?.value).toBe('RTX 3070');
+    // Content-only fields are unmounted while collapsed.
+    expect(inputsLabelled(el, 'description')).toHaveLength(0);
+    expect(badgeCount(el)).toBe(0);
+    expect(el.textContent).not.toContain('Also possible:');
+  });
+
+  it('a row built with collapsed: false (or omitted) starts open — description/badge/picker mounted', async () => {
+    const el = await mount(<EditorHarness initialRows={[aiRow({ collapsed: false })]} />);
+
+    expect(triggerButtons(el)[0].getAttribute('aria-expanded')).toBe('true');
+    expect(inputsLabelled(el, 'description')).toHaveLength(1);
+    expect(badgeCount(el)).toBe(1);
+  });
+
+  it('clicking "Add Part" appends a row that starts expanded, not collapsed', async () => {
+    const el = await mount(<EditorHarness initialRows={[manualRow({ collapsed: true })]} />);
+    expect(triggerButtons(el)[0].getAttribute('aria-expanded')).toBe('false');
+
+    const addButton = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === 'Add Part') as HTMLButtonElement;
+    await act(async () => addButton.click());
+
+    // Row 1 (pre-existing, built collapsed) is untouched; row 2 (new) opens
+    // by default — a shared default would make one of these two fail.
+    expect(triggerButtons(el)[0].getAttribute('aria-expanded')).toBe('false');
+    expect(triggerButtons(el)[1].getAttribute('aria-expanded')).toBe('true');
+    expect(inputsLabelled(el, 'description')).toHaveLength(1);
+  });
+
+  it('clicking a row\'s trigger toggles only that row\'s open state, leaving its sibling untouched', async () => {
+    const el = await mount(<EditorHarness initialRows={[manualRow({ collapsed: false }), manualRow({ collapsed: false, brand: 'Intel' })]} />);
+    expect(triggerButtons(el).map((b) => b.getAttribute('aria-expanded'))).toEqual(['true', 'true']);
+
+    await act(async () => triggerButtons(el)[0].click());
+
+    expect(triggerButtons(el).map((b) => b.getAttribute('aria-expanded'))).toEqual(['false', 'true']);
+  });
+
+  it('toggling a row collapsed and back open never clears its aiSuggested flag or any field value', async () => {
+    const candidates = [{ brand: 'NVIDIA', partNumber: 'RTX 3080' }];
+    const el = await mount(<EditorHarness initialRows={[aiRow({ collapsed: false, identityCandidates: candidates })]} />);
+    expect(badgeCount(el)).toBe(1);
+
+    await act(async () => triggerButtons(el)[0].click()); // collapse
+    expect(triggerButtons(el)[0].getAttribute('aria-expanded')).toBe('false');
+    // Trigger-line values must survive the round trip unchanged.
+    expect(inputsLabelled(el, 'brand')[0].value).toBe('NVIDIA');
+    expect(inputsLabelled(el, 'part number')[0].value).toBe('RTX 3070');
+
+    await act(async () => triggerButtons(el)[0].click()); // re-expand
+    expect(triggerButtons(el)[0].getAttribute('aria-expanded')).toBe('true');
+    // If toggling had gone through updateRow (or added its own `aiSuggested:
+    // false`), the badge would be gone here even though nothing was edited.
+    expect(badgeCount(el)).toBe(1);
+    expect(el.textContent).toContain('Also possible:');
+    expect(inputsLabelled(el, 'brand')[0].value).toBe('NVIDIA');
+    expect(inputsLabelled(el, 'part number')[0].value).toBe('RTX 3070');
+  });
+
+  it('shows a destructive error indicator on a collapsed row with an active validation error, independent of its open state', async () => {
+    const row = manualRow({ collapsed: true });
+    const el = await mount(<EditorHarness initialRows={[row]} rowErrors={[{ estimatedResaleValue: 'Must be a number' }]} />);
+
+    expect(triggerButtons(el)[0].getAttribute('aria-expanded')).toBe('false');
+    expect(el.querySelector('[aria-label="Expected part 1 has an error"]')).not.toBeNull();
+
+    // The indicator must not force the row open, and the row must still
+    // toggle normally — both directions, from this same error state.
+    await act(async () => triggerButtons(el)[0].click());
+    expect(triggerButtons(el)[0].getAttribute('aria-expanded')).toBe('true');
+    expect(el.querySelector('[aria-label="Expected part 1 has an error"]')).not.toBeNull();
+
+    await act(async () => triggerButtons(el)[0].click());
+    expect(triggerButtons(el)[0].getAttribute('aria-expanded')).toBe('false');
+    expect(el.querySelector('[aria-label="Expected part 1 has an error"]')).not.toBeNull();
+  });
+
+  it('shows no error indicator on a row with no validation errors', async () => {
+    const el = await mount(<EditorHarness initialRows={[manualRow({ collapsed: true })]} rowErrors={[{}]} />);
+    expect(el.querySelector('[aria-label="Expected part 1 has an error"]')).toBeNull();
+  });
+
+  it('expanding a collapsed row reveals its description, AI badge, and identity-candidates picker', async () => {
+    const candidates = [{ brand: 'NVIDIA', partNumber: 'RTX 3080 Ti' }];
+    const el = await mount(<EditorHarness initialRows={[aiRow({ collapsed: true, identityCandidates: candidates })]} />);
+
+    expect(inputsLabelled(el, 'description')).toHaveLength(0);
+    expect(badgeCount(el)).toBe(0);
+    expect(el.textContent).not.toContain('Also possible:');
+
+    await act(async () => triggerButtons(el)[0].click());
+
+    expect(inputsLabelled(el, 'description')).toHaveLength(1);
+    expect(inputsLabelled(el, 'description')[0].value).toBe('pulled from a working rig');
+    expect(badgeCount(el)).toBe(1);
+    expect(el.textContent).toContain('Also possible:');
   });
 });
