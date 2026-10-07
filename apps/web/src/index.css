@@ -18,6 +18,15 @@
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
     --surface-contrast: 215 20% 85%;
+    /* Button-only tokens (not used by links or anything else `--primary`
+       touches): `default`-variant buttons (e.g. Save) use --save, and
+       `outline`-variant buttons (e.g. Cancel) use --cancel. In light mode
+       both equal --primary/--primary-foreground and --background exactly,
+       so light mode is pixel-identical to before these were added — only
+       the .dark block below actually changes anything. */
+    --save: 222.2 47.4% 11.2%;
+    --save-foreground: 210 40% 98%;
+    --cancel: 0 0% 100%;
     --muted-foreground: 215.4 16.3% 46.9%;
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
@@ -42,6 +51,17 @@
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 17.5%;
     --surface-contrast: 217.2 32.6% 17.5%;
+    /* Dark mode is where these two diverge from --primary/--background: a
+       `default` button was pure white (--primary's dark value, 98%
+       lightness) and an `outline` button was pure black (--background's
+       dark value, 4.9% lightness) — both too stark. --save is toned down
+       to a soft light gray instead of near-white; --cancel sits between
+       --background and --muted/--accent (17.5%) so it reads as a visibly
+       lighter surface at rest, with its existing hover:bg-accent state
+       still lighter still. */
+    --save: 210 40% 80%;
+    --save-foreground: 222.2 47.4% 11.2%;
+    --cancel: 217.2 32.6% 12%;
     --muted-foreground: 215 20.2% 65.1%;
     --accent: 217.2 32.6% 17.5%;
     --accent-foreground: 210 40% 98%;
