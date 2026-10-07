@@ -93,7 +93,7 @@ export interface ExpectedPart {
   brand: string | null;
   partNumber: string | null;
   description: string;
-  estimatedResaleValue: number;
+  estimatedResaleValue: number | null;
   /** Other plausible brand/partNumber pairings the AI identifier considered but did not pick as primary; empty for manually-entered Expected Parts. */
   identityCandidates: IdentityCandidate[];
   createdAt: string;

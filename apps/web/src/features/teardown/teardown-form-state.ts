@@ -24,7 +24,7 @@ export interface TeardownRow {
   brand: string | null;
   partNumber: string | null;
   description: string;
-  estimatedResaleValue: number;
+  estimatedResaleValue: number | null;
   identityCandidates: IdentityCandidate[];
   result: TeardownExpectedPartResultInput['result'] | '';
   note: string;

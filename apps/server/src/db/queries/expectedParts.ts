@@ -2,7 +2,7 @@
 import type { IdentityCandidate } from '@pc-parts-flipper/shared';
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
-import { buildSetClause, toNumber } from '../sqlHelpers.js';
+import { buildSetClause, toNullableNumber } from '../sqlHelpers.js';
 import type { ComponentCategory, ExpectedPart } from '../types.js';
 
 /**
@@ -16,7 +16,7 @@ export interface CreateExpectedPartInput {
   brand: string | null;
   partNumber: string | null;
   description: string;
-  estimatedResaleValue: number;
+  estimatedResaleValue: number | null;
   identityCandidates: IdentityCandidate[];
 }
 
@@ -26,7 +26,7 @@ export interface UpdateExpectedPartInput {
   brand?: string | null;
   partNumber?: string | null;
   description?: string;
-  estimatedResaleValue?: number;
+  estimatedResaleValue?: number | null;
   identityCandidates?: IdentityCandidate[];
 }
 
@@ -39,7 +39,7 @@ function mapRow(row: Record<string, unknown>): ExpectedPart {
     brand: (row.brand as string | null) ?? null,
     partNumber: (row.part_number as string | null) ?? null,
     description: row.description as string,
-    estimatedResaleValue: toNumber(row.estimated_resale_value as string),
+    estimatedResaleValue: toNullableNumber(row.estimated_resale_value as string | null),
     identityCandidates: JSON.parse(row.identity_candidates as string) as IdentityCandidate[],
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,

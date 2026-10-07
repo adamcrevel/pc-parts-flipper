@@ -32,3 +32,8 @@ export function buildSetClause(patch: Record<string, unknown>): {
 export function toNumber(value: string): number {
   return Number(value);
 }
+
+/** Converts a nullable DuckDB DECIMAL's JSON string form to a number, or null when the column itself is null (an Expected Part not yet priced). */
+export function toNullableNumber(value: string | null): number | null {
+  return value === null ? null : Number(value);
+}

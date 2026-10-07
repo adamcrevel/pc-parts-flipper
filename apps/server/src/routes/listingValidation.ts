@@ -64,6 +64,24 @@ function requireNonNegativeNumber(value: unknown, fieldName: string): number {
   return num;
 }
 
+/**
+ * Throws AppError(400) unless `value` is either absent (undefined/null,
+ * meaning "not yet priced" — an AI-identified part is never priced by the
+ * model) or a finite number >= 0. Distinct from requireNonNegativeNumber:
+ * that one still backs every listing-level money field, which stays
+ * required; only an Expected Part's own resale value may be left unset.
+ */
+function requireNonNegativeNumberOrNull(value: unknown, fieldName: string): number | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  const num = typeof value === 'number' ? value : Number.NaN;
+  if (!Number.isFinite(num) || num < 0) {
+    throw new AppError(`${fieldName} must be a non-negative number`, 400);
+  }
+  return num;
+}
+
 /** Trims `value` and throws AppError(400) unless it parses as a real date. */
 function requireValidDate(value: unknown, fieldName: string): string {
   const trimmed = typeof value === 'string' ? value.trim() : '';
@@ -137,14 +155,13 @@ function validateExpectedPartInput(raw: unknown, index: number): ExpectedPartInp
     throw new AppError(`expectedParts[${index}].componentCategory is required and must be one of: ${VALID_CATEGORIES.join(', ')}`, 400);
   }
   const description = requireNonBlankString(body.description, `expectedParts[${index}].description`);
-  const estimatedResaleValue = requireNonNegativeNumber(body.estimatedResaleValue, `expectedParts[${index}].estimatedResaleValue`);
 
   return {
     componentCategory: componentCategory as ComponentCategory,
     brand: trimmedOrNull(body.brand),
     partNumber: trimmedOrNull(body.partNumber),
     description,
-    estimatedResaleValue,
+    estimatedResaleValue: requireNonNegativeNumberOrNull(body.estimatedResaleValue, `expectedParts[${index}].estimatedResaleValue`),
     identityCandidates: validateIdentityCandidates(body.identityCandidates, index),
   };
 }

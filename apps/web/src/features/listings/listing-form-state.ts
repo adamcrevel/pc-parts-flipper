@@ -48,11 +48,11 @@ export function initialExpectedPartRows(initialValue?: ListingDetail): ExpectedP
     componentCategory: part.componentCategory,
     // Null (not identified) renders as an empty input — the editor keeps
     // every field as a string while editing, and blank maps back to null
-    // on submit.
+    // on submit. Same treatment for a not-yet-priced estimatedResaleValue.
     brand: part.brand ?? '',
     partNumber: part.partNumber ?? '',
     description: part.description,
-    estimatedResaleValue: String(part.estimatedResaleValue),
+    estimatedResaleValue: part.estimatedResaleValue === null ? '' : String(part.estimatedResaleValue),
     identityCandidates: part.identityCandidates ?? [],
   }));
 }
@@ -64,8 +64,10 @@ export function initialExpectedPartRows(initialValue?: ListingDetail): ExpectedP
  * here means "not identified", and `description` carries only whatever
  * context those two fields don't already say. The estimated resale value is
  * deliberately left blank: the model is only asked to identify parts, never
- * to price them, so that field stays the user's to fill in (and
- * validateExpectedPartRows keeps insisting on it before save).
+ * to price them, so that field stays the user's to fill in. Sent to the
+ * backend as null (see listing-form.tsx's persistListing), not coerced to
+ * 0 or treated as a validation failure (validateExpectedPartRows allows a
+ * blank estimatedResaleValue — "not yet priced" is a real state).
  */
 export function aiPartToExpectedPartRow(part: AiIdentifiedPart): ExpectedPartRow {
   return {

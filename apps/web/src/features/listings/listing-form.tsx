@@ -59,44 +59,58 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
   // actual data entered, not the blank placeholder row itself.
   const filledExpectedPartsCount = rows.filter((row) => row.description.trim() !== '' || row.estimatedResaleValue.trim() !== '').length;
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  // Builds the PUT payload from the current fields plus `nextRows` (same
+  // shape every explicit Save sends) and calls `onSubmit`. Shared by
+  // handleSubmit and handlePartsIdentified so an explicit Save and an
+  // identify-parts auto-save go through one path, never two slightly
+  // different ones. Returns false (after setting fieldErrors/rowErrors)
+  // instead of submitting when the current fields or rows are invalid,
+  // the same guard handleSubmit always applied.
+  async function persistListing(nextRows: ExpectedPartRow[]): Promise<boolean> {
     const listingErrors = validateListingFields(fields.title, fields.listingUrl, fields.sourceId, fields.askingPrice, fields.listingDate, fields.acquisitionFees);
-    const partRowErrors = validateExpectedPartRows(rows);
+    const partRowErrors = validateExpectedPartRows(nextRows);
     setFieldErrors(listingErrors);
     setRowErrors(partRowErrors);
     if (Object.keys(listingErrors).length > 0 || partRowErrors.some((errors) => Object.keys(errors).length > 0)) {
-      return;
+      return false;
     }
 
     // Field-by-field (never a spread of `row`): ExpectedPartRow carries
     // client-only draft state (aiSuggested/aiConfidence/aiSource) that must
     // not reach the backend. Blank brand/part number send as null rather
-    // than '' — "not identified" is an absence, not an empty string.
-    const expectedParts: ExpectedPartInput[] = rows.map((row) => ({
+    // than '' — "not identified" is an absence, not an empty string. Same
+    // for estimatedResaleValue: blank means "not yet priced" (every AI
+    // suggestion starts this way), sent as null rather than coercing it to 0.
+    const expectedParts: ExpectedPartInput[] = nextRows.map((row) => ({
       componentCategory: row.componentCategory as ExpectedPartInput['componentCategory'],
       brand: row.brand.trim() || null,
       partNumber: row.partNumber.trim() || null,
       description: row.description.trim(),
-      estimatedResaleValue: Number(row.estimatedResaleValue),
+      estimatedResaleValue: row.estimatedResaleValue.trim() === '' ? null : Number(row.estimatedResaleValue),
       identityCandidates: row.identityCandidates,
     }));
 
+    const result = await onSubmit({
+      sourceId: fields.sourceId,
+      title: fields.title.trim(),
+      description: fields.description.trim() || null,
+      listingUrl: fields.listingUrl.trim(),
+      askingPrice: Number(fields.askingPrice),
+      listingDate: fields.listingDate,
+      acquisitionFees: fields.acquisitionFees.trim().length > 0 ? Number(fields.acquisitionFees) : 0,
+      expectedParts,
+    });
+    setSaved(result);
+    onSaved(result);
+    return true;
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setSubmitError(null);
     setIsSubmitting(true);
     try {
-      const result = await onSubmit({
-        sourceId: fields.sourceId,
-        title: fields.title.trim(),
-        description: fields.description.trim() || null,
-        listingUrl: fields.listingUrl.trim(),
-        askingPrice: Number(fields.askingPrice),
-        listingDate: fields.listingDate,
-        acquisitionFees: fields.acquisitionFees.trim().length > 0 ? Number(fields.acquisitionFees) : 0,
-        expectedParts,
-      });
-      setSaved(result);
-      onSaved(result);
+      await persistListing(rows);
     } catch (err) {
       setSubmitError(err instanceof ApiError ? err.message : 'Failed to save listing.');
     } finally {
@@ -109,12 +123,35 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
     onSaved(updated);
   }
 
-  // Appends the AI's suggestions as extra draft rows. Existing rows are
-  // never removed or overwritten — identification only ever adds to what the
-  // user already has, and every added row stays editable/removable and
-  // unsaved until they submit the form themselves.
+  // Appends the AI's suggestions as extra rows, then immediately persists
+  // the Listing the same way an explicit Save would. Identification now
+  // runs on a background queue and can finish long after the user has
+  // moved on to something else, so applying the suggestions to local state
+  // alone (the old behavior) left them silently lost the moment the user
+  // closed the listing without clicking Save by hand. A not-yet-priced
+  // suggested part now saves fine (estimatedResaleValue is nullable), so
+  // this succeeds in the common case, not just when every row happens to
+  // already have a price. Falls back to leaving the suggestions as unsaved
+  // draft rows (the old behavior) only if the listing currently has
+  // genuinely invalid fields/rows (e.g. a blank title mid-edit) — never
+  // saves broken data or silently discards an in-progress edit the user
+  // hasn't submitted themselves.
   function handlePartsIdentified(parts: AiIdentifiedPart[]) {
-    setRows((prev) => [...prev, ...parts.map(aiPartToExpectedPartRow)]);
+    const nextRows = [...rows, ...parts.map(aiPartToExpectedPartRow)];
+    setRows(nextRows);
+    persistListing(nextRows)
+      .then((ok) => {
+        if (!ok) {
+          setSubmitError('AI-suggested parts were added but could not be auto-saved — the listing has invalid fields. Fix them and click Save.');
+        }
+      })
+      .catch((err) => {
+        setSubmitError(
+          err instanceof ApiError
+            ? `AI-suggested parts were added but auto-save failed: ${err.message}`
+            : 'AI-suggested parts were added but auto-save failed — click Save to retry.',
+        );
+      });
   }
 
   return (

@@ -39,7 +39,7 @@ import { VALID_STATUSES, validateListingInput, type ListingRequestBody } from '.
 // Req 3: sum of Expected Parts' estimated resale values vs. (asking price +
 // acquisition fees/shipping), plus their difference.
 function computeComparison(listing: Listing, expectedParts: ExpectedPart[]): ListingComparison {
-  const totalExpectedResaleValue = expectedParts.reduce((sum, part) => sum + part.estimatedResaleValue, 0);
+  const totalExpectedResaleValue = expectedParts.reduce((sum, part) => sum + (part.estimatedResaleValue ?? 0), 0);
   const totalCost = listing.askingPrice + listing.acquisitionFees;
   return { totalExpectedResaleValue, totalCost, difference: totalExpectedResaleValue - totalCost };
 }

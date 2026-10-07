@@ -8,6 +8,7 @@ build/
 **/data/*.duckdb.wal
 **/data/photos/
 **/data/reference-photos/
+**/data/backups/
 .DS_Store
 .worktrees/
 *.tsbuildinfo

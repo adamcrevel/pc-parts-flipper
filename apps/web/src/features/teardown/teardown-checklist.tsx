@@ -52,7 +52,9 @@ export function TeardownChecklist({ rows, rowErrors, onChange }: TeardownCheckli
                 {/* Other plausible brand/model pairings the AI considered but didn't pick as primary, shown as a muted secondary note. */}
                 {alternates !== '' && <span className="text-muted-foreground"> · {alternates}</span>}
               </div>
-              <span className="text-muted-foreground">Est. value: ${row.estimatedResaleValue.toFixed(2)}</span>
+              <span className="text-muted-foreground">
+                Est. value: {row.estimatedResaleValue === null ? 'not yet priced' : `$${row.estimatedResaleValue.toFixed(2)}`}
+              </span>
             </div>
 
             <div className="space-y-1">

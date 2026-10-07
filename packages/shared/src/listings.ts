@@ -38,7 +38,7 @@ export interface ExpectedPart {
   brand: string | null;
   partNumber: string | null;
   description: string;
-  estimatedResaleValue: number;
+  estimatedResaleValue: number | null;
   identityCandidates: IdentityCandidate[];
   createdAt: string;
   updatedAt: string;
@@ -101,7 +101,7 @@ export interface ExpectedPartInput {
   brand: string | null;
   partNumber: string | null;
   description: string;
-  estimatedResaleValue: number;
+  estimatedResaleValue: number | null;
   identityCandidates: IdentityCandidate[];
 }
 

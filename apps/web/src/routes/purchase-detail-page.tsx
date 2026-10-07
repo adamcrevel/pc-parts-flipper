@@ -168,7 +168,7 @@ export function PurchaseDetailPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">{part.description}</td>
-                    <td className="px-4 py-3">${part.estimatedResaleValue.toFixed(2)}</td>
+                    <td className="px-4 py-3">{part.estimatedResaleValue === null ? <span className="text-muted-foreground">not yet priced</span> : `$${part.estimatedResaleValue.toFixed(2)}`}</td>
                   </tr>
                 ))}
               </tbody>

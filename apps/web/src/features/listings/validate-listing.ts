@@ -59,8 +59,10 @@ export function validateExpectedPartRows(rows: ExpectedPartRow[]): ExpectedPartR
     const errors: ExpectedPartRowErrors = {};
     if (row.componentCategory === '') errors.componentCategory = 'Category is required.';
     if (row.description.trim().length === 0) errors.description = 'Description is required.';
-    if (row.estimatedResaleValue.trim().length === 0 || isInvalidNonNegativeNumber(row.estimatedResaleValue)) {
-      errors.estimatedResaleValue = 'Estimated resale value is required and must be a non-negative number.';
+    // Blank is valid — "not yet priced" is a real state (every AI
+    // suggestion starts this way), distinct from an invalid entry.
+    if (row.estimatedResaleValue.trim().length > 0 && isInvalidNonNegativeNumber(row.estimatedResaleValue)) {
+      errors.estimatedResaleValue = 'Estimated resale value must be a non-negative number.';
     }
     return errors;
   });

@@ -540,8 +540,8 @@ describe('Identify Parts mount resume', () => {
   });
 });
 
-describe('Identify Parts draft state never reaches the backend', () => {
-  it('submits the AI-originated rows as plain ExpectedPartInputs, with no client-only draft fields', async () => {
+describe('Identify Parts results reach the backend, with draft-only fields stripped', () => {
+  it('auto-saves the AI-originated rows as plain ExpectedPartInputs the moment the job completes, with no client-only draft fields and no manual submit', async () => {
     fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
     enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
     fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, twoPartResponse.notes));
@@ -551,23 +551,13 @@ describe('Identify Parts draft state never reaches the backend', () => {
 
     await act(async () => findIdentifyButton(el)!.click());
 
+    // Advance to poll and complete the job — the auto-save fires here, with
+    // no form submit and no filling in a price: the AI never prices parts,
+    // and a not-yet-priced row is valid to save (estimatedResaleValue is
+    // nullable), so this is the realistic, common case, not an edge one.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
-
-    // The AI is not asked to price parts, so the user must supply the two
-    // appended rows' values before the form will validate — which is also
-    // the only realistic route to submitting a suggestion at all.
-    const valueInputs = (Array.from(el.querySelectorAll('input')) as HTMLInputElement[]).filter((input) =>
-      input.getAttribute('aria-label')?.endsWith('estimated resale value'),
-    );
-    await act(async () => {
-      setValue(valueInputs[1], '300');
-      setValue(valueInputs[2], '70');
-    });
-
-    const form = el.querySelector('form') as HTMLFormElement;
-    await act(async () => form.requestSubmit());
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
     const payload = onSubmit.mock.calls[0][0] as CreateListingInput;
@@ -577,11 +567,13 @@ describe('Identify Parts draft state never reaches the backend', () => {
     // request body. toEqual on the whole array is what notices that.
     // Both brand/partNumber shapes appear here: the GPU row sends the
     // identified pair, the CPU and PSU rows send null (not '') for fields
-    // nobody filled in.
+    // nobody filled in — and both AI rows send a null estimatedResaleValue
+    // (not 0, not a validation failure), proving the not-yet-priced state
+    // survives the trip into the request body unchanged.
     expect(payload.expectedParts).toEqual([
       { componentCategory: 'CPU', brand: null, partNumber: null, description: 'Ryzen 5 5600X', estimatedResaleValue: 90, identityCandidates: [] },
-      { componentCategory: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3070', description: 'triple-fan cooler visible', estimatedResaleValue: 300, identityCandidates: [] },
-      { componentCategory: 'PSU', brand: null, partNumber: null, description: 'Corsair RM750', estimatedResaleValue: 70, identityCandidates: [] },
+      { componentCategory: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3070', description: 'triple-fan cooler visible', estimatedResaleValue: null, identityCandidates: [] },
+      { componentCategory: 'PSU', brand: null, partNumber: null, description: 'Corsair RM750', estimatedResaleValue: null, identityCandidates: [] },
     ]);
   });
 
