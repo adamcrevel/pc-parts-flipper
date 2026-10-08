@@ -199,6 +199,13 @@ export function IdentifyPartsButton({ listing, onPartsSaved }: IdentifyPartsButt
     }
 
     const id = listing.id;
+    // Guards resumeJob's setState calls below against firing after this
+    // effect's own cleanup has already run (unmount, or `listing.id`
+    // changing, before fetchLatestIdentifyPartsJob resolves) — without it,
+    // an in-flight resume that outlives the component throws "setState on
+    // an unmounted component" (surfaces as an unhandled rejection in a
+    // test that mounts and immediately unmounts, e.g. listing-list.test.tsx).
+    let cancelled = false;
 
     async function resumeJob() {
       setIdentifyError(null);
@@ -207,7 +214,7 @@ export function IdentifyPartsButton({ listing, onPartsSaved }: IdentifyPartsButt
 
       try {
         const latest = await fetchLatestIdentifyPartsJob(id);
-        if (latest === null) {
+        if (cancelled || latest === null) {
           return;
         }
 
@@ -222,13 +229,16 @@ export function IdentifyPartsButton({ listing, onPartsSaved }: IdentifyPartsButt
           startPolling(latest.id);
         }
       } catch (err) {
-        setIdentifyError(err instanceof ApiError ? err.message : 'Failed to resume identify job.');
+        if (!cancelled) {
+          setIdentifyError(err instanceof ApiError ? err.message : 'Failed to resume identify job.');
+        }
       }
     }
 
     resumeJob();
 
     return () => {
+      cancelled = true;
       clearPolling();
       clearPricingPolling();
     };
