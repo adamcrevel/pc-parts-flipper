@@ -2,6 +2,7 @@ import type { ListingSummary, Source } from '@pc-parts-flipper/shared';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { EbayScanBadge } from '@/features/listings/ebay-scan-badge';
+import { NonWorkingBadge } from '@/features/listings/non-working-badge';
 
 interface ListingsQueueTableProps {
   listings: ListingSummary[];
@@ -47,6 +48,7 @@ export function ListingsQueueTable({ listings, sourcesById, onAccept, onReject, 
                 <div className="flex items-center gap-2">
                   <span>{listing.title}</span>
                   {listing.externalItemId !== null && <EbayScanBadge />}
+                  {listing.nonWorking && <NonWorkingBadge />}
                 </div>
               </td>
               <td className="px-4 py-3">{sourcesById.get(listing.sourceId)?.name ?? 'Unknown source'}</td>

@@ -247,4 +247,89 @@ describe('Part Price Cache — propagateCachedPriceToExpectedParts', () => {
     const untouched = await db.getExpectedPartById(id);
     expect(untouched?.estimatedResaleValue).toBe(999);
   });
+
+  // MF-2 regression (Req 13/15's durability guarantee): a non-working
+  // part's $1 auto-assignment must survive even when an UNRELATED working
+  // Listing's real AI-researched price lands on the exact same
+  // (category, brand, partNumber) combo and gets propagated. Before the
+  // fix, the UPDATE's WHERE clause matched both rows (both price_source
+  // 'auto'), silently overwriting the non-working part's $1 with the
+  // working part's real price.
+  it("does not overwrite a non-working part's $1 when a different working part on the same combo gets a real price propagated", async () => {
+    const nonWorkingSource = await db.createSource({
+      name: `Test Source ${Math.random()}`,
+      platformType: 'other',
+      url: null,
+      notes: null,
+    });
+    const nonWorkingListing = await db.createListing({
+      sourceId: nonWorkingSource.id,
+      title: 'Non-working Listing',
+      description: null,
+      listingUrl: null,
+      askingPrice: 100,
+      listingDate: new Date().toISOString(),
+      acquisitionFees: 0,
+      photoPaths: [],
+      externalSource: null,
+      externalItemId: null,
+    });
+    const nonWorkingPart = await db.createExpectedPart({
+      listingId: nonWorkingListing.id,
+      componentCategory: 'GPU',
+      brand: 'AMD',
+      partNumber: 'RX 6800 XT',
+      description: 'Non-working GPU',
+      estimatedResaleValue: 1,
+      identityCandidates: [],
+      aiConfidence: null,
+      aiSource: null,
+      priceSource: 'auto',
+      workingStatus: 'non_working',
+    });
+
+    // An unrelated, working part on a DIFFERENT Listing sharing the exact
+    // same combo -- the other half of MF-2's named scenario.
+    const workingSource = await db.createSource({
+      name: `Test Source ${Math.random()}`,
+      platformType: 'other',
+      url: null,
+      notes: null,
+    });
+    const workingListing = await db.createListing({
+      sourceId: workingSource.id,
+      title: 'Working Listing',
+      description: null,
+      listingUrl: null,
+      askingPrice: 100,
+      listingDate: new Date().toISOString(),
+      acquisitionFees: 0,
+      photoPaths: [],
+      externalSource: null,
+      externalItemId: null,
+    });
+    const workingPart = await db.createExpectedPart({
+      listingId: workingListing.id,
+      componentCategory: 'GPU',
+      brand: 'AMD',
+      partNumber: 'RX 6800 XT',
+      description: 'Working GPU',
+      estimatedResaleValue: 50,
+      identityCandidates: [],
+      aiConfidence: null,
+      aiSource: null,
+      priceSource: 'auto',
+      workingStatus: 'working',
+    });
+
+    await db.propagateCachedPriceToExpectedParts('GPU', 'AMD', 'RX 6800 XT', 275);
+
+    const nonWorkingAfter = await db.getExpectedPartById(nonWorkingPart.id);
+    const workingAfter = await db.getExpectedPartById(workingPart.id);
+
+    // The working part legitimately receives the real researched price...
+    expect(workingAfter?.estimatedResaleValue).toBe(275);
+    // ...but the non-working part's $1 override must survive untouched.
+    expect(nonWorkingAfter?.estimatedResaleValue).toBe(1);
+  });
 });

@@ -57,6 +57,8 @@ export interface ExpectedPart {
   // and the row is never auto-claimed or cache-overwritten again. Optional
   // for the same backward-fixture-compatibility reason as the pair above.
   priceSource?: 'auto' | 'manual' | null;
+  /** The working/non-working status of this component. */
+  workingStatus: 'working' | 'non_working';
   createdAt: string;
   updatedAt: string;
 }
@@ -78,6 +80,8 @@ export interface Listing {
   externalSource: string | null;
   /** Marketplace-native item id, used with externalSource to dedupe re-scans against already-ingested Listings. */
   externalItemId: string | null;
+  /** Whether this listing's computer cannot be powered on or has non-functional components (server-only field, never from request body). */
+  nonWorking: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -88,9 +92,9 @@ export interface Listing {
  * neither side of the HTTP boundary needs to recompute it from raw figures.
  */
 export interface ListingComparison {
-  totalExpectedResaleValue: number;
+  totalEstimatedResaleValue: number;
   totalCost: number;
-  difference: number;
+  margin: number;
 }
 
 /** `GET /api/listings` row shape: a Listing plus its comparison (Req 3, 12). */
@@ -103,12 +107,12 @@ export type ListingDetail = ListingSummary & { expectedParts: ExpectedPart[] };
 /** `GET /api/listings` response: one page of Listing summaries plus the total count matching the filters, so apps/web can render pagination controls without an unbounded fetch (Req 12, 15). */
 export interface ListListingsResponse {
   listings: ListingSummary[];
-  total: number;
+  totalCount: number;
 }
 
 /** `POST /api/listings/:id/accept` response: the now-accepted Listing plus the id of the Purchase created from it (Req 4). A full Purchase shape isn't defined here yet — T8 introduces it alongside the Purchases API this id will then resolve against. */
 export interface AcceptListingResponse {
-  listing: ListingDetail;
+  listing: Listing;
   purchaseId: string;
 }
 
@@ -137,6 +141,8 @@ export interface ExpectedPartInput {
   // unlike the required pair above: a client built before this feature
   // simply omits it, which reads the same as null — undecided.
   priceSource?: 'auto' | 'manual' | null;
+  /** The working/non-working status of this component; omitted defaults to 'working'. */
+  workingStatus?: 'working' | 'non_working' | null;
 }
 
 /**

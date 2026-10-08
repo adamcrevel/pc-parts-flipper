@@ -104,9 +104,11 @@ export async function triggerPriceLookups(expectedParts: ExpectedPart[]): Promis
   for (const part of expectedParts) {
     // Node B: eligible only when fully identified (brand *and* partNumber —
     // a half-identified part cannot be researched, and neither is ever
-    // guessed) and carrying no price of its own. A part that already has an
-    // estimated resale value is left alone, whoever put it there.
-    if (part.brand === null || part.partNumber === null || part.estimatedResaleValue !== null) {
+    // guessed), carrying no price of its own, and in working condition. A
+    // non-working part is excluded from the pricing pipeline directly by its
+    // status. A part that already has an estimated resale value is left
+    // alone, whoever put it there.
+    if (part.brand === null || part.partNumber === null || part.estimatedResaleValue !== null || part.workingStatus !== 'working') {
       continue;
     }
     combos.set(`${part.componentCategory}\u0000${part.brand}\u0000${part.partNumber}`, {

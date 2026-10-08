@@ -39,6 +39,8 @@ export const MAX_IDENTITY_CANDIDATES = 4;
  *   the seller's own spec list differently from one recognized in a photo.
  * - The raw-JSON-only instruction exists because anything else (a code fence,
  *   a sentence of preamble) has to be stripped back off by the parser.
+ * - For non-working listings, the workingStatus rule asks the model to assess
+ *   whether each part is itself broken or working, for per-part diagnostics.
  */
 export function buildIdentificationPrompt(listing: Listing): string {
   const categoryList = ALLOWED_CATEGORIES.join(', ');
@@ -46,6 +48,28 @@ export function buildIdentificationPrompt(listing: Listing): string {
   // model the field was empty rather than leaving a blank it might read as a
   // truncated prompt.
   const description = listing.description?.trim() ? listing.description : '(none provided)';
+
+  const rules = [
+    `1. The "category" field MUST be exactly one of these values, and nothing else: ${categoryList}. If a component does not fit any of the specific values, use "Other" and explain what it is in the description.`,
+    '2. Report the component\'s identity as two separate fields: "brand" is the manufacturer (e.g. "NVIDIA", "Corsair", "Samsung") and "partNumber" is the specific model or part number (e.g. "RTX 3060", "MZ-V8V1T0B", "Vengeance LPX 16GB"). Use JSON null for either one you cannot confidently support from the listing text or the photos. Do NOT guess, do NOT infer a likely brand from the category, and do NOT put a placeholder such as "Unknown" or "N/A" in these fields — null is the correct answer when you do not know.',
+    '3. The "description" field is for what "brand" and "partNumber" do not already say: condition, quantity, capacity/speed where it is not part of the model name, and any notable detail. Do NOT restate the brand or model number there as a sentence.',
+    '4. Be honest and conservative. If you cannot fully narrow a part down, say exactly what you can tell and what you cannot in its description (e.g. "DDR4 DIMMs, 2 sticks, capacity not legible"), leave "brand"/"partNumber" null for whichever you cannot establish, and lower its confidence. Do NOT guess a specific model, capacity or speed you cannot actually support from the listing text or the photos. An honest partial identification is far more useful than a confident wrong one.',
+    '5. For every part, state what your identification is based on in the "source" field: "text" if it came from the listing title/description only, "image" if it came from a photo only, or "both" if the text and a photo agree.',
+    '6. Set "confidence" to "high", "medium" or "low" reflecting how sure you are of that specific part.',
+    '7. Use the "notes" field for anything that does not belong to one specific part — caveats, data-quality warnings, or observations about the listing itself (for example if the photos look like stock/marketing images rather than the actual item being sold). Use an empty string if you have nothing to add.',
+    `8. If you cannot settle on one brand but can narrow it down to a short list of specific, genuinely plausible brands, report them in an "identityCandidates" array of {"brand","partNumber"} pairs, ranked most-to-least likely and capped at ${MAX_IDENTITY_CANDIDATES} entries — fill in "partNumber" per candidate where you know it, else null. The same applies when the brand is known but the exact model/part number is only narrowed to a short list: repeat that brand on every candidate and vary "partNumber". Do NOT pad the list by repeating the same pair, and do NOT include a candidate identical to the "brand"/"partNumber" you already reported at the top level. Leave "identityCandidates" as an empty array when there is no real lead to narrow from — never invent…`,
+  ];
+
+  // Add working-status rule only when the listing is marked non-working.
+  if (listing.nonWorking) {
+    rules.push(
+      '9. For each part, set the "workingStatus" field to reflect whether this specific part is broken or working. Use "non_working" if the listing text specifically says or clearly implies that this exact part does not work. Use "working" if the text specifically clears this part (e.g. "GPU tested working"), OR if the text calls out a different part as broken while saying nothing against this one. Use "unclear" if nothing in the text gives you a clear signal either way for this specific part.',
+    );
+  }
+
+  const jsonExample = listing.nonWorking
+    ? '{"parts":[{"category":"GPU","brand":"NVIDIA","partNumber":"RTX 3060","description":"12GB, tested working, light dust","confidence":"high","source":"both","identityCandidates":[],"workingStatus":"working"},{"category":"RAM","brand":null,"partNumber":null,"description":"2 DDR4 DIMMs, capacity not legible in photos","confidence":"low","source":"image","identityCandidates":[],"workingStatus":"unclear"},{"category":"GPU","brand":"NVIDIA","partNumber":null,"description":"single fan, blower-style cooler, one fan not spinning","confidence":"medium","source":"image","identityCandidates":[{"brand":"NVIDIA","partNumber":"GTX 1650"},{"brand":"NVIDIA","partNumber":"GTX 1650 Super"}],"workingStatus":"non_working"}],"notes":"..."}'
+    : '{"parts":[{"category":"GPU","brand":"NVIDIA","partNumber":"RTX 3060","description":"12GB, tested working, light dust","confidence":"high","source":"both","identityCandidates":[]},{"category":"RAM","brand":null,"partNumber":null,"description":"2 DDR4 DIMMs, capacity not legible in photos","confidence":"low","source":"image","identityCandidates":[]},{"category":"GPU","brand":"NVIDIA","partNumber":null,"description":"single fan, blower-style cooler","confidence":"medium","source":"image","identityCandidates":[{"brand":"NVIDIA","partNumber":"GTX 1650"},{"brand":"NVIDIA","partNumber":"GTX 1650 Super"}]}],"notes":"..."}';
 
   return [
     'You are helping identify the individual PC components contained in a used pre-built computer that is for sale.',
@@ -61,16 +85,9 @@ export function buildIdentificationPrompt(listing: Listing): string {
     'For each component you can identify, report it as one part.',
     '',
     'RULES:',
-    `1. The "category" field MUST be exactly one of these values, and nothing else: ${categoryList}. If a component does not fit any of the specific values, use "Other" and explain what it is in the description.`,
-    '2. Report the component\'s identity as two separate fields: "brand" is the manufacturer (e.g. "NVIDIA", "Corsair", "Samsung") and "partNumber" is the specific model or part number (e.g. "RTX 3060", "MZ-V8V1T0B", "Vengeance LPX 16GB"). Use JSON null for either one you cannot confidently support from the listing text or the photos. Do NOT guess, do NOT infer a likely brand from the category, and do NOT put a placeholder such as "Unknown" or "N/A" in these fields — null is the correct answer when you do not know.',
-    '3. The "description" field is for what "brand" and "partNumber" do not already say: condition, quantity, capacity/speed where it is not part of the model name, and any notable detail. Do NOT restate the brand or model number there as a sentence.',
-    '4. Be honest and conservative. If you cannot fully narrow a part down, say exactly what you can tell and what you cannot in its description (e.g. "DDR4 DIMMs, 2 sticks, capacity not legible"), leave "brand"/"partNumber" null for whichever you cannot establish, and lower its confidence. Do NOT guess a specific model, capacity or speed you cannot actually support from the listing text or the photos. An honest partial identification is far more useful than a confident wrong one.',
-    '5. For every part, state what your identification is based on in the "source" field: "text" if it came from the listing title/description only, "image" if it came from a photo only, or "both" if the text and a photo agree.',
-    '6. Set "confidence" to "high", "medium" or "low" reflecting how sure you are of that specific part.',
-    '7. Use the "notes" field for anything that does not belong to one specific part — caveats, data-quality warnings, or observations about the listing itself (for example if the photos look like stock/marketing images rather than the actual item being sold). Use an empty string if you have nothing to add.',
-    `8. If you cannot settle on one brand but can narrow it down to a short list of specific, genuinely plausible brands, report them in an "identityCandidates" array of {"brand","partNumber"} pairs, ranked most-to-least likely and capped at ${MAX_IDENTITY_CANDIDATES} entries — fill in "partNumber" per candidate where you know it, else null. The same applies when the brand is known but the exact model/part number is only narrowed to a short list: repeat that brand on every candidate and vary "partNumber". Do NOT pad the list by repeating the same pair, and do NOT include a candidate identical to the "brand"/"partNumber" you already reported at the top level. Leave "identityCandidates" as an empty array when there is no real lead to narrow from — never invent a spread of guesses just to fill it.`,
+    ...rules,
     '',
     'RESPOND WITH ONLY RAW JSON matching exactly this shape. No markdown, no code fences, no commentary before or after:',
-    '{"parts":[{"category":"GPU","brand":"NVIDIA","partNumber":"RTX 3060","description":"12GB, tested working, light dust","confidence":"high","source":"both","identityCandidates":[]},{"category":"RAM","brand":null,"partNumber":null,"description":"2 DDR4 DIMMs, capacity not legible in photos","confidence":"low","source":"image","identityCandidates":[]},{"category":"GPU","brand":"NVIDIA","partNumber":null,"description":"single fan, blower-style cooler","confidence":"medium","source":"image","identityCandidates":[{"brand":"NVIDIA","partNumber":"GTX 1650"},{"brand":"NVIDIA","partNumber":"GTX 1650 Super"}]}],"notes":"..."}',
+    jsonExample,
   ].join('\n');
 }

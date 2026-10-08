@@ -276,6 +276,8 @@ export const ALTER_STATEMENTS: readonly string[] = [
   // clearing one the pipeline had filled in — and the row must never be
   // auto-claimed or auto-overwritten again.
   `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS price_source VARCHAR`,
+  `ALTER TABLE listings ADD COLUMN IF NOT EXISTS non_working BOOLEAN DEFAULT false`,
+  `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS working_status VARCHAR DEFAULT 'working'`,
 ];
 
 // -- Phase 4: indexes ------------------------------------------------------

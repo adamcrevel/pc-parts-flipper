@@ -82,6 +82,7 @@ async function importCandidateIfNew(
       photoPaths: [],
       externalSource: connector.platformType,
       externalItemId: candidate.externalItemId,
+      nonWorking: candidate.nonWorking,
     });
     await attachCandidatePhotos(listing.id, candidate);
     return true;

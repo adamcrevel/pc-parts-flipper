@@ -31,7 +31,8 @@ interface EbayItemSummary {
   /** Primary listing photo. Absent on the rare item listed without any image. */
   image?: { imageUrl: string };
   /** Up to 7 further listing photos, same shape and same CDN size as `image`. */
-  additionalImages?: Array<{ imageUrl: string }>;
+  /** eBay's condition identifier, e.g. '3000' (new), '4000' (refurbished), '5000' (used), '6000' (for parts), '7000' (parts only / non-working). */
+  conditionId?: string;
 }
 
 // Shape of a Browse API single-item detail response
@@ -171,14 +172,17 @@ function mapItemSummary(item: EbayItemSummary): CandidateListing {
     askingPrice: Number(item.price.value),
     listingDate: item.itemCreationDate.slice(0, 10),
     imageUrls: collectImageUrls(item),
+    nonWorking: item.conditionId === '7000',
   };
 }
 
 /**
- * Runs one Browse API search for a single query term, applying the
- * optional maxPrice ceiling as a `filter=price:[0..maxPrice],priceCurrency:USD`
- * query param when set. Throws AppError built from eBay's own error message
- * on a non-200 response.
+ * Runs one Browse API search for a single query term. Always applies a
+ * `filter` param with conditionIds:{3000|4000|5000|6000|7000} (working
+ * conditions only, excluding 7000 in future filtering). When maxPrice is
+ * set, combines it into one comma-joined filter value with the price segment:
+ * `filter=conditionIds:{...},price:[0..maxPrice],priceCurrency:USD`. Throws
+ * AppError built from eBay's own error message on a non-200 response.
  */
 async function searchOneQuery(
   host: string,
@@ -187,8 +191,11 @@ async function searchOneQuery(
   maxPrice: number | undefined,
 ): Promise<CandidateListing[]> {
   const params = new URLSearchParams({ q: query, limit: '50' });
+  const conditionIdFilter = 'conditionIds:{3000|4000|5000|6000|7000}';
   if (maxPrice !== undefined) {
-    params.set('filter', `price:[0..${maxPrice}],priceCurrency:USD`);
+    params.set('filter', `${conditionIdFilter},price:[0..${maxPrice}],priceCurrency:USD`);
+  } else {
+    params.set('filter', conditionIdFilter);
   }
 
   const response = await fetch(`https://${host}/buy/browse/v1/item_summary/search?${params.toString()}`, {

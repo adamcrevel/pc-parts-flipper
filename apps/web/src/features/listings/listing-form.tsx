@@ -6,6 +6,7 @@ import { ErrorBanner } from '@/components/error-banner';
 import { ApiError } from '@/lib/api-client';
 import { EbayScanBadge } from '@/features/listings/ebay-scan-badge';
 import { ExpectedPartsEditor, type ExpectedPartRow, type ExpectedPartRowErrors } from '@/features/listings/expected-parts-editor';
+import { NonWorkingBadge } from '@/features/listings/non-working-badge';
 import { ListingComparisonSummary } from '@/features/listings/listing-comparison-summary';
 import { ListingFields } from '@/features/listings/listing-fields';
 import { IdentifyPartsButton } from '@/features/listings/identify-parts-button';
@@ -115,6 +116,7 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
         aiConfidence: row.aiSuggested ? (row.aiConfidence ?? null) : null,
         aiSource: row.aiSuggested ? (row.aiSource ?? null) : null,
         priceSource: row.priceSource ?? null,
+        workingStatus: row.workingStatus ?? null,
       }));
 
     const result = await onSubmit({
@@ -169,6 +171,7 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
       {initialValue?.externalItemId !== null && initialValue?.externalItemId !== undefined && (
         <EbayScanBadge listingUrl={initialValue.listingUrl} />
       )}
+      {initialValue?.nonWorking && <NonWorkingBadge />}
 
       <CollapsibleSection
         trigger="Listing Details"
@@ -195,7 +198,7 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
         />
       </CollapsibleSection>
 
-      <ExpectedPartsEditor rows={rows} rowErrors={rowErrors} onChange={setRows} />
+      <ExpectedPartsEditor rows={rows} rowErrors={rowErrors} onChange={setRows} listingNonWorking={initialValue?.nonWorking} />
 
       {/* Takes `saved` as-is and renders its own save-first hint while it's undefined, so there's no create/edit branch to carry here. */}
       <IdentifyPartsButton listing={saved} onPartsSaved={handlePartsSaved} />

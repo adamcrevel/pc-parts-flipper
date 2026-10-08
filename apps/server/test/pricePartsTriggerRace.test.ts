@@ -83,6 +83,7 @@ function partFixture(partNumber: string, overrides: Partial<ExpectedPart> = {}):
     aiConfidence: 'high',
     aiSource: 'text',
     priceSource: 'auto',
+    workingStatus: 'working',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,

@@ -44,6 +44,9 @@ export interface ExpectedPartRow {
   // Round-trips through listing-form-state.ts's expectedPartToRow and
   // listing-form.tsx's persistListing — never guessed client-side.
   priceSource?: 'auto' | 'manual';
+  // The working/non-working status of this component. Round-trips through
+  // listing-form-state.ts's expectedPartToRow and listing-form.tsx's persistListing.
+  workingStatus?: 'working' | 'non_working';
   // How sure the model was, and whether it read the listing text, the
   // photos, or both. Shown as a caption beside the badge so that
   // provenance doesn't have to pollute `description`, which is the value
@@ -93,6 +96,9 @@ interface ExpectedPartsEditorProps {
   rows: ExpectedPartRow[];
   rowErrors: ExpectedPartRowErrors[];
   onChange: (rows: ExpectedPartRow[]) => void;
+  // Whether the listing has nonWorking status, gating visibility of
+  // the per-row working-status control.
+  listingNonWorking?: boolean;
 }
 
 /**
@@ -101,7 +107,7 @@ interface ExpectedPartsEditorProps {
  * Split out of listing-form.tsx to keep that file under the ~200-line
  * standing check and because this row-editing logic is self-contained.
  */
-export function ExpectedPartsEditor({ rows, rowErrors, onChange }: ExpectedPartsEditorProps) {
+export function ExpectedPartsEditor({ rows, rowErrors, onChange, listingNonWorking }: ExpectedPartsEditorProps) {
   // Two independent triggers claim this row's price for the user, so the
   // server can tell "never claimed" apart from "typed then cleared":
   // directly editing the price field itself — typed into OR cleared —
@@ -142,6 +148,33 @@ export function ExpectedPartsEditor({ rows, rowErrors, onChange }: ExpectedParts
   // field.
   function toggleRowCollapsed(index: number) {
     onChange(rows.map((row, i) => (i === index ? { ...row, collapsed: !row.collapsed } : row)));
+  }
+
+  // Handles working-status control selection: sets workingStatus and, if the
+  // row's price is not manually-claimed, resets it to undecided (clearing
+  // estimatedResaleValue and priceSource). Unlike updateRow's
+  // "any edit claims manual ownership" behavior, changing working status is
+  // the inverse: a price reset on condition change. If the user has already
+  // manually set this row's price, touching the status doesn't re-reset it
+  // — they've taken ownership. Re-clicking the already-active status is a
+  // no-op — the status hasn't actually changed, so a real already-researched
+  // price must not be cleared.
+  function updateWorkingStatus(index: number, newStatus: 'working' | 'non_working') {
+    if (rows[index].workingStatus === newStatus) return;
+    onChange(
+      rows.map((row, i) =>
+        i === index
+          ? {
+              ...row,
+              workingStatus: newStatus,
+              // Preserve manually-set prices; reset auto/undecided prices
+              ...(row.priceSource === 'manual'
+                ? {}
+                : { estimatedResaleValue: '', priceSource: undefined }),
+            }
+          : row,
+      ),
+    );
   }
 
   return (
@@ -232,6 +265,38 @@ export function ExpectedPartsEditor({ rows, rowErrors, onChange }: ExpectedParts
 
                 {row.identityCandidates.length > 0 && (
                   <IdentityCandidatesPicker candidates={row.identityCandidates} brand={row.brand} partNumber={row.partNumber} onPick={(candidate) => pickIdentityCandidate(index, candidate)} />
+                )}
+
+                {listingNonWorking && (
+                  <div className="space-y-1">
+                    <label className="block text-sm font-medium">Working Status</label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => updateWorkingStatus(index, 'working')}
+                        className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${
+                          row.workingStatus === 'working'
+                            ? 'bg-emerald-600 text-white'
+                            : 'border border-input bg-background text-foreground hover:bg-muted'
+                        }`}
+                        aria-pressed={row.workingStatus === 'working'}
+                      >
+                        Working
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateWorkingStatus(index, 'non_working')}
+                        className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${
+                          row.workingStatus === 'non_working'
+                            ? 'bg-amber-600 text-white'
+                            : 'border border-input bg-background text-foreground hover:bg-muted'
+                        }`}
+                        aria-pressed={row.workingStatus === 'non_working'}
+                      >
+                        Not Working
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 <div className="space-y-1">

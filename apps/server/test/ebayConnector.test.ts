@@ -65,7 +65,7 @@ describe('ebayConnector.search (T5, Req 6)', () => {
     expect(String(searchCalls[2][0])).toContain('q=ryzen+build');
   });
 
-  it('includes a price filter only when maxPrice is set', async () => {
+  it('always includes condition filter, combined with price filter when maxPrice is set', async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.includes('/oauth2/token')) {
         return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
@@ -75,14 +75,19 @@ describe('ebayConnector.search (T5, Req 6)', () => {
 
     const connector = getConnectorForPlatform('ebay');
 
+    // With maxPrice: filter should have both conditionIds and price segments
     await connector.search({ queries: ['gaming pc'], maxPrice: 300 });
     const [withMaxPriceUrl] = fetchMock.mock.calls.find(([url]) => String(url).includes('/item_summary/search'))!;
-    expect(String(withMaxPriceUrl)).toContain('filter=price%3A%5B0..300%5D%2CpriceCurrency%3AUSD');
+    const withMaxPriceStr = String(withMaxPriceUrl);
+    expect(withMaxPriceStr).toContain('filter=conditionIds%3A%7B3000%7C4000%7C5000%7C6000%7C7000%7D%2Cprice%3A%5B0..300%5D%2CpriceCurrency%3AUSD');
 
+    // Without maxPrice: filter should have only conditionIds segment
     fetchMock.mockClear();
     await connector.search({ queries: ['gaming pc'] });
     const [withoutMaxPriceUrl] = fetchMock.mock.calls.find(([url]) => String(url).includes('/item_summary/search'))!;
-    expect(String(withoutMaxPriceUrl)).not.toContain('filter=');
+    const withoutMaxPriceStr = String(withoutMaxPriceUrl);
+    expect(withoutMaxPriceStr).toContain('filter=conditionIds%3A%7B3000%7C4000%7C5000%7C6000%7C7000%7D');
+    expect(withoutMaxPriceStr).not.toContain('price%3A');
   });
 
   it('throws an AppError carrying eBay\'s own error message on a failed token call', async () => {
@@ -175,7 +180,32 @@ describe('ebayConnector.search (T5, Req 6)', () => {
       // returns without photos must still map to an empty array, never
       // undefined, so callers never branch on its presence.
       imageUrls: [],
+      // Base fixture has no conditionId, so defaults to false
+      nonWorking: false,
     });
+  });
+
+  it('sets nonWorking to true only when conditionId is "7000", false for others or undefined', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
+      }
+      // Test three items with different condition IDs
+      const items = [
+        itemFixture({ conditionId: '3000' }), // New — should be false
+        itemFixture({ conditionId: '7000' }), // Parts only / non-working — should be true
+        itemFixture(), // No conditionId — should be false
+      ];
+      return new Response(JSON.stringify({ itemSummaries: items }), { status: 200 });
+    });
+
+    const connector = getConnectorForPlatform('ebay');
+    const results = await connector.search({ queries: ['gaming pc'] });
+
+    expect(results).toHaveLength(3);
+    expect(results[0].nonWorking).toBe(false); // conditionId '3000'
+    expect(results[1].nonWorking).toBe(true); // conditionId '7000'
+    expect(results[2].nonWorking).toBe(false); // no conditionId
   });
 
   // Photo capture (Req 2): the search response already carries every image

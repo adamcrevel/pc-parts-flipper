@@ -20,6 +20,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ComponentCategory, Listing } from '../src/db/types.js';
+import type { AiIdentifiedPart } from '@pc-parts-flipper/shared';
 import type * as PromptModule from '../src/ai/identificationPrompt.js';
 import type * as ParserModule from '../src/ai/identificationParser.js';
 import type * as RunnerModule from '../src/ai/ompRunner.js';
@@ -62,6 +63,22 @@ function listingFixture(overrides: Partial<Listing> = {}): Listing {
     externalItemId: null,
     createdAt: '2026-09-01T00:00:00.000Z',
     updatedAt: '2026-09-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+// Builds an AiIdentifiedPart fixture for resolveWorkingStatuses tests; only
+// `workingStatus` varies between cases, the rest is filler that satisfies the
+// type.
+function partFixture(overrides: Partial<AiIdentifiedPart> = {}): AiIdentifiedPart {
+  return {
+    category: 'GPU',
+    brand: 'NVIDIA',
+    partNumber: 'RTX 3060',
+    description: '',
+    confidence: 'high',
+    source: 'text',
+    identityCandidates: [],
     ...overrides,
   };
 }
@@ -214,6 +231,25 @@ describe('buildIdentificationPrompt', () => {
     // null case — the example is what the model actually copies.
     expect(text).toContain('"brand":"NVIDIA"');
     expect(text).toContain('"brand":null');
+  });
+
+  it('appends the workingStatus rule and field only when the listing is marked non-working', () => {
+    const text = prompt.buildIdentificationPrompt(listingFixture({ nonWorking: true }));
+
+    expect(text).toContain('"workingStatus"');
+    expect(text).toContain('Use "non_working" if the listing text specifically says or clearly implies that this exact part does not work');
+    expect(text).toContain('Use "unclear" if nothing in the text gives you a clear signal');
+    // The JSON example itself must carry the field too, since the example is
+    // what the model actually copies.
+    expect(text).toContain('"workingStatus":"working"');
+    expect(text).toContain('"workingStatus":"non_working"');
+  });
+
+  it('omits the workingStatus rule and field entirely for a non-flagged listing', () => {
+    const text = prompt.buildIdentificationPrompt(listingFixture({ nonWorking: false }));
+
+    expect(text).not.toContain('workingStatus');
+    expect(text).not.toContain('non_working');
   });
 });
 
@@ -515,6 +551,78 @@ describe('parseIdentificationResponse identityCandidates', () => {
       { brand: 'NVIDIA', partNumber: 'RTX 3060' },
       { brand: 'EVGA', partNumber: 'RTX 3060' },
     ]);
+  });
+});
+
+describe('resolveWorkingStatuses', () => {
+  it('resolves every part to non_working when every signal is unclear', () => {
+    const parts = [
+      partFixture({ workingStatus: 'unclear' }),
+      partFixture({ workingStatus: 'unclear' }),
+      partFixture({ workingStatus: 'unclear' }),
+    ];
+
+    const result = parser.resolveWorkingStatuses(parts);
+
+    expect(result.get(0)).toBe('non_working');
+    expect(result.get(1)).toBe('non_working');
+    expect(result.get(2)).toBe('non_working');
+  });
+
+  it('resolves every part to non_working when workingStatus is entirely absent, same as explicit unclear', () => {
+    const parts = [partFixture(), partFixture(), partFixture()];
+    expect(parts[0].workingStatus).toBeUndefined();
+
+    const result = parser.resolveWorkingStatuses(parts);
+
+    expect(result.get(0)).toBe('non_working');
+    expect(result.get(1)).toBe('non_working');
+    expect(result.get(2)).toBe('non_working');
+  });
+
+  it('when one part has a clear non_working signal, that part stays non_working and the unclear rest resolve to working', () => {
+    const parts = [
+      partFixture({ workingStatus: 'non_working' }),
+      partFixture({ workingStatus: 'unclear' }),
+      partFixture({ workingStatus: 'unclear' }),
+    ];
+
+    const result = parser.resolveWorkingStatuses(parts);
+
+    expect(result.get(0)).toBe('non_working');
+    expect(result.get(1)).toBe('working');
+    expect(result.get(2)).toBe('working');
+  });
+
+  it('a mix including an explicit working signal: working stays working, unclear resolves to working, non_working stays non_working', () => {
+    const parts = [
+      partFixture({ workingStatus: 'working' }),
+      partFixture({ workingStatus: 'unclear' }),
+      partFixture({ workingStatus: 'non_working' }),
+    ];
+
+    const result = parser.resolveWorkingStatuses(parts);
+
+    expect(result.get(0)).toBe('working');
+    expect(result.get(1)).toBe('working');
+    expect(result.get(2)).toBe('non_working');
+  });
+
+  it('single part, unclear signal, resolves to non_working (the all-unclear case degenerates to one part)', () => {
+    const parts = [partFixture({ workingStatus: 'unclear' })];
+
+    const result = parser.resolveWorkingStatuses(parts);
+
+    expect(result.get(0)).toBe('non_working');
+    expect(result.size).toBe(1);
+  });
+
+  it('single part with an explicit working signal resolves to working, not non_working', () => {
+    const parts = [partFixture({ workingStatus: 'working' })];
+
+    const result = parser.resolveWorkingStatuses(parts);
+
+    expect(result.get(0)).toBe('working');
   });
 });
 

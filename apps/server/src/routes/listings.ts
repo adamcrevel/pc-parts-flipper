@@ -106,19 +106,33 @@ async function createExpectedPartsForListing(
   expectedParts: ExpectedPartInput[],
 ): Promise<ExpectedPart[]> {
   return Promise.all(
-    expectedParts.map((part) =>
-      createExpectedPart({
+    expectedParts.map((part) => {
+      // Determine priceSource based on completeness and current state.
+      const priceSource =
+        (part.priceSource ?? null) === null &&
+        part.brand !== null &&
+        part.partNumber !== null &&
+        part.estimatedResaleValue === null
+          ? 'auto'
+          : part.priceSource ?? null;
+
+      // Determine working status, defaulting to 'working' if not provided.
+      const workingStatus = part.workingStatus ?? 'working';
+
+      // Apply the $1 override for non-working parts with auto pricing.
+      const estimatedResaleValue =
+        priceSource === 'auto' && workingStatus === 'non_working'
+          ? 1
+          : part.estimatedResaleValue;
+
+      return createExpectedPart({
         listingId,
         ...part,
-        priceSource:
-          (part.priceSource ?? null) === null &&
-          part.brand !== null &&
-          part.partNumber !== null &&
-          part.estimatedResaleValue === null
-            ? 'auto'
-            : part.priceSource ?? null,
-      }),
-    ),
+        priceSource,
+        workingStatus,
+        estimatedResaleValue,
+      });
+    }),
   );
 }
 

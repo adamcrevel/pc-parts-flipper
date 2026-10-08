@@ -33,6 +33,12 @@ export interface CreateExpectedPartInput {
    * null says, so they stay correct untouched.
    */
   priceSource?: 'auto' | 'manual' | null;
+  /**
+   * The working/non-working status of this component. Optional, defaulting
+   * to 'working' at the DB level: every caller predating this field means
+   * the component works, so they stay correct untouched.
+   */
+  workingStatus?: 'working' | 'non_working';
 }
 
 /** Fields that may be edited on an existing Expected Part; omitted keys are left unchanged. */
@@ -61,6 +67,7 @@ function mapRow(row: Record<string, unknown>): ExpectedPart {
     aiConfidence: (row.ai_confidence as AiPartConfidence | null) ?? null,
     aiSource: (row.ai_source as AiPartSource | null) ?? null,
     priceSource: (row.price_source as 'auto' | 'manual' | null) ?? null,
+    workingStatus: (row.working_status as 'working' | 'non_working' | null) ?? 'working',
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -70,8 +77,8 @@ function mapRow(row: Record<string, unknown>): ExpectedPart {
 export async function createExpectedPart(input: CreateExpectedPartInput): Promise<ExpectedPart> {
   const connection = await getConnection();
   const reader = await connection.runAndReadAll(
-    `INSERT INTO expected_parts (id, listing_id, component_category, brand, part_number, description, estimated_resale_value, identity_candidates, ai_confidence, ai_source, price_source)
-     VALUES ($id, $listing_id, $component_category, $brand, $part_number, $description, $estimated_resale_value, $identity_candidates, $ai_confidence, $ai_source, $price_source)
+    `INSERT INTO expected_parts (id, listing_id, component_category, brand, part_number, description, estimated_resale_value, identity_candidates, ai_confidence, ai_source, price_source, working_status)
+     VALUES ($id, $listing_id, $component_category, $brand, $part_number, $description, $estimated_resale_value, $identity_candidates, $ai_confidence, $ai_source, $price_source, $working_status)
      RETURNING *`,
     {
       id: newId(),
@@ -85,6 +92,7 @@ export async function createExpectedPart(input: CreateExpectedPartInput): Promis
       ai_confidence: input.aiConfidence,
       ai_source: input.aiSource,
       price_source: input.priceSource ?? null,
+      working_status: input.workingStatus ?? 'working',
     },
   );
   return mapRow(reader.getRowObjectsJson()[0]);

@@ -19,6 +19,8 @@ export interface CreateListingInput {
   externalSource?: string | null;
   /** The marketplace's own item id for this Listing (Req 3); omitted/undefined defaults to null for manually-entered Listings. */
   externalItemId?: string | null;
+  /** Whether this listing's computer cannot be powered on or has non-functional components; omitted/undefined defaults to false. */
+  nonWorking?: boolean;
 }
 
 /** Fields that may be edited on an existing Listing; omitted keys are left unchanged. */
@@ -58,6 +60,7 @@ function mapRow(row: Record<string, unknown>): Listing {
     photoPaths: JSON.parse(row.photo_paths as string) as string[],
     externalSource: row.external_source as string | null,
     externalItemId: row.external_item_id as string | null,
+    nonWorking: row.non_working as boolean,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -69,10 +72,10 @@ export async function createListing(input: CreateListingInput): Promise<Listing>
   const reader = await connection.runAndReadAll(
     `INSERT INTO listings
        (id, source_id, title, description, listing_url, asking_price, listing_date,
-        acquisition_fees, photo_paths, external_source, external_item_id)
+        acquisition_fees, photo_paths, external_source, external_item_id, non_working)
      VALUES
        ($id, $source_id, $title, $description, $listing_url, $asking_price, $listing_date,
-        $acquisition_fees, $photo_paths, $external_source, $external_item_id)
+        $acquisition_fees, $photo_paths, $external_source, $external_item_id, $non_working)
      RETURNING *`,
     {
       id: newId(),
@@ -86,6 +89,7 @@ export async function createListing(input: CreateListingInput): Promise<Listing>
       photo_paths: JSON.stringify(input.photoPaths),
       external_source: input.externalSource ?? null,
       external_item_id: input.externalItemId ?? null,
+      non_working: input.nonWorking ?? false,
     },
   );
   return mapRow(reader.getRowObjectsJson()[0]);

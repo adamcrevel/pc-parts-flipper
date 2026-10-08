@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>T6 Prototype — Non-working badge + per-part Working status control</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          border: '#e2e8f0',
+          input: '#e2e8f0',
+          ring: '#0f172a',
+          background: '#ffffff',
+          foreground: '#0f172a',
+          primary: { DEFAULT: '#0f172a', foreground: '#f8fafc' },
+          secondary: { DEFAULT: '#f1f5f9', foreground: '#0f172a' },
+          destructive: { DEFAULT: '#dc2626', foreground: '#f8fafc' },
+          muted: { DEFAULT: '#f1f5f9', foreground: '#64748b' },
+          accent: { DEFAULT: '#f1f5f9', foreground: '#0f172a' },
+          surfaceContrast: '#d8dde6',
+          /* button.tsx's --save/--cancel tokens (light mode values — identical
+             to primary/background, per index.css's own comment) */
+          save: { DEFAULT: '#0f172a', foreground: '#f8fafc' },
+          cancel: '#ffffff',
+        },
+      },
+    },
+  };
+</script>
+<style>
+  body { background: #fafafa; }
+  .proto-shell { max-width: 880px; }
+  .scenario-card { break-inside: avoid; }
+  .flash-field { animation: flash-ring 900ms ease-out; }
+  @keyframes flash-ring { 0% { box-shadow: 0 0 0 2px #d9770655; } 100% { box-shadow: 0 0 0 0 transparent; } }
+</style>
+</head>
+<body class="min-h-screen p-8 text-foreground">
+  <div class="proto-shell mx-auto space-y-10">
+
+    <header class="space-y-2">
+      <h1 class="text-lg font-semibold">T6 Prototype — Non-working badge + per-part "Working status" control</h1>
+      <p class="text-sm text-muted-foreground">
+        Every element below reuses the real markup/classes from
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">ebay-scan-badge.tsx</code>,
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">ai-suggested-badge.tsx</code>,
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">listings-queue-table.tsx</code>,
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">listing-form.tsx</code>,
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">expected-parts-editor.tsx</code>, and
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">button.tsx</code>. The two genuinely new
+        pieces are (1) a read-only <strong>NonWorkingBadge</strong> pill, amber instead of
+        EbayScanBadge's emerald or AiSuggestedBadge's violet, and (2) a per-row
+        <strong>Working / Not working</strong> segmented control that only appears on an
+        Expected Parts row when its Listing is itself flagged non-working.
+      </p>
+      <div class="rounded-md border border-dashed border-muted-foreground/40 bg-muted/40 p-3 text-xs text-muted-foreground">
+        <strong>Dashed boxes like this one are prototype annotations only</strong> — not part of the
+        real app's UI. Everything else (badges, table, form, buttons, inputs, borders, spacing) is the
+        shipped component styling. Click things — the control below is live.
+      </div>
+    </header>
+
+    <!-- ===================== PIECE 1a: QUEUE TABLE ===================== -->
+    <section class="space-y-3 rounded-lg border border-border p-4 scenario-card">
+      <h2 class="text-sm font-semibold">Piece 1 — NonWorkingBadge in the Listings queue table</h2>
+      <p class="text-xs text-muted-foreground">
+        Exact row layout of <code class="rounded bg-muted px-1 py-0.5 text-xs">listings-queue-table.tsx</code>.
+        The title cell already does <code class="rounded bg-muted px-1 py-0.5 text-xs">{listing.externalItemId !== null &amp;&amp; &lt;EbayScanBadge /&gt;}</code>
+        next to the title — NonWorkingBadge sits right beside it, gated on the Listing's own
+        non-working flag instead.
+      </p>
+      <div class="overflow-x-auto">
+        <table class="w-full border-collapse text-left text-sm">
+          <thead>
+            <tr class="border-b border-border text-muted-foreground">
+              <th class="px-4 py-2 font-medium">Title</th>
+              <th class="px-4 py-2 font-medium">Source</th>
+              <th class="px-4 py-2 font-medium">Status</th>
+              <th class="px-4 py-2 font-medium">Asking Price</th>
+              <th class="px-4 py-2 font-medium">Expected Resale</th>
+              <th class="px-4 py-2 font-medium">Difference</th>
+              <th class="px-4 py-2 font-medium"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-border">
+              <td class="px-4 py-3 font-medium">
+                <div class="flex items-center gap-2">
+                  <span>Dell OptiPlex 7090 — parts only, no POST</span>
+                  <!-- EbayScanBadge (unchanged, emerald) -->
+                  <span class="inline-flex items-center rounded-full border border-emerald-600/40 bg-emerald-600/10 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                    Found via eBay scan
+                  </span>
+                  <!-- NEW: NonWorkingBadge (amber — distinct from emerald scan badge / violet AI badge) -->
+                  <span class="inline-flex items-center rounded-full border border-amber-600/40 bg-amber-600/10 px-2 py-0.5 text-xs font-medium text-amber-700">
+                    Listed as non-working
+                  </span>
+                </div>
+              </td>
+              <td class="px-4 py-3">eBay</td>
+              <td class="px-4 py-3 capitalize">open</td>
+              <td class="px-4 py-3">$145.00</td>
+              <td class="px-4 py-3">$180.00</td>
+              <td class="px-4 py-3 font-medium text-emerald-600">$35.00</td>
+              <td class="whitespace-nowrap px-4 py-3 text-right">
+                <div class="flex justify-end gap-2">
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">Accept</button>
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 h-8 rounded-md px-3 text-xs">Reject</button>
+                </div>
+              </td>
+            </tr>
+            <tr class="border-b-0">
+              <td class="px-4 py-3 font-medium">
+                <div class="flex items-center gap-2">
+                  <span>Local pickup: gaming PC, i5-10400, works great</span>
+                  <!-- ordinary listing: no EbayScanBadge, no NonWorkingBadge -->
+                </div>
+              </td>
+              <td class="px-4 py-3">Craigslist</td>
+              <td class="px-4 py-3 capitalize">open</td>
+              <td class="px-4 py-3">$220.00</td>
+              <td class="px-4 py-3">$260.00</td>
+              <td class="px-4 py-3 font-medium text-emerald-600">$40.00</td>
+              <td class="whitespace-nowrap px-4 py-3 text-right">
+                <div class="flex justify-end gap-2">
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">Accept</button>
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 h-8 rounded-md px-3 text-xs">Reject</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===================== PIECE 1b: LISTING FORM HEADER ===================== -->
+    <section class="space-y-3 rounded-lg border border-border p-4 scenario-card">
+      <h2 class="text-sm font-semibold">Piece 1 — NonWorkingBadge on the Listing detail/edit form</h2>
+      <p class="text-xs text-muted-foreground">
+        Same placement as <code class="rounded bg-muted px-1 py-0.5 text-xs">listing-form.tsx</code>'s
+        existing <code class="rounded bg-muted px-1 py-0.5 text-xs">{initialValue?.externalItemId !== null &amp;&amp; &lt;EbayScanBadge listingUrl={'{'}initialValue.listingUrl{'}'} /&gt;}</code>
+        line, right above the "Listing Details" collapsible — NonWorkingBadge renders alongside it.
+      </p>
+      <form class="space-y-4 rounded-lg border border-border p-4">
+        <div class="flex items-center gap-2">
+          <a href="#" class="inline-flex" onclick="return false;">
+            <span class="inline-flex items-center rounded-full border border-emerald-600/40 bg-emerald-600/10 px-2 py-0.5 text-xs font-medium text-emerald-700">
+              Found via eBay scan
+            </span>
+          </a>
+          <span class="inline-flex items-center rounded-full border border-amber-600/40 bg-amber-600/10 px-2 py-0.5 text-xs font-medium text-amber-700">
+            Listed as non-working
+          </span>
+        </div>
+
+        <div class="rounded-md border">
+          <div class="flex w-full items-center justify-between gap-2 rounded-b-md bg-surfaceContrast px-4 py-2 text-left text-sm font-medium">
+            <span>Listing Details</span>
+            <svg class="h-4 w-4 shrink-0 -rotate-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </div>
+        </div>
+        <p class="text-xs text-muted-foreground">(collapsed by default on an existing Listing, matching today's behavior)</p>
+      </form>
+    </section>
+
+    <!-- ===================== PIECE 2: EXPECTED PARTS EDITOR — LIVE INTERACTIVE ===================== -->
+    <section class="space-y-3 rounded-lg border border-border p-4 scenario-card">
+      <h2 class="text-sm font-semibold">Piece 2 — per-part "Working status" control (live, click it)</h2>
+      <p class="text-xs text-muted-foreground">
+        Rendered inside each Expected Parts row's trigger (<code class="rounded bg-muted px-1 py-0.5 text-xs">expected-parts-editor.tsx</code>),
+        next to the existing "Est. value" field — <strong>only when the Listing itself is flagged
+        non-working</strong>. On an ordinary Listing this control doesn't render at all (see the toggle
+        below). Toggling it doesn't just relabel the row: it clears the price field back to blank, the
+        same "undecided" state <code class="rounded bg-muted px-1 py-0.5 text-xs">priceSource: undefined</code>
+        already uses — ready for either the $1 auto-assign (Not working) or real research (Working) on
+        the next save.
+      </p>
+
+      <label class="flex w-fit items-center gap-2 rounded-md border border-dashed border-muted-foreground/40 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        <input type="checkbox" id="listing-nonworking-toggle" checked class="h-3.5 w-3.5" />
+        Simulate: this Listing is flagged non-working (controls whether the per-row control renders below)
+      </label>
+
+      <div class="space-y-3" id="editor-root">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-medium">Expected Parts</h3>
+          <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">Add Part</button>
+        </div>
+
+        <!-- ROW 1: starts "Not working" / $1.00 (AI auto-priced). Demonstrates toggling to "Working". -->
+        <div class="space-y-1">
+          <div class="rounded-md border">
+            <div class="flex w-full items-center justify-between gap-2 rounded-b-md bg-surfaceContrast px-4 py-2 text-left text-sm font-medium">
+              <div class="flex flex-1 flex-wrap items-start gap-2" onclick="event.stopPropagation()">
+                <div class="space-y-1">
+                  <select class="rounded-md border border-input bg-background px-2 py-1.5 text-sm">
+                    <option>GPU</option>
+                  </select>
+                </div>
+                <input value="NVIDIA" readonly class="rounded-md border border-input bg-background px-2 py-1.5 text-sm" placeholder="Brand (optional)" />
+                <input value="RTX 3070" readonly class="rounded-md border border-input bg-background px-2 py-1.5 text-sm" placeholder="Part/Model # (optional)" />
+                <div class="space-y-1">
+                  <input id="row1-price" type="number" step="0.01" value="1.00" readonly
+                    class="w-24 rounded-md border border-input bg-background px-2 py-1.5 text-sm" placeholder="Est. value" />
+                  <p id="row1-caption" class="text-xs text-amber-700">Non-working part — priced at $1.00 automatically on save.</p>
+                </div>
+                <!-- NEW: per-row Working status segmented control -->
+                <div class="working-status-control inline-flex overflow-hidden rounded-md border border-input text-xs" role="group" aria-label="Expected part 1 working status">
+                  <button type="button" data-row="row1" data-state="working"
+                    class="h-8 px-3 font-medium transition-colors border-r border-input hover:bg-accent">Working</button>
+                  <button type="button" data-row="row1" data-state="not-working"
+                    class="h-8 px-3 font-medium transition-colors bg-amber-600/10 text-amber-700">Not working</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="flex justify-end">
+            <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground text-destructive h-8 rounded-md px-3 text-xs">Remove</button>
+          </div>
+        </div>
+
+        <!-- ROW 2: starts "Working" / $120.00 user override (e.g. a Case that isn't the broken part). Demonstrates toggling to "Not working". -->
+        <div class="space-y-1">
+          <div class="rounded-md border">
+            <div class="flex w-full items-center justify-between gap-2 rounded-b-md bg-surfaceContrast px-4 py-2 text-left text-sm font-medium">
+              <div class="flex flex-1 flex-wrap items-start gap-2" onclick="event.stopPropagation()">
+                <div class="space-y-1">
+                  <select class="rounded-md border border-input bg-background px-2 py-1.5 text-sm">
+                    <option>Case</option>
+                  </select>
+                </div>
+                <input value="Fractal Design" readonly class="rounded-md border border-input bg-background px-2 py-1.5 text-sm" placeholder="Brand (optional)" />
+                <input value="Meshify C" readonly class="rounded-md border border-input bg-background px-2 py-1.5 text-sm" placeholder="Part/Model # (optional)" />
+                <div class="space-y-1">
+                  <input id="row2-price" type="number" step="0.01" value="120.00" readonly
+                    class="w-24 rounded-md border border-input bg-background px-2 py-1.5 text-sm" placeholder="Est. value" />
+                  <p id="row2-caption" class="text-xs text-muted-foreground">User-priced (case isn't the broken part on this build).</p>
+                </div>
+                <!-- NEW: per-row Working status segmented control -->
+                <div class="working-status-control inline-flex overflow-hidden rounded-md border border-input text-xs" role="group" aria-label="Expected part 2 working status">
+                  <button type="button" data-row="row2" data-state="working"
+                    class="h-8 px-3 font-medium transition-colors bg-emerald-600/10 text-emerald-700 border-r border-input">Working</button>
+                  <button type="button" data-row="row2" data-state="not-working"
+                    class="h-8 px-3 font-medium transition-colors hover:bg-accent">Not working</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="flex justify-end">
+            <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground text-destructive h-8 rounded-md px-3 text-xs">Remove</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-md border border-dashed border-muted-foreground/40 bg-muted/40 p-3 text-xs text-muted-foreground">
+        Click <strong>Working</strong> on Row 1 (currently $1.00, Not working) — its price clears and the
+        caption switches to "pending research". Click <strong>Not working</strong> on Row 2 (currently
+        $120.00, Working) — its price clears and the caption switches to "will be $1.00 on save". Then
+        uncheck the simulate box above: the control disappears entirely on an ordinary Listing, same
+        rows otherwise unchanged.
+      </div>
+    </section>
+  </div>
+
+  <script>
+    function wireRow(rowId, priceEl, captionEl) {
+      document.querySelectorAll(`.working-status-control button[data-row="${rowId}"]`).forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const state = btn.dataset.state;
+          const group = btn.parentElement;
+          group.querySelectorAll('button').forEach((b) => {
+            b.className = 'h-8 px-3 font-medium transition-colors hover:bg-accent';
+            if (b !== group.lastElementChild) b.classList.add('border-r', 'border-input');
+          });
+          if (state === 'working') {
+            btn.className = 'h-8 px-3 font-medium transition-colors bg-emerald-600/10 text-emerald-700' + (btn !== group.lastElementChild ? ' border-r border-input' : '');
+            priceEl.value = '';
+            priceEl.placeholder = 'Est. value';
+            captionEl.textContent = 'Price cleared — pending research on save.';
+            captionEl.className = 'text-xs text-muted-foreground';
+          } else {
+            btn.className = 'h-8 px-3 font-medium transition-colors bg-amber-600/10 text-amber-700' + (btn !== group.lastElementChild ? ' border-r border-input' : '');
+            priceEl.value = '';
+            priceEl.placeholder = 'Est. value';
+            captionEl.textContent = 'Non-working part — will be priced at $1.00 automatically on save.';
+            captionEl.className = 'text-xs text-amber-700';
+          }
+          priceEl.classList.add('flash-field');
+          setTimeout(() => priceEl.classList.remove('flash-field'), 900);
+        });
+      });
+    }
+    wireRow('row1', document.getElementById('row1-price'), document.getElementById('row1-caption'));
+    wireRow('row2', document.getElementById('row2-price'), document.getElementById('row2-caption'));
+
+    document.getElementById('listing-nonworking-toggle').addEventListener('change', (e) => {
+      document.querySelectorAll('.working-status-control').forEach((el) => {
+        el.style.display = e.target.checked ? '' : 'none';
+      });
+    });
+  </script>
+</body>
+</html>

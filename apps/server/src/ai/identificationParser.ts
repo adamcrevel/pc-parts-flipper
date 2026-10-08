@@ -9,20 +9,23 @@
 //     invented) is survivable — one odd field is coerced to a safe value and
 //     logged at Warn, rather than throwing away an otherwise useful set of
 //     suggestions the user can edit by hand anyway.
-import type { AiIdentifiedPart, AiPartConfidence, AiPartSource, ComponentCategory, IdentifyPartsResponse, IdentityCandidate } from '@pc-parts-flipper/shared';
+import type { AiIdentifiedPart, AiPartConfidence, AiPartSource, AiPartWorkingStatus, ComponentCategory, IdentifyPartsResponse, IdentityCandidate } from '@pc-parts-flipper/shared';
 import { AppError } from '../error-handler.js';
 import { logger } from '../logger.js';
 import { ALLOWED_CATEGORIES, MAX_IDENTITY_CANDIDATES } from './identificationPrompt.js';
 
 const VALID_CONFIDENCES: readonly AiPartConfidence[] = ['high', 'medium', 'low'];
 const VALID_SOURCES: readonly AiPartSource[] = ['text', 'image', 'both'];
+const VALID_WORKING_STATUSES: readonly AiPartWorkingStatus[] = ['working', 'non_working', 'unclear'];
 
 // Fallbacks for a field the model returned in a shape not on the allow-list.
 // Both are deliberately the *least* assertive option available: an unreadable
 // confidence must not present as 'high', and an unreadable basis must not
-// claim a photo was involved.
+// claim a photo was involved. For workingStatus, fallback to 'unclear' when
+// the model's input is unrecognized or missing.
 const FALLBACK_CONFIDENCE: AiPartConfidence = 'low';
 const FALLBACK_SOURCE: AiPartSource = 'text';
+const FALLBACK_WORKING_STATUS: AiPartWorkingStatus = 'unclear';
 
 // Matches an opening markdown fence (``` or ```json) at the very start of the
 // output, and a closing fence at the very end. Defensive only: the prompt asks
@@ -49,6 +52,7 @@ interface RawPart {
   confidence?: unknown;
   source?: unknown;
   identityCandidates?: unknown;
+  workingStatus?: unknown;
 }
 
 // Coerces an unrecognized category to 'Other' rather than rejecting the whole
@@ -135,8 +139,11 @@ function normalizePart(raw: RawPart): AiIdentifiedPart {
   const source = typeof raw.source === 'string' && (VALID_SOURCES as readonly string[]).includes(raw.source)
     ? (raw.source as AiPartSource)
     : FALLBACK_SOURCE;
+  const workingStatus = typeof raw.workingStatus === 'string' && (VALID_WORKING_STATUSES as readonly string[]).includes(raw.workingStatus)
+    ? (raw.workingStatus as AiPartWorkingStatus)
+    : FALLBACK_WORKING_STATUS;
 
-  return {
+  const result: AiIdentifiedPart = {
     category: coerceCategory(raw.category),
     brand: coerceIdentityField(raw.brand, 'brand'),
     partNumber: coerceIdentityField(raw.partNumber, 'partNumber'),
@@ -145,6 +152,15 @@ function normalizePart(raw: RawPart): AiIdentifiedPart {
     source,
     identityCandidates: coerceIdentityCandidates(raw.identityCandidates),
   };
+
+  // Only include workingStatus if it was present in the raw input (even if it
+  // coerced to the fallback value), maintaining backward compatibility for
+  // listings where the field was not in the prompt.
+  if (raw.workingStatus !== undefined) {
+    result.workingStatus = workingStatus;
+  }
+
+  return result;
 }
 
 // JSON.parse throws a SyntaxError whose message leaks nothing useful to a
@@ -197,3 +213,38 @@ export function parseIdentificationResponse(rawStdout: string): IdentifyPartsRes
   };
 }
 
+/**
+ * Resolves the working status for each part based on the AI model's assessments.
+ * Intended to be called only when the listing is marked non-working; the logic
+ * implements the working-status inference rules for per-part diagnostics.
+ *
+ * Logic:
+ * - If every part's workingStatus is unclear (or absent), all parts resolve to 'non_working'.
+ * - Otherwise, a part resolves to 'non_working' only if its own signal was specifically
+ *   "non_working"; parts with unclear signals resolve to 'working' in this case.
+ *
+ * @param parts - The array of identified parts with optional workingStatus fields.
+ * @returns A Map from part index to resolved working status ('working' | 'non_working').
+ */
+export function resolveWorkingStatuses(
+  parts: AiIdentifiedPart[],
+): Map<number, 'working' | 'non_working'> {
+  // Check if every part has an unclear or missing workingStatus signal.
+  const allUnclear = parts.every((part) => part.workingStatus === 'unclear' || part.workingStatus === undefined);
+
+  const result = new Map<number, 'working' | 'non_working'>();
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (allUnclear) {
+      // All parts have unclear signals, so all resolve to non_working.
+      result.set(i, 'non_working');
+    } else {
+      // At least one part has a clear signal. This part is non_working only
+      // if its own signal is specifically "non_working"; otherwise working.
+      result.set(i, part.workingStatus === 'non_working' ? 'non_working' : 'working');
+    }
+  }
+
+  return result;
+}

@@ -23,6 +23,15 @@ export type AiPartConfidence = 'high' | 'medium' | 'low';
 export type AiPartSource = 'text' | 'image' | 'both';
 
 /**
+ * The model's assessment of whether one specific part is working or broken,
+ * when the listing is marked as a whole as non-working. "working" means the
+ * text specifically clears this part or names a different part as broken.
+ * "non_working" means the text says or clearly implies this specific part
+ * doesn't work. "unclear" means the text gives no clear signal for this part.
+ */
+export type AiPartWorkingStatus = 'working' | 'non_working' | 'unclear';
+
+/**
  * One alternate brand/partNumber pairing the model considered plausible but
  * did not pick as the primary identification — e.g. when a GPU's exact SKU
  * within a product line can't be pinned down from the listing. Carried
@@ -48,6 +57,10 @@ export interface IdentityCandidate {
  * holds other plausible brand/partNumber pairings the model considered but
  * did not settle on as primary (may be empty when the model was confident or
  * found no alternatives).
+ *
+ * `workingStatus` (optional, only populated when the listing is marked
+ * non-working) reflects the model's assessment of whether this specific part
+ * is working or non-working, as one of the values in AiPartWorkingStatus.
  */
 export interface AiIdentifiedPart {
   category: ComponentCategory;
@@ -57,6 +70,7 @@ export interface AiIdentifiedPart {
   confidence: AiPartConfidence;
   source: AiPartSource;
   identityCandidates: IdentityCandidate[];
+  workingStatus?: AiPartWorkingStatus;
 }
 
 /**

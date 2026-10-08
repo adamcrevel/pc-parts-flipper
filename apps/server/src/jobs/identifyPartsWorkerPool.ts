@@ -24,8 +24,10 @@ import {
   getListingById,
 } from '../db/index.js';
 import { identifyListingParts } from '../ai/partIdentification.js';
+import { resolveWorkingStatuses } from '../ai/identificationParser.js';
 import { triggerPriceLookups } from './pricePartsTrigger.js';
 import type { IdentifyPartsJob, IdentifyPartsResponse } from '@pc-parts-flipper/shared';
+import type { Listing } from '../db/types.js';
 
 /**
  * Maximum number of identify-parts jobs to process concurrently, parsed
@@ -97,28 +99,47 @@ async function pump(): Promise<void> {
  * which decides per combo between an instant cached value and a queued
  * research job (Req 5-7).
  */
-async function persistIdentifiedParts(listingId: string, result: IdentifyPartsResponse): Promise<void> {
+async function persistIdentifiedParts(listingId: string, listing: Listing, result: IdentifyPartsResponse): Promise<void> {
   // Full replace: a rerun of Identify Parts must not duplicate previously
   // saved Expected Parts, so the existing set is cleared and recreated
   // rather than diffed — same pattern as the manual Listing-save route
   // (routes/listings.ts's PUT /api/listings/:id).
   const existingParts = await listExpectedPartsByListing(listingId);
   await Promise.all(existingParts.map((part) => deleteExpectedPart(part.id)));
+
+  // Resolve working status for each part when the listing is marked non-working.
+  const resolvedWorkingStatuses = listing.nonWorking
+    ? resolveWorkingStatuses(result.parts)
+    : null;
+
   const created = await Promise.all(
-    result.parts.map((part) =>
-      createExpectedPart({
+    result.parts.map((part, index) => {
+      // Determine this part's working status.
+      const workingStatus: 'working' | 'non_working' = listing.nonWorking
+        ? (resolvedWorkingStatuses!.get(index) ?? 'working')
+        : 'working';
+
+      // Determine priceSource based on identification completeness.
+      const priceSource = part.brand && part.partNumber ? 'auto' : null;
+
+      // Apply the $1 override for non-working parts with auto pricing.
+      const estimatedResaleValue =
+        priceSource === 'auto' && workingStatus === 'non_working' ? 1 : null;
+
+      return createExpectedPart({
         listingId,
         componentCategory: part.category,
         brand: part.brand,
         partNumber: part.partNumber,
         description: part.description,
-        estimatedResaleValue: null,
+        estimatedResaleValue,
         identityCandidates: part.identityCandidates,
         aiConfidence: part.confidence,
         aiSource: part.source,
-        priceSource: part.brand && part.partNumber ? 'auto' : null,
-      }),
-    ),
+        priceSource,
+        workingStatus,
+      });
+    }),
   );
   await triggerPriceLookups(created);
 }
@@ -147,7 +168,7 @@ async function processJob(job: IdentifyPartsJob): Promise<void> {
     const result = await identifyListingParts(listing, undefined, (stage) =>
       updateJobStage(job.id, stage),
     );
-    await persistIdentifiedParts(job.listingId, result);
+    await persistIdentifiedParts(job.listingId, listing, result);
     await completeJob(job.id, result);
   } catch (err) {
     // Derive error message the same way other error paths in this codebase

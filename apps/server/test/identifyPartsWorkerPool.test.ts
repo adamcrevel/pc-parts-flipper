@@ -359,7 +359,10 @@ describe('persistIdentifiedParts dedupe & job-failure data integrity (T1, Req 1-
 
     // Exactly one new part was created, carrying the fresh result's own
     // data (full object, not a subset) through persistIdentifiedParts's
-    // own field mapping.
+    // own field mapping. listing.nonWorking is falsy on this fixture (the
+    // field is simply absent), so persistIdentifiedParts's else-branch
+    // stamps workingStatus explicitly 'working' (Req 6) rather than ever
+    // omitting the field.
     expect(createExpectedPart).toHaveBeenCalledTimes(1);
     expect(createExpectedPart).toHaveBeenCalledWith({
       listingId: 'listing-dedupe',
@@ -372,6 +375,7 @@ describe('persistIdentifiedParts dedupe & job-failure data integrity (T1, Req 1-
       aiConfidence: 'high',
       aiSource: 'text',
       priceSource: 'auto',
+      workingStatus: 'working',
     });
 
     // The store (standing in for the Listing's real Expected Parts) now

@@ -17,7 +17,6 @@ export interface CandidateListing {
   title: string;
   listingUrl: string;
   askingPrice: number;
-  listingDate: string;
   /**
    * Marketplace-hosted photo URLs for this listing, highest resolution the
    * platform offers, in display order (primary image first). The scan
@@ -28,6 +27,12 @@ export interface CandidateListing {
    * undefined.
    */
   imageUrls: string[];
+  /**
+   * For eBay listings: true when conditionId is '7000' (parts only / non-working),
+   * false otherwise. Used to flag potentially non-functional items that require
+   * extra caution during sourcing.
+   */
+  nonWorking: boolean;
 }
 
 /**

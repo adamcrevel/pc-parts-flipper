@@ -150,7 +150,8 @@ export async function propagateCachedPriceToExpectedParts(
     `UPDATE expected_parts
      SET estimated_resale_value = $value, updated_at = current_timestamp
      WHERE component_category = $category AND brand = $brand AND part_number = $part_number
-       AND price_source = 'auto'`,
+       AND price_source = 'auto'
+       AND working_status = 'working'`,
     { category, brand, part_number: partNumber, value },
   );
 }

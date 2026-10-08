@@ -12,10 +12,12 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { DuckDBInstance } from '@duckdb/node-api';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type * as DbModule from '../src/db/index.js';
 import type * as ClientModule from '../src/db/client.js';
 import { runMigrations } from '../src/db/migrate.js';
+import { ALTER_STATEMENTS, ENUM_STATEMENTS, INDEX_STATEMENTS, TABLE_STATEMENTS } from '../src/db/schema.js';
 
 let dataDir: string;
 let db: typeof DbModule;
@@ -60,7 +62,9 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'last_scan_found_count',
   ],
   // external_source/external_item_id (ebay-scanning feature, T1) were
-  // likewise added via ALTER_STATEMENTS, appended after the original columns.
+  // likewise added via ALTER_STATEMENTS, appended after the original
+  // columns; non_working (ebay-condition-filter feature, T1) was appended
+  // later still, so it lands last of all.
   listings: [
     'id',
     'source_id',
@@ -76,11 +80,17 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'updated_at',
     'external_source',
     'external_item_id',
+    'non_working',
   ],
   // brand/part_number (brand-model feature) and ai_confidence/ai_source
   // (AI-suggestion provenance) were added via ALTER_STATEMENTS after the
   // original CREATE TABLE, so DuckDB reports them last rather than beside
   // component_category where the TypeScript row type places them.
+  // working_status (ebay-condition-filter feature, T1) was appended last of
+  // all — this is the column migrateExpectedPartsNullablePrice's hardcoded
+  // rebuild (migrate.ts) drops on a genuinely fresh database; this fixture
+  // is what makes that regression visible here (see the dedicated T1
+  // describe block below for the direct proof).
   expected_parts: [
     'id',
     'listing_id',
@@ -95,6 +105,7 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'ai_confidence',
     'ai_source',
     'price_source',
+    'working_status',
   ],
   purchases: ['id', 'listing_id', 'status', 'price_paid', 'purchase_date', 'created_at', 'updated_at'],
   teardown_results: [
@@ -326,6 +337,130 @@ describe('migrations are idempotent', () => {
 
     const stillThere = await db.getSourceById(source.id);
     expect(stillThere?.id).toBe(source.id);
+  });
+});
+
+// T1 proof (ebay-condition-filter feature, Req 4-6): the two new
+// ALTER_STATEMENTS columns this feature adds — listings.non_working and
+// expected_parts.working_status — must behave correctly in the only two
+// real-world migration scenarios: a database that has never run any
+// migration before (every fresh test run, any new deploy environment), and
+// a database that already completed every migration that existed
+// immediately before this feature shipped (every real production
+// deployment in the field today).
+//
+// These two scenarios are NOT interchangeable. migrate.ts's
+// migrateExpectedPartsNullablePrice rebuilds expected_parts from a
+// hardcoded column list the moment estimated_resale_value is not yet
+// nullable — true on every brand-new database (TABLE_STATEMENTS' CREATE
+// TABLE still declares it NOT NULL) but false on an already-migrated one
+// (the rebuild already ran once, long before this feature, and its own
+// information_schema guard skips it on every later boot). working_status is
+// added via ALTER_STATEMENTS *before* that rebuild runs, so whether it
+// survives depends entirely on whether the rebuild's own CREATE TABLE/INSERT
+// column lists were updated to carry it across.
+describe('non_working / working_status across a fresh database vs. an already-migrated one (T1)', () => {
+  it('MUST FIX: a genuinely fresh database loses expected_parts.working_status to the pre-existing nullable-price rebuild, even though ALTER_STATEMENTS added it', async () => {
+    // migrateExpectedPartsNullablePrice's CREATE TABLE expected_parts_new /
+    // INSERT column lists (migrate.ts) were never updated to include
+    // working_status, so it is silently dropped the moment that rebuild
+    // runs against a table that still has estimated_resale_value NOT NULL —
+    // which is every brand-new database, since TABLE_STATEMENTS' own CREATE
+    // TABLE declares that column NOT NULL. Independently confirmed: calling
+    // db.createExpectedPart() against a fresh database throws "Binder
+    // Error: Table \"expected_parts\" does not have a column with name
+    // \"working_status\"" — every Expected Part insert on a fresh install
+    // fails outright, which is exactly what this suite's own shared fresh
+    // database (this file's beforeAll) would hit too, were it not for the
+    // EXPECTED_COLUMNS fixture above already failing first and loudly.
+    const freshDir = await mkdtemp(path.join(tmpdir(), 'pc-parts-flipper-db-test-fresh-'));
+    try {
+      const instance = await DuckDBInstance.create(path.join(freshDir, 'pc-parts-flipper.duckdb'));
+      const connection = await instance.connect();
+
+      // The real migration path a brand-new database goes through — no
+      // pre-existing state at all.
+      await runMigrations(connection);
+
+      const listingCol = await connection.runAndReadAll(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'listings' AND column_name = 'non_working'`,
+      );
+      expect(listingCol.getRowObjectsJson(), 'listings.non_working must exist after migrating a fresh database').toHaveLength(1);
+
+      const partCol = await connection.runAndReadAll(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'expected_parts' AND column_name = 'working_status'`,
+      );
+      expect(partCol.getRowObjectsJson(), 'expected_parts.working_status must exist after migrating a fresh database').toHaveLength(1);
+
+      connection.closeSync();
+      instance.closeSync();
+    } finally {
+      await rm(freshDir, { recursive: true, force: true });
+    }
+  });
+
+  it('an already-migrated database (the schema that existed immediately before this feature) backfills both columns on pre-existing rows without losing data', async () => {
+    // Replicates the exact pre-T1 schema end-state: every statement
+    // runMigrations runs today, minus this feature's own two
+    // ALTER_STATEMENTS entries (non_working/working_status — confirmed to
+    // be exactly the last two entries by reading schema.ts directly), plus
+    // migrate.ts's migrateExpectedPartsNullablePrice rebuild reproduced by
+    // hand (it is a private, unexported function, so a real pre-existing
+    // production database's end state — the rebuild already applied, long
+    // before this feature shipped — has to be built this way instead).
+    const upgradeDir = await mkdtemp(path.join(tmpdir(), 'pc-parts-flipper-db-test-upgrade-'));
+    try {
+      const instance = await DuckDBInstance.create(path.join(upgradeDir, 'pc-parts-flipper.duckdb'));
+      const connection = await instance.connect();
+
+      for (const statement of [...ENUM_STATEMENTS, ...TABLE_STATEMENTS, ...ALTER_STATEMENTS.slice(0, -2)]) {
+        await connection.run(statement);
+      }
+      await connection.run(`CREATE TABLE expected_parts_new (
+        id UUID PRIMARY KEY, listing_id UUID NOT NULL REFERENCES listings(id), component_category component_category NOT NULL,
+        description VARCHAR NOT NULL, estimated_resale_value DECIMAL(10, 2) CHECK (estimated_resale_value >= 0),
+        created_at TIMESTAMP NOT NULL DEFAULT current_timestamp, updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+        brand VARCHAR, part_number VARCHAR, identity_candidates VARCHAR DEFAULT '[]', ai_confidence VARCHAR, ai_source VARCHAR, price_source VARCHAR
+      )`);
+      await connection.run(`INSERT INTO expected_parts_new (id, listing_id, component_category, description, estimated_resale_value, created_at, updated_at, brand, part_number, identity_candidates, ai_confidence, ai_source, price_source)
+        SELECT id, listing_id, component_category, description, estimated_resale_value, created_at, updated_at, brand, part_number, identity_candidates, ai_confidence, ai_source, price_source FROM expected_parts`);
+      await connection.run(`CREATE TABLE teardown_results_backup (id UUID, purchase_id UUID, expected_part_id UUID, result VARCHAR, note VARCHAR, created_at TIMESTAMP, updated_at TIMESTAMP)`);
+      await connection.run(`INSERT INTO teardown_results_backup SELECT id, purchase_id, expected_part_id, result, note, created_at, updated_at FROM teardown_results`);
+      await connection.run(`DROP TABLE teardown_results`);
+      await connection.run(`DROP TABLE expected_parts`);
+      await connection.run(`ALTER TABLE expected_parts_new RENAME TO expected_parts`);
+      await connection.run(`CREATE TABLE teardown_results (
+        id UUID PRIMARY KEY, purchase_id UUID NOT NULL REFERENCES purchases(id), expected_part_id UUID REFERENCES expected_parts(id),
+        result teardown_result_type NOT NULL, note VARCHAR, created_at TIMESTAMP NOT NULL DEFAULT current_timestamp, updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+        UNIQUE (purchase_id, expected_part_id))`);
+      await connection.run(`INSERT INTO teardown_results SELECT id, purchase_id, expected_part_id, result, note, created_at, updated_at FROM teardown_results_backup`);
+      await connection.run(`DROP TABLE teardown_results_backup`);
+      for (const statement of INDEX_STATEMENTS) {
+        await connection.run(statement);
+      }
+
+      // Seeds a Listing + Expected Part under that pre-existing schema —
+      // the "pre-existing row, seeded before the migration" the requirement
+      // this test proves names directly.
+      await connection.run(`INSERT INTO sources (id, name, platform_type) VALUES ('11111111-1111-1111-1111-111111111111', 'x', 'other')`);
+      await connection.run(`INSERT INTO listings (id, source_id, title, asking_price, listing_date, photo_paths) VALUES ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'x', 5, '2024-01-01', '[]')`);
+      await connection.run(`INSERT INTO expected_parts (id, listing_id, component_category, description, estimated_resale_value) VALUES ('33333333-3333-3333-3333-333333333333', '22222222-2222-2222-2222-222222222222', 'CPU', 'pre-existing part', NULL)`);
+
+      // Applies the real, current runMigrations — the actual upgrade a live
+      // server performs on its next boot after this feature ships.
+      await runMigrations(connection);
+
+      const listingRow = await connection.runAndReadAll(`SELECT non_working FROM listings WHERE id = '22222222-2222-2222-2222-222222222222'`);
+      expect(listingRow.getRowObjectsJson()).toEqual([{ non_working: false }]);
+
+      const partRow = await connection.runAndReadAll(`SELECT working_status FROM expected_parts WHERE id = '33333333-3333-3333-3333-333333333333'`);
+      expect(partRow.getRowObjectsJson()).toEqual([{ working_status: 'working' }]);
+
+      connection.closeSync();
+      instance.closeSync();
+    } finally {
+      await rm(upgradeDir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -764,6 +899,98 @@ describe('Expected Part brand/part number', () => {
     const cleared = await db.updateExpectedPart(created.id, { brand: null, partNumber: null });
     expect(cleared?.brand).toBeNull();
     expect(cleared?.partNumber).toBeNull();
+  });
+});
+
+// T1 proof (ebay-condition-filter feature, Req 4-6): Listing.nonWorking and
+// ExpectedPart.workingStatus both round-trip through the real query
+// functions with their documented defaults — false/'working' when the
+// caller omits the field entirely, and the explicit value when the caller
+// supplies one. Every assertion reads back through a fresh SELECT
+// (getListingById/getExpectedPartById), not just the INSERT ... RETURNING
+// row, so a column present only on that row (and not actually persisted)
+// would not pass.
+describe('Listing nonWorking / Expected Part workingStatus (T1)', () => {
+  async function seedSource(): Promise<string> {
+    const source = await db.createSource({ name: 'eBay search', platformType: 'ebay', url: null, notes: null });
+    return source.id;
+  }
+
+  it('createListing with nonWorking omitted comes back false; explicit true round-trips through a fresh SELECT', async () => {
+    const sourceId = await seedSource();
+    const omitted = await db.createListing({
+      sourceId,
+      title: 'Omitted nonWorking',
+      description: null,
+      listingUrl: null,
+      askingPrice: 50,
+      listingDate: '2024-06-01',
+      acquisitionFees: 0,
+      photoPaths: [],
+    });
+    expect(omitted.nonWorking).toBe(false);
+    const fetchedOmitted = await db.getListingById(omitted.id);
+    expect(fetchedOmitted?.nonWorking).toBe(false);
+
+    const flagged = await db.createListing({
+      sourceId,
+      title: 'For Parts or Not Working bundle',
+      description: null,
+      listingUrl: null,
+      askingPrice: 40,
+      listingDate: '2024-06-02',
+      acquisitionFees: 0,
+      photoPaths: [],
+      nonWorking: true,
+    });
+    expect(flagged.nonWorking).toBe(true);
+    const fetchedFlagged = await db.getListingById(flagged.id);
+    expect(fetchedFlagged?.nonWorking).toBe(true);
+  });
+
+  it("createExpectedPart with workingStatus omitted comes back the DB default 'working' (never null); explicit 'non_working' round-trips through mapRow", async () => {
+    const sourceId = await seedSource();
+    const listing = await db.createListing({
+      sourceId,
+      title: 'Working status rig',
+      description: null,
+      listingUrl: null,
+      askingPrice: 100,
+      listingDate: '2024-06-03',
+      acquisitionFees: 0,
+      photoPaths: [],
+    });
+
+    const omitted = await db.createExpectedPart({
+      listingId: listing.id,
+      componentCategory: 'GPU',
+      brand: null,
+      partNumber: null,
+      description: 'omitted workingStatus',
+      estimatedResaleValue: null,
+      identityCandidates: [],
+      aiConfidence: null,
+      aiSource: null,
+    });
+    expect(omitted.workingStatus).toBe('working');
+    const fetchedOmitted = await db.getExpectedPartById(omitted.id);
+    expect(fetchedOmitted?.workingStatus).toBe('working');
+
+    const nonWorking = await db.createExpectedPart({
+      listingId: listing.id,
+      componentCategory: 'CPU',
+      brand: null,
+      partNumber: null,
+      description: 'explicit non_working',
+      estimatedResaleValue: null,
+      identityCandidates: [],
+      aiConfidence: null,
+      aiSource: null,
+      workingStatus: 'non_working',
+    });
+    expect(nonWorking.workingStatus).toBe('non_working');
+    const fetchedNonWorking = await db.getExpectedPartById(nonWorking.id);
+    expect(fetchedNonWorking?.workingStatus).toBe('non_working');
   });
 });
 

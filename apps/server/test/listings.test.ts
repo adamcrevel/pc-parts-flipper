@@ -201,6 +201,21 @@ describe('Listing CRUD + Expected Parts + Req-3 comparison (T6)', () => {
     expect(res.body.error?.message, `expected an error message naming "estimatedResaleValue", got ${JSON.stringify(res.body)}`).toMatch(/estimatedResaleValue/i);
   });
 
+  it('rejects an out-of-enum Expected Part workingStatus value with 400 naming the field, the same way an invalid priceSource is rejected', async () => {
+    const res = await postJson<{ error?: { message?: string } }>(
+      `${server.baseUrl}/api/listings`,
+      listingBody(sourceId, {
+        // Exactly two states exist ('working'/'non_working', VALID_WORKING_STATUSES
+        // in listingValidation.ts); anything else is a client bug, not a third
+        // meaning — mirrors priceSourceRoute.test.ts's "rejects an unrecognized
+        // priceSource value" case for the sibling three-state field.
+        expectedParts: [{ componentCategory: 'CPU', description: 'i7', estimatedResaleValue: null, workingStatus: 'broken' } as unknown as CreateListingInput['expectedParts'][number]],
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.error?.message, `expected an error message naming "workingStatus", got ${JSON.stringify(res.body)}`).toMatch(/workingStatus/i);
+  });
+
   it('persists a non-empty expectedParts[].identityCandidates array and round-trips it via GET (Req 6)', async () => {
     const candidates = [
       { brand: 'NVIDIA', partNumber: 'RTX 3070' },
@@ -437,4 +452,3 @@ describe('Reference photo promotion hook — DB-verified (T2)', () => {
     );
   });
 });
-

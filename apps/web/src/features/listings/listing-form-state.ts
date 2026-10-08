@@ -72,18 +72,20 @@ function expectedPartToRow(part: ExpectedPart): ExpectedPartRow {
       ? { aiSuggested: true, aiConfidence: part.aiConfidence, aiSource: part.aiSource }
       : {}),
     ...(part.priceSource === 'auto' || part.priceSource === 'manual' ? { priceSource: part.priceSource } : {}),
+    ...(part.workingStatus === 'working' || part.workingStatus === 'non_working' ? { workingStatus: part.workingStatus } : {}),
   };
 }
 
 /**
- * Derives ListingForm's initial Expected Parts rows: the Listing's existing
- * parts when editing one that already has them, otherwise a single blank
- * row to edit. Split out for the same reason as initialListingFormFields.
+ * Derives ListingForm's initial Expected Parts rows: a single blank row
+ * for create (no `initialValue`, or an edit target with no persisted
+ * parts yet), pre-filled rows from the Listing being edited otherwise.
+ * Same mapping as expectedPartsToRows (see its doc comment for why that's
+ * a separate named export) — this one backs the first-load useState call
+ * in ListingForm.
  */
 export function initialExpectedPartRows(initialValue?: ListingDetail): ExpectedPartRow[] {
-  if (!initialValue || initialValue.expectedParts.length === 0) {
-    return [emptyExpectedPartRow()];
-  }
+  if (!initialValue || initialValue.expectedParts.length === 0) return [emptyExpectedPartRow()];
   return initialValue.expectedParts.map(expectedPartToRow);
 }
 

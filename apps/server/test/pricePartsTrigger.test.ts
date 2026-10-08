@@ -34,7 +34,7 @@ vi.mock('../src/db/index.js', () => ({
 
 import { triggerPriceLookups } from '../src/jobs/pricePartsTrigger.js';
 
-/** Builds an Expected Part fixture; only the four fields the trigger reads matter. */
+/** Builds an Expected Part fixture; only the five fields the trigger reads matter. */
 function partFixture(overrides: Partial<ExpectedPart> = {}): ExpectedPart {
   return {
     id: 'part-1',
@@ -48,6 +48,7 @@ function partFixture(overrides: Partial<ExpectedPart> = {}): ExpectedPart {
     aiConfidence: 'high',
     aiSource: 'text',
     priceSource: 'auto',
+    workingStatus: 'working',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,

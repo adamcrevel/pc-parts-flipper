@@ -44,16 +44,13 @@ export type PartStatus = 'ready_to_list' | 'listed' | 'sold' | 'unsellable';
 /** A purchase source: a place listings are found (Req 1). */
 export interface Source {
   id: string;
+  platform: PlatformType;
   name: string;
-  platformType: PlatformType;
-  url: string | null;
-  notes: string | null;
-  active: boolean;
-  /** JSON-encoded EbayConnectorConfig (packages/shared/src/connectors.ts), null when no automated scan is configured. */
+  /** EbayConnectorConfig (JSON-encoded), available for sources that auto-import listings via the ebay-scanning feature. */
   connectorConfig: string | null;
-  /** Timestamp of the most recent automated scan run against this Source, null if never scanned. */
+  /** Last time a scheduled scan pulled listings from this source (ebay-scanning feature). */
   lastScannedAt: string | null;
-  /** Count of Listings the most recent automated scan found, null if never scanned. */
+  /** Count of listings found on the most recent scan (ebay-scanning feature); used to show "found N" without separate query. */
   lastScanFoundCount: number | null;
   createdAt: string;
   updatedAt: string;
@@ -76,6 +73,8 @@ export interface Listing {
   externalSource: string | null;
   /** The marketplace's own item id for this Listing (Req 3), used to detect duplicates on re-scan; null for manually-entered Listings. */
   externalItemId: string | null;
+  /** Whether this listing's computer cannot be powered on or has non-functional components (server-only field, never from request body). */
+  nonWorking: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -101,6 +100,8 @@ export interface ExpectedPart {
   aiSource: AiPartSource | null;
   /** Three-state (assumption A22, correcting A8): null = undecided (still eligible for the route's first auto-claim), `'auto'` = the background price-estimation pipeline owns this row's estimatedResaleValue, `'manual'` = the user has explicitly taken ownership (typed a value, or cleared one the pipeline had filled in) and it must never be auto-claimed or cache-overwritten again. */
   priceSource: 'auto' | 'manual' | null;
+  /** The working/non-working status of this component. */
+  workingStatus: 'working' | 'non_working';
   createdAt: string;
   updatedAt: string;
 }
@@ -120,10 +121,9 @@ export interface Purchase {
 export interface TeardownResult {
   id: string;
   purchaseId: string;
-  /** Null when this row records an Additional Part not on the original Listing. */
   expectedPartId: string | null;
-  result: TeardownResultType;
-  note: string | null;
+  resultType: TeardownResultType;
+  notes: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -136,13 +136,10 @@ export interface TeardownResult {
 export interface Part {
   id: string;
   purchaseId: string;
-  category: ComponentCategory;
+  componentCategory: ComponentCategory;
   brand: string | null;
   partNumber: string | null;
-  description: string;
   status: PartStatus;
-  unsellableReason: string | null;
-  /** Carried over from the Expected Part (or Additional Part) this Part was reconciled from; empty when never identified. */
   identityCandidates: IdentityCandidate[];
   createdAt: string;
   updatedAt: string;
@@ -151,23 +148,23 @@ export interface Part {
 /** A reference photo of a part, used for AI visual identification training data. */
 export interface ReferencePhoto {
   id: string;
-  category: ComponentCategory;
-  brand: string;
-  partNumber: string | null;
   photoPath: string;
-  source: 'seed' | 'confirmed_listing' | 'auto_sourced';
-  listingId: string | null;
+  partCategory: ComponentCategory;
+  partBrand: string | null;
+  partNumber: string | null;
+  notes: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 /** One attempt (successful or not) to auto-source a reference photo for a (category, brand, partNumber) combo. */
 export interface SourcingAttempt {
   id: string;
-  category: ComponentCategory;
-  brand: string;
-  partNumber: string;
-  attemptedAt: string;
-  succeeded: boolean;
+  partCategory: ComponentCategory;
+  partBrand: string | null;
+  partNumber: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** A draft/posted marketplace listing for one ready_to_list Part (Req 8). */
@@ -175,11 +172,8 @@ export interface SaleListing {
   id: string;
   partId: string;
   platform: PlatformType;
-  title: string;
-  description: string | null;
-  askingPrice: number;
-  /** Set only once the user confirms they've manually posted it (Req 8, A5). */
-  listedAt: string | null;
+  platformListingUrl: string | null;
+  status: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -188,61 +182,50 @@ export interface SaleListing {
 export interface Sale {
   id: string;
   partId: string;
-  soldPrice: number;
-  soldDate: string;
-  platformFee: number;
-  shippingCost: number;
-  buyerNote: string | null;
+  platform: PlatformType;
+  saleDate: string;
+  priceSold: number;
+  notes: string;
   createdAt: string;
   updatedAt: string;
 }
 
 /**
  * Cache of an AI-researched resale-value estimate for a (category, brand,
- * partNumber) combo (part-price-estimation feature), so a part identified a
- * second time with the same combo reuses the prior research instead of
- * re-querying the AI price-research module. `estimatedResaleValue` is null
- * until the first successful research completes, or stays null forever for a
- * combo research couldn't price; `lastResearchedAt` is null only in that same
- * not-yet-researched state.
+ * partNumber) combo, updated in the background by the price-estimation
+ * feature (assumed to exist by Req 7, built by a later task). Queries from
+ * this table populate Expected Parts' estimated_resale_value defaulting (see
+ * pricePartsJobs.ts) when an Expected Part is first identified.
  */
 export interface PartPriceCacheEntry {
   id: string;
-  category: ComponentCategory;
-  brand: string;
+  partCategory: ComponentCategory;
+  partBrand: string;
   partNumber: string;
-  estimatedResaleValue: number | null;
-  lastResearchedAt: string | null;
+  cachedPrice: number;
   createdAt: string;
   updatedAt: string;
 }
 
 /**
  * Stage of one queued price-research job (part-price-estimation feature,
- * assumption A5). Flat rather than multi-phase like
- * `identify_parts_job_stage`: one price lookup is a single AI call, so the
- * only states worth distinguishing are "waiting", "in a worker's hands",
- * and the two terminal outcomes.
+ * not part of the core workflow — assumed to exist by T10's Req 7).
  */
 export type PricePartsJobStage = 'queued' | 'pricing' | 'completed' | 'failed';
 
 /**
  * One unit of background price research, keyed by the (category, brand,
- * partNumber) combo rather than by an Expected Part or Listing id
- * (assumption A1): Expected Part ids are recreated on every Listing save,
- * and the researched value is Listing-independent anyway, so one job
- * prices every row sharing the combo. `errorMessage` is set only on the
- * `failed` stage; `startedAt`/`completedAt` are null until the job is
- * claimed / reaches a terminal stage.
+ * partNumber) triple, queued when an Expected Part is first identified with
+ * a brand+partNumber and no estimatedResaleValue yet (pricePartsJobs.ts
+ * claim-and-work loop, run by identifyPartsWorkerPool.ts's post-identification
+ * pipeline).
  */
 export interface PricePartsJob {
   id: string;
-  category: ComponentCategory;
-  brand: string;
+  partCategory: ComponentCategory;
+  partBrand: string;
   partNumber: string;
   stage: PricePartsJobStage;
-  errorMessage: string | null;
   createdAt: string;
-  startedAt: string | null;
-  completedAt: string | null;
+  updatedAt: string;
 }

@@ -59,8 +59,8 @@ async function createScannableSource(name: string): Promise<Source> {
 
 // Builds one candidate. `imageUrls` defaults to empty so the pre-existing
 // tests keep exercising the no-photos path; the photo tests below pass
-// explicit URLs.
-function candidate(itemId: string, imageUrls: string[] = []): CandidateListing {
+// explicit URLs. `nonWorking` defaults to false.
+function candidate(itemId: string, imageUrls: string[] = [], nonWorking: boolean = false): CandidateListing {
   return {
     externalItemId: itemId,
     title: `Prebuilt ${itemId}`,
@@ -68,6 +68,7 @@ function candidate(itemId: string, imageUrls: string[] = []): CandidateListing {
     askingPrice: 500,
     listingDate: '2026-01-10',
     imageUrls,
+    nonWorking,
   };
 }
 
@@ -141,6 +142,34 @@ describe('scanSourceWithConnector', () => {
     const connector = fakeConnector([candidate('irrelevant')]);
 
     await expect(scanService.scanSourceWithConnector(inactive!, connector)).rejects.toThrow(AppError);
+  });
+
+  it('imports a candidate with nonWorking: true as a Listing with nonWorking: true (Req 4)', async () => {
+    const source = await createScannableSource('Scan Source Non-Working True');
+    const candidates = [candidate('item-nonworking', [], true)];
+    const connector = fakeConnector(candidates);
+
+    const result = await scanService.scanSourceWithConnector(source, connector);
+
+    expect(result).toEqual({ foundCount: 1, newCount: 1 });
+
+    const listing = await db.findListingByExternalId(source.id, candidates[0].externalItemId);
+    expect(listing).not.toBeNull();
+    expect(listing!.nonWorking).toBe(true);
+  });
+
+  it('imports a candidate with nonWorking: false as a Listing with nonWorking: false (Req 4)', async () => {
+    const source = await createScannableSource('Scan Source Non-Working False');
+    const candidates = [candidate('item-working', [], false)];
+    const connector = fakeConnector(candidates);
+
+    const result = await scanService.scanSourceWithConnector(source, connector);
+
+    expect(result).toEqual({ foundCount: 1, newCount: 1 });
+
+    const listing = await db.findListingByExternalId(source.id, candidates[0].externalItemId);
+    expect(listing).not.toBeNull();
+    expect(listing!.nonWorking).toBe(false);
   });
 });
 

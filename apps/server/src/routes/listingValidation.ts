@@ -14,6 +14,8 @@ const VALID_AI_SOURCES: readonly AiPartSource[] = ['text', 'image', 'both'];
 // are both explicit claims the route stores verbatim.
 const VALID_PRICE_SOURCES: readonly ('auto' | 'manual')[] = ['auto', 'manual'];
 export const VALID_STATUSES: readonly ListingStatus[] = ['open', 'accepted', 'rejected'];
+// Two-state: 'working' is the default for any component not explicitly marked otherwise.
+const VALID_WORKING_STATUSES: readonly ('working' | 'non_working')[] = ['working', 'non_working'];
 
 // Loosely-typed shapes of untrusted request input, confirmed by the validate
 // functions below before anything reaches the db layer.
@@ -27,6 +29,7 @@ interface ExpectedPartRequestBody {
   aiConfidence?: unknown;
   aiSource?: unknown;
   priceSource?: unknown;
+  workingStatus?: unknown;
 }
 export interface ListingRequestBody {
   sourceId?: unknown;
@@ -186,6 +189,7 @@ function validateExpectedPartInput(raw: unknown, index: number): ExpectedPartInp
     aiConfidence: validateOptionalEnum(body.aiConfidence, VALID_AI_CONFIDENCES, `expectedParts[${index}].aiConfidence`),
     aiSource: validateOptionalEnum(body.aiSource, VALID_AI_SOURCES, `expectedParts[${index}].aiSource`),
     priceSource: validateOptionalEnum(body.priceSource, VALID_PRICE_SOURCES, `expectedParts[${index}].priceSource`),
+    workingStatus: validateOptionalEnum(body.workingStatus, VALID_WORKING_STATUSES, `expectedParts[${index}].workingStatus`),
   };
 }
 
