@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>T8–T9 Prototype — Pricing status on the Identify Parts banner</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          border: '#e2e8f0',
+          input: '#e2e8f0',
+          ring: '#0f172a',
+          background: '#ffffff',
+          foreground: '#0f172a',
+          primary: { DEFAULT: '#0f172a', foreground: '#f8fafc' },
+          secondary: { DEFAULT: '#f1f5f9', foreground: '#0f172a' },
+          destructive: { DEFAULT: '#dc2626', foreground: '#f8fafc' },
+          muted: { DEFAULT: '#f1f5f9', foreground: '#64748b' },
+          accent: { DEFAULT: '#f1f5f9', foreground: '#0f172a' },
+          /* button.tsx's --save/--cancel tokens (light mode values —
+             identical to primary/background, per index.css's own comment) */
+          save: { DEFAULT: '#0f172a', foreground: '#f8fafc' },
+          cancel: '#ffffff',
+        },
+      },
+    },
+  };
+</script>
+<style>
+  body { background: #fafafa; }
+  .proto-shell { max-width: 720px; }
+  .scenario-card { break-inside: avoid; }
+  .new-badge { animation: pulse-bg 1.6s ease-in-out infinite; }
+  @keyframes pulse-bg { 0%, 100% { background-color: #fef9c3; } 50% { background-color: #fde68a; } }
+  .flash-field { animation: flash-ring 900ms ease-out; }
+  @keyframes flash-ring { 0% { box-shadow: 0 0 0 2px #0f172a55; } 100% { box-shadow: 0 0 0 0 transparent; } }
+</style>
+</head>
+<body class="min-h-screen p-8 text-foreground">
+  <div class="proto-shell mx-auto space-y-10">
+
+    <header class="space-y-2">
+      <h1 class="text-lg font-semibold">T8–T9 Prototype — pricing status on the Identify Parts banner</h1>
+      <p class="text-sm text-muted-foreground">
+        The <em>only</em> user-visible change in this feature. Every element below is the real markup
+        and Tailwind classes from
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">apps/web/src/features/listings/identify-parts-button.tsx</code>,
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">listing-form.tsx</code>,
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">expected-parts-editor.tsx</code>,
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">info-banner.tsx</code> /
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">error-banner.tsx</code>, and
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">button.tsx</code> — nothing invented. The
+        only genuinely new piece is the <strong>content</strong> of the single status
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">&lt;p className="text-sm text-muted-foreground"&gt;</code>
+        line that already exists today (line 220 of identify-parts-button.tsx): T9 keeps writing into
+        it after the job itself finishes, instead of letting it go blank.
+      </p>
+      <div class="rounded-md border border-dashed border-muted-foreground/40 bg-muted/40 p-3 text-xs text-muted-foreground">
+        <strong>Dashed boxes like this one are prototype annotations only</strong> — they explain what's
+        happening but are not part of the real app's UI. Everything else on this page (buttons, banners,
+        inputs, borders, spacing) is the shipped component styling.
+      </div>
+    </header>
+
+    <!-- ===================== SCENARIO A: LIVE INTERACTIVE — IDENTIFY PARTS ===================== -->
+    <section class="space-y-3 rounded-lg border border-border p-4 scenario-card">
+      <h2 class="text-sm font-semibold">Scenario A — click "Identify Parts" (Req 16, T9)</h2>
+      <p class="text-xs text-muted-foreground">
+        Drives the real state machine: idle → queued → identifying → sourcing_references → comparing
+        → <strong>job completes</strong> → the same status line keeps going with
+        "Pricing N part(s)…", counting down every poll tick (2s in real code; sped up here) until it
+        clears. The button re-enables the instant the identify-parts job itself finishes —
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">isIdentifying</code> is unchanged by T9 —
+        only the status <em>text</em> keeps going.
+      </p>
+
+      <!-- Literal reproduction of IdentifyPartsButton's returned JSX -->
+      <div class="space-y-2" id="live-root">
+        <button type="button" id="live-btn"
+          class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+          Identify Parts
+        </button>
+
+        <!-- This single <p> is identify-parts-button.tsx line 220 today:
+             {currentStageMessage && <p className="text-sm text-muted-foreground">{currentStageMessage}</p>}
+             T9's only change: the condition/content also covers `pricingStatus`, same element. -->
+        <p id="live-status" class="text-sm text-muted-foreground hidden"></p>
+
+        <div id="live-info" role="status"
+          class="hidden flex items-start justify-between gap-3 rounded-md border border-border bg-muted px-4 py-3 text-sm text-foreground">
+          <span id="live-info-text"></span>
+          <button type="button" aria-label="Dismiss" class="text-muted-foreground hover:text-foreground" onclick="document.getElementById('live-info').classList.add('hidden')">×</button>
+        </div>
+
+        <div id="live-error" role="alert"
+          class="hidden rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        </div>
+      </div>
+
+      <div id="live-annotation" class="hidden rounded-md border border-dashed border-muted-foreground/40 bg-muted/40 p-2 text-xs text-muted-foreground"></div>
+
+      <div class="flex flex-wrap gap-2 pt-2">
+        <button type="button" onclick="runWithPricing()" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+          ▶ Run: 3 parts become fully identified (new T9 behavior)
+        </button>
+        <button type="button" onclick="runWithoutPricing()" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+          ▶ Run: no part needs pricing (unchanged today's behavior)
+        </button>
+        <button type="button" onclick="runFailurePath()" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+          ▶ Simulate identify-parts failure (unchanged)
+        </button>
+        <button type="button" onclick="resetLive()" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+          Reset
+        </button>
+      </div>
+    </section>
+
+    <!-- ===================== STATIC STATE GALLERY ===================== -->
+    <section class="space-y-6">
+      <h2 class="text-sm font-semibold">All states (static reference)</h2>
+
+      <div class="rounded-lg border border-border p-4 space-y-2 scenario-card">
+        <p class="text-xs font-medium text-muted-foreground">1 — Idle</p>
+        <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+          Identify Parts
+        </button>
+      </div>
+
+      <div class="rounded-lg border border-border p-4 space-y-2 scenario-card">
+        <p class="text-xs font-medium text-muted-foreground">2 — stage: comparing (job still running, unchanged by T9)</p>
+        <div class="space-y-2">
+          <button type="button" disabled class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+            Identifying parts…
+          </button>
+          <p class="text-sm text-muted-foreground">Comparing photos against reference images…</p>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-border p-4 space-y-2 scenario-card">
+        <div class="flex items-center gap-2">
+          <p class="text-xs font-medium text-muted-foreground">3 — identify-parts job just completed, 3 parts still need a price</p>
+          <span class="new-badge rounded px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">NEW in T9</span>
+        </div>
+        <div class="space-y-2">
+          <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+            Identify Parts
+          </button>
+          <p class="text-sm text-muted-foreground">Pricing 3 part(s)…</p>
+        </div>
+        <p class="text-xs text-muted-foreground">
+          Button label is already back to "Identify Parts" (re-enabled) — only the status line below it
+          is still occupied. Today, this line would already be gone at this point.
+        </p>
+      </div>
+
+      <div class="rounded-lg border border-border p-4 space-y-2 scenario-card">
+        <p class="text-xs font-medium text-muted-foreground">4 — second poll tick, one part resolved</p>
+        <div class="space-y-2">
+          <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+            Identify Parts
+          </button>
+          <p class="text-sm text-muted-foreground">Pricing 2 part(s)…</p>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-border p-4 space-y-2 scenario-card">
+        <p class="text-xs font-medium text-muted-foreground">5 — last part still pricing</p>
+        <div class="space-y-2">
+          <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+            Identify Parts
+          </button>
+          <p class="text-sm text-muted-foreground">Pricing 1 part(s)…</p>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-border p-4 space-y-2 scenario-card">
+        <p class="text-xs font-medium text-muted-foreground">6 — all prices resolved (or 60-poll/2min cutoff, A6) — status line clears</p>
+        <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+          Identify Parts
+        </button>
+        <p class="text-xs text-muted-foreground">Identical to state 1 — nothing distinguishes "never ran" from "pricing finished."</p>
+      </div>
+
+      <div class="rounded-lg border border-border p-4 space-y-2 scenario-card">
+        <p class="text-xs font-medium text-muted-foreground">7 — job completed, zero parts needed pricing (unchanged existing behavior)</p>
+        <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+          Identify Parts
+        </button>
+        <p class="text-xs text-muted-foreground">Status line disappears the instant the job completes, exactly like today — T9 adds no line when no auto-priced part is missing a value.</p>
+      </div>
+
+      <div class="rounded-lg border border-border p-4 space-y-2 scenario-card">
+        <p class="text-xs font-medium text-muted-foreground">8 — identify-parts job failed (unchanged — a failed job triggers no pricing)</p>
+        <div class="space-y-2">
+          <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">
+            Identify Parts
+          </button>
+          <div role="alert" class="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            The AI vision model timed out after 3 retries. Try again in a few minutes.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== SCENARIO B: MANUAL SAVE — NO STATUS, EVER ===================== -->
+    <section class="space-y-3 rounded-lg border border-border p-4 scenario-card">
+      <h2 class="text-sm font-semibold">Scenario B — plain manual Save (Req 17, A7): no pricing status anywhere</h2>
+      <p class="text-xs text-muted-foreground">
+        The user typed a brand + part number by hand (no "Identify Parts" click involved) and hits the
+        form's own <strong>Save</strong> button
+        (<code class="rounded bg-muted px-1 py-0.5 text-xs">listing-form.tsx</code> line 211). Pricing
+        still runs in the background server-side, but — per A7 — there is no banner, no status text,
+        nothing. The <strong>Est. value</strong> field (the same input from
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">expected-parts-editor.tsx</code> line 186)
+        just quietly fills in once it's ready.
+      </p>
+
+      <!-- Reproduction of one ExpectedPartRow's trigger row, collapsed-irrelevant fields omitted for focus -->
+      <div class="flex flex-1 flex-wrap items-start gap-2 rounded-md border border-border p-2">
+        <select disabled class="rounded-md border border-input bg-background px-2 py-1.5 text-sm">
+          <option selected>GPU</option>
+        </select>
+        <input disabled value="NVIDIA" class="rounded-md border border-input bg-background px-2 py-1.5 text-sm" aria-label="Expected part 1 brand" />
+        <input disabled value="RTX 3070" class="rounded-md border border-input bg-background px-2 py-1.5 text-sm" aria-label="Expected part 1 part number" />
+        <div class="space-y-1">
+          <input id="save-estvalue" type="number" step="0.01" value="" placeholder="Est. value"
+            class="w-24 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            aria-label="Expected part 1 estimated resale value" readonly />
+        </div>
+      </div>
+
+      <div class="flex gap-2">
+        <button type="button" id="save-btn" onclick="runManualSave()"
+          class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-save text-save-foreground shadow hover:bg-save/90 h-9 px-4 py-2">
+          Save
+        </button>
+        <button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+          Cancel
+        </button>
+      </div>
+
+      <div id="save-annotation" class="rounded-md border border-dashed border-muted-foreground/40 bg-muted/40 p-2 text-xs text-muted-foreground">
+        Click Save. Watch the whole card — no <code class="rounded bg-muted px-1 py-0.5 text-xs">InfoBanner</code>,
+        no new text, no spinner appears anywhere. A few seconds after Save completes, Est. value just
+        changes.
+      </div>
+    </section>
+
+    <footer class="pt-4 text-xs text-muted-foreground space-y-1">
+      <p><strong>Grounding:</strong> button/banner classes copied verbatim from
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">button.tsx</code> (outline/sm and default
+        variants), <code class="rounded bg-muted px-1 py-0.5 text-xs">info-banner.tsx</code>,
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">error-banner.tsx</code>. Row input classes
+        copied verbatim from <code class="rounded bg-muted px-1 py-0.5 text-xs">expected-parts-editor.tsx</code>.
+        Stage copy copied verbatim from <code class="rounded bg-muted px-1 py-0.5 text-xs">getStageMessage</code>.</p>
+      <p>Save-first hint (unsaved listing, unchanged by this task): <span class="text-sm text-muted-foreground">Save the listing to identify parts with AI.</span></p>
+    </footer>
+  </div>
+
+<script>
+  // ---------- Scenario A: Identify Parts + pricing follow-up ----------
+  const btn = document.getElementById('live-btn');
+  const statusEl = document.getElementById('live-status');
+  const infoEl = document.getElementById('live-info');
+  const infoText = document.getElementById('live-info-text');
+  const errorEl = document.getElementById('live-error');
+  const annotationEl = document.getElementById('live-annotation');
+
+  let timers = [];
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
+  function resetLive() {
+    clearTimers();
+    btn.disabled = false;
+    btn.textContent = 'Identify Parts';
+    statusEl.classList.add('hidden');
+    statusEl.textContent = '';
+    infoEl.classList.add('hidden');
+    errorEl.classList.add('hidden');
+    annotationEl.classList.add('hidden');
+    annotationEl.textContent = '';
+  }
+
+  function setStatus(text) {
+    statusEl.textContent = text;
+    statusEl.classList.remove('hidden');
+  }
+
+  function clearStatus() {
+    statusEl.classList.add('hidden');
+    statusEl.textContent = '';
+  }
+
+  function annotate(text) {
+    annotationEl.textContent = text;
+    annotationEl.classList.remove('hidden');
+  }
+
+  // Shared identify-parts stage progression. `onDone(wasIdentifyParts)` fires
+  // once the job itself reaches a terminal stage (completed, in this demo).
+  function runIdentifyStages(onCompleted) {
+    btn.disabled = true;
+    btn.textContent = 'Identifying parts…';
+    const stages = [
+      [0,    'Waiting to run…'],
+      [500,  'Reading the listing text and photos with AI…'],
+      [1300, 'Sourcing reference photos from manufacturer sites…'],
+      [2100, 'Comparing photos against reference images…'],
+    ];
+    stages.forEach(([delay, text]) => {
+      timers.push(setTimeout(() => setStatus(text), delay));
+    });
+    timers.push(setTimeout(() => {
+      // Mirrors applyTerminalJob + startPolling's setJob(null): job stage
+      // ends, button re-enables, isIdentifying flips false — independent
+      // of whatever the (separate) pricingStatus state does next.
+      btn.disabled = false;
+      btn.textContent = 'Identify Parts';
+      onCompleted();
+    }, 2900));
+  }
+
+  function runWithPricing() {
+    resetLive();
+    annotate('Server persisted 3 newly-identified Expected Parts, all with priceSource="auto" and estimatedResaleValue still null → onPartsSaved fires → T9 starts its own 2s poll loop against GET /api/listings/:id.');
+    runIdentifyStages(() => {
+      // No gap: the same <p> goes straight from the last stage message to
+      // the pricing message — it is never hidden in between.
+      let remaining = 3;
+      setStatus(`Pricing ${remaining} part(s)…`);
+      annotate(`Poll tick: ${remaining} Expected Part(s) still have priceSource="auto" and estimatedResaleValue=null.`);
+      const tick = () => {
+        remaining -= 1;
+        if (remaining > 0) {
+          setStatus(`Pricing ${remaining} part(s)…`);
+          annotate(`Poll tick: ${remaining} Expected Part(s) still unpriced.`);
+          timers.push(setTimeout(tick, 1100));
+        } else {
+          clearStatus();
+          annotate('Poll tick: 0 Expected Parts left with priceSource="auto" and a null value → pricingStatus cleared, polling stops.');
+        }
+      };
+      timers.push(setTimeout(tick, 1100));
+    });
+  }
+
+  function runWithoutPricing() {
+    resetLive();
+    annotate('Server persisted parts that already had brand+partNumber+a value, or had neither — none newly eligible for auto pricing, so no pricingStatus is ever set. Unchanged from today.');
+    runIdentifyStages(() => {
+      clearStatus();
+      annotate('No part needed pricing → status line clears immediately, exactly like before T9.');
+    });
+  }
+
+  function runFailurePath() {
+    resetLive();
+    btn.disabled = true;
+    btn.textContent = 'Identifying parts…';
+    setStatus('Waiting to run…');
+    timers.push(setTimeout(() => setStatus('Reading the listing text and photos with AI…'), 500));
+    timers.push(setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = 'Identify Parts';
+      clearStatus();
+      errorEl.textContent = 'The AI vision model timed out after 3 retries. Try again in a few minutes.';
+      errorEl.classList.remove('hidden');
+      annotate('Job failed → no parts were saved → nothing to price → pricingStatus never set.');
+    }, 1400));
+  }
+
+  // ---------- Scenario B: manual Save, never any pricing status ----------
+  const saveBtn = document.getElementById('save-btn');
+  const estField = document.getElementById('save-estvalue');
+
+  function runManualSave() {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+    setTimeout(() => {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save';
+      // Background price research kicks off server-side here — Req 17 says
+      // nothing in the UI reflects that. No banner, no text, anywhere on
+      // this card changes.
+      setTimeout(() => {
+        estField.value = '398.00';
+        estField.classList.add('flash-field');
+      }, 1800);
+    }, 500);
+  }
+</script>
+</body>
+</html>

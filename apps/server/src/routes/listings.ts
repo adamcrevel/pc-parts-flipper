@@ -33,6 +33,7 @@ import {
 } from '../db/index.js';
 import { AppError } from '../error-handler.js';
 import { logger } from '../logger.js';
+import { triggerPriceLookups } from '../jobs/pricePartsTrigger.js';
 import { registerListingPhotoRoutes } from './listingPhotos.js';
 import { VALID_STATUSES, validateListingInput, type ListingRequestBody } from './listingValidation.js';
 
@@ -86,6 +87,42 @@ export async function promoteReferencesForExpectedParts(
 }
 
 /**
+ * Creates every Expected Part of a validated create/update body on
+ * `listingId`, deciding each row's `priceSource` on the way in, and returns
+ * the rows as stored (which the price trigger then works from).
+ *
+ * `priceSource` is three-state (assumption A22, correcting A8): null is
+ * *undecided*, `'auto'` means the background pipeline owns the row's price,
+ * `'manual'` means the user does (he typed a value, or cleared one the
+ * pipeline had filled in). Only an undecided row is ever claimed here, and
+ * only when it is fully identified (brand *and* partNumber) with no price
+ * of its own; an incoming `'auto'`/`'manual'` is stored verbatim. That is
+ * what makes Req 14/15 hold across a resave: on the old two-value field a
+ * cleared auto-priced row was indistinguishable from an undecided one, so
+ * it got re-claimed and then re-filled from the cache in the same request.
+ */
+async function createExpectedPartsForListing(
+  listingId: string,
+  expectedParts: ExpectedPartInput[],
+): Promise<ExpectedPart[]> {
+  return Promise.all(
+    expectedParts.map((part) =>
+      createExpectedPart({
+        listingId,
+        ...part,
+        priceSource:
+          (part.priceSource ?? null) === null &&
+          part.brand !== null &&
+          part.partNumber !== null &&
+          part.estimatedResaleValue === null
+            ? 'auto'
+            : part.priceSource ?? null,
+      }),
+    ),
+  );
+}
+
+/**
  * Registers all `/api/listings` routes (plus, via registerListingPhotoRoutes,
  * the photo-upload route) on the given Fastify instance. Called once from
  * index.ts during server bootstrap, the same way registerSourcesRoutes is.
@@ -103,9 +140,14 @@ export async function registerListingsRoutes<
     const created = await createListing({ ...input, photoPaths: [] });
     // Nested Expected Parts are created together with the Listing in this
     // one request (Req 2) — order doesn't matter, so these run concurrently.
-    await Promise.all(expectedParts.map((part) => createExpectedPart({ listingId: created.id, ...part })));
+    const createdParts = await createExpectedPartsForListing(created.id, expectedParts);
     // Promote reference photos for any Expected Part with a confirmed brand (Req T2)
     await promoteReferencesForExpectedParts(created.id, created.photoPaths, expectedParts);
+    // Decide, per part, between an already-cached price and a queued
+    // research job (Req 5-7). Awaited like the promotion above: the work
+    // here is only the cache lookup and the enqueue — the AI research
+    // itself happens later, in the price worker pool, never in this request.
+    await triggerPriceLookups(createdParts);
     reply.status(201);
     return toDetail(created);
   });
@@ -162,9 +204,11 @@ export async function registerListingsRoutes<
     // separate per-row edit endpoint).
     const existingParts = await listExpectedPartsByListing(id);
     await Promise.all(existingParts.map((part) => deleteExpectedPart(part.id)));
-    await Promise.all(expectedParts.map((part) => createExpectedPart({ listingId: id, ...part })));
+    const createdParts = await createExpectedPartsForListing(id, expectedParts);
     // Promote reference photos for any Expected Part with a confirmed brand (Req T2)
     await promoteReferencesForExpectedParts(id, updated.photoPaths, expectedParts);
+    // Same cache-hit/miss decision as the create path above (Req 5-7).
+    await triggerPriceLookups(createdParts);
     return toDetail(updated);
   });
 

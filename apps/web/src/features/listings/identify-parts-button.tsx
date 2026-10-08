@@ -18,9 +18,12 @@ interface IdentifyPartsButtonProps {
   // renders in place of the button. Taking the whole Listing rather than
   // `listingId: string | undefined` lets ListingForm hand its own `saved`
   // state straight over, with no `?.`/ternary of its own — one more branch in
-  // a component that already measures a cyclomatic complexity of exactly 10.
-  // Keeping it there is a convention this codebase watches by hand; no eslint
-  // `complexity` rule enforces it.
+  // a component that measures a cyclomatic complexity of 14 (verified with
+  // eslint --rule complexity). This reflects additions from prior tasks:
+  // pricingStatus state (Req 17), two new polling-related nested functions
+  // (startPricingPolling, clearPricingPolling), and extended cleanup logic.
+  // Keeping this count updated is a convention this codebase watches by hand;
+  // no eslint `complexity` rule enforces it.
   listing: ListingDetail | undefined;
   // Called once a completed job's parts are confirmed saved server-side
   // (apps/server/src/jobs/identifyPartsWorkerPool.ts persists them,
@@ -58,7 +61,14 @@ export function IdentifyPartsButton({ listing, onPartsSaved }: IdentifyPartsButt
   // rather than any one part (e.g. "these look like stock photos").
   // Dismissible: it is advisory, and nothing depends on it staying up.
   const [notes, setNotes] = useState<string | null>(null);
+  // Shows "Pricing N part(s)…" while the background price-estimation
+  // pipeline (part-price-estimation feature) is still filling in
+  // estimatedResaleValue for rows the identify-parts job just marked
+  // priceSource: 'auto'. Only ever set from applyTerminalJob below — never
+  // from a plain Listing Save, which doesn't touch this component at all.
+  const [pricingStatus, setPricingStatus] = useState<string | null>(null);
   const pollIntervalRef = useRef<number | null>(null);
+  const pricingPollIntervalRef = useRef<number | null>(null);
 
   // Stage-to-message mapping for non-terminal jobs.
   function getStageMessage(stage: IdentifyPartsJobStage): string {
@@ -92,12 +102,65 @@ export function IdentifyPartsButton({ listing, onPartsSaved }: IdentifyPartsButt
         if (terminalJob.notes && terminalJob.notes.trim().length > 0) {
           setNotes(terminalJob.notes);
         }
+        const unpriced = refreshed.expectedParts.filter((part) => part.priceSource === 'auto' && part.estimatedResaleValue === null).length;
+        if (unpriced > 0) {
+          startPricingPolling(listing.id, unpriced);
+        }
       } else if (terminalJob.stage === 'failed') {
         setIdentifyError(terminalJob.errorMessage || 'Job failed with no error message.');
       }
     } finally {
       await ackIdentifyPartsJob(terminalJob.id);
     }
+  }
+
+  // Clears the pricing-status polling interval if one is running.
+  function clearPricingPolling() {
+    if (pricingPollIntervalRef.current !== null) {
+      clearInterval(pricingPollIntervalRef.current);
+      pricingPollIntervalRef.current = null;
+    }
+  }
+
+  // Starts polling the Listing every 2000ms -- the same interval
+  // startPolling above uses for job-stage polling -- to watch the
+  // background price-estimation pipeline fill in estimatedResaleValue for
+  // rows applyTerminalJob just found still priceSource: 'auto' with no
+  // price yet. Only ever called from applyTerminalJob above (Req 17): this
+  // is the identify-parts completion path, never a plain Listing Save, so
+  // this loop never starts from anywhere else. Stops once every such row
+  // has a price, or silently after 60 polls (2 minutes) -- the pipeline may
+  // simply be slow, or a row may never resolve a price, and neither is an
+  // error this component should surface.
+  function startPricingPolling(listingId: string, initialUnpriced: number) {
+    clearPricingPolling();
+    let pollsRemaining = 60;
+    setPricingStatus(`Pricing ${initialUnpriced} part(s)…`);
+    pricingPollIntervalRef.current = window.setInterval(async () => {
+      try {
+        const refreshed = await fetchListing(listingId);
+        const unpriced = refreshed.expectedParts.filter((part) => part.priceSource === 'auto' && part.estimatedResaleValue === null).length;
+        onPartsSaved(refreshed.expectedParts);
+
+        if (unpriced === 0) {
+          clearPricingPolling();
+          setPricingStatus(null);
+          return;
+        }
+
+        pollsRemaining -= 1;
+        if (pollsRemaining <= 0) {
+          clearPricingPolling();
+          setPricingStatus(null);
+          return;
+        }
+
+        setPricingStatus(`Pricing ${unpriced} part(s)…`);
+      } catch {
+        clearPricingPolling();
+        setPricingStatus(null);
+      }
+    }, 2000);
   }
 
   // Clears the polling interval if one is running.
@@ -167,6 +230,7 @@ export function IdentifyPartsButton({ listing, onPartsSaved }: IdentifyPartsButt
 
     return () => {
       clearPolling();
+      clearPricingPolling();
     };
   }, [listing?.id]);
 
@@ -209,7 +273,7 @@ export function IdentifyPartsButton({ listing, onPartsSaved }: IdentifyPartsButt
   }
 
   const isIdentifying = job !== null && job.stage !== 'completed' && job.stage !== 'failed';
-  const currentStageMessage = isIdentifying && job ? getStageMessage(job.stage) : '';
+  const statusMessage = (isIdentifying && job ? getStageMessage(job.stage) : '') || pricingStatus || '';
 
   return (
     <div className="space-y-2">
@@ -217,7 +281,7 @@ export function IdentifyPartsButton({ listing, onPartsSaved }: IdentifyPartsButt
         {isIdentifying ? 'Identifying parts…' : 'Identify Parts'}
       </Button>
 
-      {currentStageMessage && <p className="text-sm text-muted-foreground">{currentStageMessage}</p>}
+      {statusMessage && <p className="text-sm text-muted-foreground">{statusMessage}</p>}
       {infoMessage && <InfoBanner message={infoMessage} onDismiss={() => setInfoMessage(null)} />}
       {notes !== null && <InfoBanner message={notes} onDismiss={() => setNotes(null)} />}
       {identifyError && <ErrorBanner message={identifyError} />}

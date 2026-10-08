@@ -24,6 +24,12 @@ export const ENUM_STATEMENTS: readonly string[] = [
   // tells you exactly which phase it died in.
   `CREATE TYPE IF NOT EXISTS identify_parts_job_stage AS ENUM
     ('queued', 'identifying', 'sourcing_references', 'comparing', 'completed', 'failed')`,
+  // Price-research job queue (part-price-estimation feature): queued ->
+  // pricing -> completed/failed, mirroring identify_parts_job_stage's own
+  // shape above since this queue follows the same async single-worker
+  // poll-to-delivery pattern as identify_parts_jobs.
+  `CREATE TYPE IF NOT EXISTS price_parts_job_stage AS ENUM
+    ('queued', 'pricing', 'completed', 'failed')`,
 ];
 
 // -- Phase 2: tables -------------------------------------------------------
@@ -179,6 +185,39 @@ export const TABLE_STATEMENTS: readonly string[] = [
     completed_at TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
   )`,
+  // Cache of AI-researched resale-value estimates for a given
+  // (component_category, brand, part_number) combo (part-price-estimation
+  // feature), so a part identified a second time with the same combo reuses
+  // the prior research instead of re-querying the AI price-research module.
+  // last_researched_at is null until the first successful research completes;
+  // estimated_resale_value stays null for a combo research couldn't price.
+  `CREATE TABLE IF NOT EXISTS part_price_cache (
+    id UUID PRIMARY KEY,
+    component_category component_category NOT NULL,
+    brand VARCHAR NOT NULL,
+    part_number VARCHAR NOT NULL,
+    estimated_resale_value DECIMAL(10, 2),
+    last_researched_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
+  )`,
+  // Price-research job queue (part-price-estimation feature): same
+  // queued-row/poll-for-completion shape as identify_parts_jobs above, but
+  // keyed on the (component_category, brand, part_number) triple rather than
+  // a listing_id, since one price-research job can serve any Expected Part
+  // sharing that combo, not just the one that triggered it.
+  `CREATE TABLE IF NOT EXISTS price_parts_jobs (
+    id UUID PRIMARY KEY,
+    component_category component_category NOT NULL,
+    brand VARCHAR NOT NULL,
+    part_number VARCHAR NOT NULL,
+    stage price_parts_job_stage NOT NULL DEFAULT 'queued',
+    error_message VARCHAR,
+    created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
+  )`,
 ];
 // -- Phase 3: alters ---------------------------------------------------
 // Columns later features add on top of the original schema. Uses
@@ -226,6 +265,17 @@ export const ALTER_STATEMENTS: readonly string[] = [
   // sends null here on the next save, same as a row that was never AI's).
   `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS ai_confidence VARCHAR`,
   `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS ai_source VARCHAR`,
+  // Provenance for an Expected Part's estimated_resale_value (part-price-
+  // estimation feature), three-state (assumption A22, correcting A8): null
+  // means undecided — nobody has claimed the price yet, so the server may
+  // still claim it for the background pipeline the first time the row is
+  // fully identified; 'auto' means the background price-research module
+  // (and, via part_price_cache, possibly a cache hit) currently owns the
+  // figure and may still overwrite it on a cache refresh; 'manual' means
+  // the user has explicitly taken ownership — by typing a value, or by
+  // clearing one the pipeline had filled in — and the row must never be
+  // auto-claimed or auto-overwritten again.
+  `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS price_source VARCHAR`,
 ];
 
 // -- Phase 4: indexes ------------------------------------------------------
@@ -263,4 +313,5 @@ export const INDEX_STATEMENTS: readonly string[] = [
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_catalog_sourcing_attempts_dedup ON part_catalog_sourcing_attempts(category, brand)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_listings_source_external_item ON listings(source_id, external_item_id)`,
   `CREATE INDEX IF NOT EXISTS idx_identify_parts_jobs_listing_id ON identify_parts_jobs(listing_id)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_part_price_cache_dedup ON part_price_cache(component_category, brand, part_number)`,
 ];

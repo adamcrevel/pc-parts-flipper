@@ -96,6 +96,13 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
     // blank starter, never typed into) are dropped here, not sent as an
     // empty/invalid Expected Part — they're UI scaffolding, not this
     // listing's data.
+    //
+    // priceSource is sent verbatim from the row's own three-state claim
+    // (assumption A22): 'auto' keeps the row server-auto-managed across
+    // this save, 'manual' keeps it the user's — updateRow in
+    // expected-parts-editor.tsx flips 'auto' to 'manual' on first edit —
+    // and undefined sends null, meaning "undecided", which is the only
+    // state the server may claim for the pipeline.
     const expectedParts: ExpectedPartInput[] = nextRows
       .filter((row) => !isUntouchedExpectedPartRow(row))
       .map((row) => ({
@@ -107,6 +114,7 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
         identityCandidates: row.identityCandidates,
         aiConfidence: row.aiSuggested ? (row.aiConfidence ?? null) : null,
         aiSource: row.aiSuggested ? (row.aiSource ?? null) : null,
+        priceSource: row.priceSource ?? null,
       }));
 
     const result = await onSubmit({

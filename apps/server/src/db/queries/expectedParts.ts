@@ -23,6 +23,16 @@ export interface CreateExpectedPartInput {
   identityCandidates: IdentityCandidate[];
   aiConfidence: AiPartConfidence | null;
   aiSource: AiPartSource | null;
+  /**
+   * Three-state (assumption A22, correcting A8): `'auto'` when the
+   * background price-estimation pipeline owns this row's estimated resale
+   * value, `'manual'` when the user has explicitly taken it over, null when
+   * nobody has decided yet. Optional (unlike the `aiConfidence`/`aiSource`
+   * pair above) and defaulting to null: every caller predating the
+   * part-price-estimation feature means "undecided", which is exactly what
+   * null says, so they stay correct untouched.
+   */
+  priceSource?: 'auto' | 'manual' | null;
 }
 
 /** Fields that may be edited on an existing Expected Part; omitted keys are left unchanged. */
@@ -50,6 +60,7 @@ function mapRow(row: Record<string, unknown>): ExpectedPart {
     identityCandidates: JSON.parse(row.identity_candidates as string) as IdentityCandidate[],
     aiConfidence: (row.ai_confidence as AiPartConfidence | null) ?? null,
     aiSource: (row.ai_source as AiPartSource | null) ?? null,
+    priceSource: (row.price_source as 'auto' | 'manual' | null) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -59,8 +70,8 @@ function mapRow(row: Record<string, unknown>): ExpectedPart {
 export async function createExpectedPart(input: CreateExpectedPartInput): Promise<ExpectedPart> {
   const connection = await getConnection();
   const reader = await connection.runAndReadAll(
-    `INSERT INTO expected_parts (id, listing_id, component_category, brand, part_number, description, estimated_resale_value, identity_candidates, ai_confidence, ai_source)
-     VALUES ($id, $listing_id, $component_category, $brand, $part_number, $description, $estimated_resale_value, $identity_candidates, $ai_confidence, $ai_source)
+    `INSERT INTO expected_parts (id, listing_id, component_category, brand, part_number, description, estimated_resale_value, identity_candidates, ai_confidence, ai_source, price_source)
+     VALUES ($id, $listing_id, $component_category, $brand, $part_number, $description, $estimated_resale_value, $identity_candidates, $ai_confidence, $ai_source, $price_source)
      RETURNING *`,
     {
       id: newId(),
@@ -73,6 +84,7 @@ export async function createExpectedPart(input: CreateExpectedPartInput): Promis
       identity_candidates: JSON.stringify(input.identityCandidates),
       ai_confidence: input.aiConfidence,
       ai_source: input.aiSource,
+      price_source: input.priceSource ?? null,
     },
   );
   return mapRow(reader.getRowObjectsJson()[0]);

@@ -47,6 +47,16 @@ export interface ExpectedPart {
   // never one without the other.
   aiConfidence?: AiPartConfidence | null;
   aiSource?: AiPartSource | null;
+  // Three-state (assumption A22, correcting A8). Null means *undecided*:
+  // nobody has claimed this row's price, so the server may claim it for the
+  // background price-estimation pipeline the first time the row has a brand
+  // + partNumber and no price of its own. 'auto' means the pipeline owns
+  // this row's estimatedResaleValue and may write a cached or freshly
+  // researched value onto it. 'manual' means the user has explicitly taken
+  // ownership — typed a price, or cleared one the pipeline had filled in —
+  // and the row is never auto-claimed or cache-overwritten again. Optional
+  // for the same backward-fixture-compatibility reason as the pair above.
+  priceSource?: 'auto' | 'manual' | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -119,6 +129,14 @@ export interface ExpectedPartInput {
   // with, and a required field catches a writer that forgot to decide.
   aiConfidence: AiPartConfidence | null;
   aiSource: AiPartSource | null;
+  // The row's current priceSource, carried straight back from whatever the
+  // client holds, so resaving leaves the row's ownership untouched: 'auto'
+  // stays the pipeline's, 'manual' stays the user's (the editor flips an
+  // 'auto' row to 'manual' the moment the user edits it, which is what
+  // stops the server re-claiming a price the user just cleared). Optional,
+  // unlike the required pair above: a client built before this feature
+  // simply omits it, which reads the same as null — undecided.
+  priceSource?: 'auto' | 'manual' | null;
 }
 
 /**

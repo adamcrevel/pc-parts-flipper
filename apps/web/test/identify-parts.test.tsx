@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
-import type { CreateListingInput, IdentifyPartsJob, IdentifyPartsResponse, ListingDetail, Source } from '@pc-parts-flipper/shared';
+import type { CreateListingInput, ExpectedPart, IdentifyPartsJob, IdentifyPartsResponse, ListingDetail, Source } from '@pc-parts-flipper/shared';
 import { ApiError } from '../src/lib/api-client';
 import { ListingForm } from '../src/features/listings/listing-form';
 
@@ -137,6 +137,38 @@ const listingAfterIdentification: ListingDetail = {
   ],
 };
 
+// T9's pricing-status poll loop (Req 16/A16): a single appended part the
+// identify-parts job marked `priceSource: 'auto'` because it came back
+// with both brand and part number, with no price yet — exactly the shape
+// `applyTerminalJob` checks for to decide whether to start polling at all.
+const unpricedAutoPart: ExpectedPart = {
+  id: 'part-2',
+  listingId: 'listing-1',
+  componentCategory: 'GPU',
+  brand: 'NVIDIA',
+  partNumber: 'RTX 3070',
+  description: 'triple-fan cooler visible',
+  estimatedResaleValue: null,
+  identityCandidates: [],
+  aiConfidence: 'high',
+  aiSource: 'image',
+  priceSource: 'auto',
+  createdAt: '2024-01-01',
+  updatedAt: '2024-01-01',
+};
+
+const listingWithUnpricedPart: ListingDetail = {
+  ...savedListing,
+  expectedParts: [...savedListing.expectedParts, unpricedAutoPart],
+};
+
+// What a later pricing-poll fetch returns once the background pipeline
+// has filled the value in: same part, now priced.
+const listingWithPricedPart: ListingDetail = {
+  ...savedListing,
+  expectedParts: [savedListing.expectedParts[0], { ...unpricedAutoPart, estimatedResaleValue: 275 }],
+};
+
 // Sample job at various stages for testing.
 function makeQueuedJob(): IdentifyPartsJob {
   return {
@@ -247,6 +279,11 @@ async function mountForm(initialValue?: ListingDetail): Promise<HTMLDivElement> 
 
 function findIdentifyButton(el: HTMLElement): HTMLButtonElement | undefined {
   return Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.startsWith('Identify') || b.textContent === 'Identifying parts…');
+}
+
+/** The "Pricing N part(s)…" status paragraph (T9), or undefined if none is shown. */
+function findPricingStatus(el: HTMLElement): HTMLParagraphElement | undefined {
+  return (Array.from(el.querySelectorAll('p')) as HTMLParagraphElement[]).find((p) => p.textContent?.startsWith('Pricing'));
 }
 
 // Every row's description input, in render order. Expands any row that
@@ -663,5 +700,146 @@ describe('Manual Save still strips client-only draft fields', () => {
     const payload = onSubmit.mock.calls[0][0] as CreateListingInput;
     expect(payload.expectedParts[0].brand).toBe('AMD');
     expect(payload.expectedParts[0].partNumber).toBeNull();
+  });
+});
+
+// T9: identify-parts-button.tsx's second poll loop (Req 16, A16) — the
+// status text keeps reporting progress past the identify-parts job's own
+// completion until every part it triggered pricing for has resolved, and
+// every tick also pushes the freshly-fetched values back into the parent
+// via onPartsSaved, not just the status text.
+describe('Identify Parts price-research status (Req 16, A16)', () => {
+  it('shows "Pricing N part(s)…" once the job completes with a priceSource:auto part still missing a value, and re-fetches the Listing again 2s later', async () => {
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
+    enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, ''));
+    fetchListingMock
+      .mockResolvedValueOnce(listingWithUnpricedPart) // applyTerminalJob's own fetch
+      .mockResolvedValueOnce(listingWithUnpricedPart); // first pricing-poll tick: still unpriced
+
+    const el = await mountForm(savedListing);
+    await act(async () => findIdentifyButton(el)!.click());
+
+    // t=2000ms: the job-stage poll fires, the job is completed, and
+    // applyTerminalJob's own fetchListing (call #1) finds one auto-priced
+    // part still null -> starts the pricing-poll loop.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(findPricingStatus(el)?.textContent).toBe('Pricing 1 part(s)…');
+    expect(fetchListingMock).toHaveBeenCalledTimes(1);
+
+    // t=4000ms: the pricing-poll loop's own 2s interval fires independently
+    // of the (already-cleared) job-stage poll and re-fetches the Listing.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(fetchListingMock).toHaveBeenCalledTimes(2);
+    expect(fetchListingMock).toHaveBeenNthCalledWith(2, 'listing-1');
+    expect(findPricingStatus(el)?.textContent).toBe('Pricing 1 part(s)…');
+  });
+
+  it('clears the pricing status, and stops polling, once a tick finds zero parts still unpriced', async () => {
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
+    enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, ''));
+    fetchListingMock
+      .mockResolvedValueOnce(listingWithUnpricedPart) // applyTerminalJob's own fetch: still unpriced
+      .mockResolvedValueOnce(listingWithPricedPart); // first pricing-poll tick: the price arrived
+
+    const el = await mountForm(savedListing);
+    await act(async () => findIdentifyButton(el)!.click());
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(findPricingStatus(el)?.textContent).toBe('Pricing 1 part(s)…');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(findPricingStatus(el)).toBeUndefined();
+
+    // The interval was cleared, not merely quiet this tick: a third 2s
+    // produces no further fetchListing call.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(fetchListingMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives up silently after 60 polls (2 minutes) if a part never resolves a price, with no error banner', async () => {
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
+    enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, ''));
+    fetchListingMock.mockResolvedValue(listingWithUnpricedPart); // every call: still unpriced
+
+    const el = await mountForm(savedListing);
+    await act(async () => findIdentifyButton(el)!.click());
+
+    // t=2000ms: job completes and starts the 60-poll pricing loop.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(findPricingStatus(el)?.textContent).toBe('Pricing 1 part(s)…');
+
+    // 60 pricing-poll ticks, each still finding the part unpriced.
+    for (let i = 0; i < 60; i += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+    }
+
+    expect(findPricingStatus(el)).toBeUndefined();
+    expect(el.querySelector('[role="alert"]')).toBeNull();
+    // 1 (applyTerminalJob) + 60 (exhausted polls) fetches, then the
+    // interval is gone -- a 61st tick produces no further call.
+    expect(fetchListingMock).toHaveBeenCalledTimes(61);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(fetchListingMock).toHaveBeenCalledTimes(61);
+  });
+
+  it('updates the displayed estimated resale value via onPartsSaved on each pricing-poll tick, not just the status text (A16)', async () => {
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
+    enqueueIdentifyPartsJobMock.mockResolvedValue(makeQueuedJob());
+    fetchIdentifyPartsJobMock.mockResolvedValue(makeCompletedJob(twoPartResponse.parts, ''));
+    fetchListingMock
+      .mockResolvedValueOnce(listingWithUnpricedPart)
+      .mockResolvedValueOnce(listingWithPricedPart);
+
+    const el = await mountForm(savedListing);
+    await act(async () => findIdentifyButton(el)!.click());
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    const beforePoll = Array.from(el.querySelectorAll('input[type="number"]')) as HTMLInputElement[];
+    expect(beforePoll[1].value).toBe('');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    const afterPoll = Array.from(el.querySelectorAll('input[type="number"]')) as HTMLInputElement[];
+    expect(afterPoll[1].value).toBe('275');
+  });
+});
+
+describe('Identify Parts price-research status — manual save never shows one (Req 17)', () => {
+  it('shows no pricing status for a Listing saved without ever clicking Identify Parts', async () => {
+    fetchLatestIdentifyPartsJobMock.mockResolvedValue(null);
+    const onSubmit = vi.fn(async () => savedListing);
+    const el = await mount(<ListingForm initialValue={savedListing} sources={sources} onSubmit={onSubmit} onCancel={() => {}} onSaved={() => {}} />);
+
+    const form = el.querySelector('form') as HTMLFormElement;
+    await act(async () => form.requestSubmit());
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(findPricingStatus(el)).toBeUndefined();
+    // Not merely absent right now: Identify Parts was never clicked, so
+    // startPricingPolling (only ever reachable from applyTerminalJob) was
+    // never invoked at all.
+    expect(enqueueIdentifyPartsJobMock).not.toHaveBeenCalled();
   });
 });

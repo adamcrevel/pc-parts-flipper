@@ -116,6 +116,29 @@ async function waitForHealth(baseUrl: string, timeoutMs: number, output: () => s
   );
 }
 
+// Polls `output()` until it matches `pattern` or `timeoutMs` elapses. Used
+// below to wait for a background service's own startup log line, which can
+// land a tick or two after /health first responds 200 (e.g.
+// pricePartsWorkerPool.ts's startup line is logged only once its orphan-
+// reset query resolves, not synchronously on call). Real setTimeout, not
+// fake timers, by necessity: what's being awaited is a real child
+// process's own stdout write landing via real OS pipe I/O on the real
+// platform clock (same rationale as waitForHealth above, and the whole
+// suite's real-OS-signal pattern) — this process's fake timers have no
+// effect on when the subprocess itself logs.
+async function waitForOutputPattern(pattern: RegExp, timeoutMs: number, output: () => string): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (pattern.test(output())) {
+      return;
+    }
+    const { promise: waited, resolve: resolveWait } = Promise.withResolvers<void>();
+    setTimeout(resolveWait, 150);
+    await waited;
+  }
+  throw new Error(`Output never matched ${pattern} within ${timeoutMs}ms\n--- server output ---\n${output()}`);
+}
+
 // Spawns the real server (production entry point, src/index.ts) as a child
 // process bound to `port`, pointed at `dataDir` via DUCKDB_DATA_DIR. Unlike
 // helpers.ts's startTestServer, this never creates or deletes `dataDir`
@@ -425,5 +448,91 @@ describe('graceful shutdown preserves the DuckDB WAL across SIGTERM (duckdb-shut
       }
     },
     120_000,
+  );
+});
+
+// Proof for the part-price-estimation feature's pure-wiring task: index.ts
+// must call startPriceRefreshScheduler() and startPricePartsWorkerPool()
+// at boot (mirroring the pre-existing scan scheduler/identify-parts pool
+// immediately above) and must include their returned handles' .stop()
+// calls in gracefulShutdown() alongside the two pre-existing ones. Reuses
+// this file's own spawnServer/waitForHealth real-child-process pattern
+// rather than mocking index.ts, which has no exported build function (see
+// this file's header comment).
+//
+// What this suite can and cannot prove, by construction: "registered at
+// boot" is directly provable — each service logs its own distinct startup
+// line (see waitForOutputPattern calls below) only when index.ts actually
+// calls its start function, so removing either `const ... = startX()` line
+// makes the corresponding assertion fail. "Stopped on SIGTERM" is NOT
+// further provable by this (or any) black-box process-exit observation:
+// gracefulShutdown() in index.ts ends with an unconditional process.exit(0)
+// (see index.ts), which force-terminates the process immediately
+// regardless of any interval/cron timer still registered — so a dangling,
+// never-.stop()'d timer produces an identical clean, non-hung exit to one
+// that was properly stopped; there is no observable difference to assert
+// on from outside the process. What a missing `.stop()` call on a handle
+// that doesn't exist or has the wrong shape WOULD change is whether
+// gracefulShutdown()'s synchronous `x.stop()` call throws, which flips the
+// outcome from "Graceful shutdown complete" to "Graceful shutdown failed"
+// (handleShutdownFailure) and exit code 1 instead of 0 — the assertions
+// below do check for exactly that failure text, so a handle shape bug
+// (e.g. `stop` missing/renamed) is caught, even though a
+// present-but-silently-omitted `.stop()` call is not. This exact
+// limitation already applies identically to the two pre-existing handles
+// (scheduledTask, identifyPartsPool): none of the three test cases above
+// in this same file assert on clearInterval, exit code, or hung-handle
+// detection for either of them — only WAL-flush artifacts and a
+// `/graceful shutdown/i` substring match that (confirmed by inspection)
+// matches both the "complete" and "failed" log lines equally, since both
+// contain the substring "graceful shutdown". So this suite's coverage of
+// the two NEW handles is deliberately brought up to exact parity with the
+// two pre-existing ones, not held to a stronger, unachievable standard.
+describe('price research background services (part-price-estimation feature): started at boot, wired into graceful shutdown', () => {
+  // Own data dir/port, independent of the three suites above, so this
+  // suite's single spawn+SIGTERM cycle never races their sequential/
+  // double-signal/SIGHUP-race cycles.
+  const wiringPort = TEST_PORT + 3;
+  let wiringDataDir: string;
+
+  beforeAll(async () => {
+    wiringDataDir = await mkdtemp(path.join(tmpdir(), 'pc-parts-flipper-shutdown-price-wiring-'));
+  });
+
+  afterAll(async () => {
+    await rm(wiringDataDir, { recursive: true, force: true });
+  });
+
+  it(
+    'registers the price-refresh scheduler and price-parts worker pool at boot, and the SIGTERM shutdown sequence (including their .stop() calls) completes without error',
+    async () => {
+      const instance = await spawnServer(wiringDataDir, wiringPort);
+
+      // Registered at boot: each new service logs its own distinct startup
+      // line (see priceRefreshScheduler.ts/pricePartsWorkerPool.ts) the
+      // moment index.ts's top-level startPriceRefreshScheduler()/
+      // startPricePartsWorkerPool() calls run — distinct strings from the
+      // pre-existing scan scheduler's "Registering scheduled scan job" and
+      // identify-parts pool's "Recovered orphaned identify-parts jobs", so
+      // these can only be satisfied by the two NEW services actually
+      // starting, not their pre-existing counterparts.
+      await waitForOutputPattern(/Registering scheduled price refresh job/, 10_000, () => instance.output());
+      await waitForOutputPattern(/Recovered orphaned price-parts jobs/, 10_000, () => instance.output());
+
+      instance.sendSignal('SIGTERM');
+      await instance.waitForExit();
+
+      // The shutdown sequence ran gracefulShutdown()'s full body — which
+      // now calls .stop() on both new handles alongside the two
+      // pre-existing ones — and reached its final success log line rather
+      // than throwing partway through and falling into
+      // handleShutdownFailure's "Graceful shutdown failed" branch. Checked
+      // as an exact phrase (not the earlier tests' looser /graceful
+      // shutdown/i, which matches both outcomes) so this assertion alone
+      // distinguishes success from failure.
+      expect(instance.output()).toMatch(/Graceful shutdown complete/);
+      expect(instance.output()).not.toMatch(/Graceful shutdown failed/);
+    },
+    30_000,
   );
 });

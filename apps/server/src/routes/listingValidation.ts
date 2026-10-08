@@ -9,6 +9,10 @@ import { AppError } from '../error-handler.js';
 export const VALID_CATEGORIES: readonly ComponentCategory[] = ['CPU', 'GPU', 'Motherboard', 'RAM', 'Storage', 'PSU', 'Case', 'Cooler', 'Other'];
 const VALID_AI_CONFIDENCES: readonly AiPartConfidence[] = ['high', 'medium', 'low'];
 const VALID_AI_SOURCES: readonly AiPartSource[] = ['text', 'image', 'both'];
+// Three-state (assumption A22, correcting A8): absent/null means undecided
+// — still eligible for the route's auto-claim — while 'auto' and 'manual'
+// are both explicit claims the route stores verbatim.
+const VALID_PRICE_SOURCES: readonly ('auto' | 'manual')[] = ['auto', 'manual'];
 export const VALID_STATUSES: readonly ListingStatus[] = ['open', 'accepted', 'rejected'];
 
 // Loosely-typed shapes of untrusted request input, confirmed by the validate
@@ -22,6 +26,7 @@ interface ExpectedPartRequestBody {
   identityCandidates?: unknown;
   aiConfidence?: unknown;
   aiSource?: unknown;
+  priceSource?: unknown;
 }
 export interface ListingRequestBody {
   sourceId?: unknown;
@@ -180,6 +185,7 @@ function validateExpectedPartInput(raw: unknown, index: number): ExpectedPartInp
     identityCandidates: validateIdentityCandidates(body.identityCandidates, index),
     aiConfidence: validateOptionalEnum(body.aiConfidence, VALID_AI_CONFIDENCES, `expectedParts[${index}].aiConfidence`),
     aiSource: validateOptionalEnum(body.aiSource, VALID_AI_SOURCES, `expectedParts[${index}].aiSource`),
+    priceSource: validateOptionalEnum(body.priceSource, VALID_PRICE_SOURCES, `expectedParts[${index}].priceSource`),
   };
 }
 

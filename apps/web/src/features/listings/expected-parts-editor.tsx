@@ -32,6 +32,18 @@ export interface ExpectedPartRow {
   // it. listing-form.tsx builds its ExpectedPartInput payload field by
   // field, so this and the two below never reach the backend.
   aiSuggested?: boolean;
+  // Who owns this row's estimatedResaleValue — three-state (assumption
+  // A22, correcting A8). Undefined means *undecided*: nobody has claimed
+  // the price, so the server may claim it for the background pipeline the
+  // first time the row is fully identified. 'auto' means the server is
+  // still allowed to overwrite this row's price when the shared cache
+  // refreshes (Req 14). 'manual' means the user has taken it over —
+  // updateRow below flips 'auto' to 'manual' the instant the user edits
+  // the row (Req 15), rather than merely clearing it, because a cleared
+  // value would read as undecided and be re-claimed on the next save.
+  // Round-trips through listing-form-state.ts's expectedPartToRow and
+  // listing-form.tsx's persistListing — never guessed client-side.
+  priceSource?: 'auto' | 'manual';
   // How sure the model was, and whether it read the listing text, the
   // photos, or both. Shown as a caption beside the badge so that
   // provenance doesn't have to pollute `description`, which is the value
@@ -90,12 +102,25 @@ interface ExpectedPartsEditorProps {
  * standing check and because this row-editing logic is self-contained.
  */
 export function ExpectedPartsEditor({ rows, rowErrors, onChange }: ExpectedPartsEditorProps) {
-  // Any edit to a row also clears its AI-suggested draft marking: reviewing
-  // the model's guess is exactly what the badge asks the user to do, so
-  // touching the row is that confirmation (product decision, confirmed with
-  // the user). A no-op on rows that were never AI-suggested.
+  // Two independent triggers claim this row's price for the user, so the
+  // server can tell "never claimed" apart from "typed then cleared":
+  // directly editing the price field itself — typed into OR cleared —
+  // always claims 'manual', regardless of the row's prior priceSource,
+  // because a cleared price would otherwise look identical to an
+  // undecided one and get silently re-claimed (and re-filled from the
+  // shared cache) on the very next save; and touching ANY other field on
+  // a row that was already 'auto' also hands that row to the user (Req
+  // 15), since the server was actively managing its price. A row that is
+  // still undecided and only has a non-price field touched stays
+  // undecided — it has no price to protect yet.
   function updateRow(index: number, patch: Partial<ExpectedPartRow>) {
-    onChange(rows.map((row, i) => (i === index ? { ...row, ...patch, aiSuggested: false } : row)));
+    onChange(
+      rows.map((row, i) =>
+        i === index
+          ? { ...row, ...patch, aiSuggested: false, priceSource: 'estimatedResaleValue' in patch || row.priceSource === 'auto' ? 'manual' : row.priceSource }
+          : row,
+      ),
+    );
   }
 
   function removeRow(index: number) {

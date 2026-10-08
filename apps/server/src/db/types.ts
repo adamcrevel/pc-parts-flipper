@@ -99,6 +99,8 @@ export interface ExpectedPart {
   /** Persisted AI-suggestion provenance (see packages/shared/src/listings.ts's ExpectedPart doc comment); both null for a manual or since-edited row. */
   aiConfidence: AiPartConfidence | null;
   aiSource: AiPartSource | null;
+  /** Three-state (assumption A22, correcting A8): null = undecided (still eligible for the route's first auto-claim), `'auto'` = the background price-estimation pipeline owns this row's estimatedResaleValue, `'manual'` = the user has explicitly taken ownership (typed a value, or cleared one the pipeline had filled in) and it must never be auto-claimed or cache-overwritten again. */
+  priceSource: 'auto' | 'manual' | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -193,4 +195,54 @@ export interface Sale {
   buyerNote: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Cache of an AI-researched resale-value estimate for a (category, brand,
+ * partNumber) combo (part-price-estimation feature), so a part identified a
+ * second time with the same combo reuses the prior research instead of
+ * re-querying the AI price-research module. `estimatedResaleValue` is null
+ * until the first successful research completes, or stays null forever for a
+ * combo research couldn't price; `lastResearchedAt` is null only in that same
+ * not-yet-researched state.
+ */
+export interface PartPriceCacheEntry {
+  id: string;
+  category: ComponentCategory;
+  brand: string;
+  partNumber: string;
+  estimatedResaleValue: number | null;
+  lastResearchedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Stage of one queued price-research job (part-price-estimation feature,
+ * assumption A5). Flat rather than multi-phase like
+ * `identify_parts_job_stage`: one price lookup is a single AI call, so the
+ * only states worth distinguishing are "waiting", "in a worker's hands",
+ * and the two terminal outcomes.
+ */
+export type PricePartsJobStage = 'queued' | 'pricing' | 'completed' | 'failed';
+
+/**
+ * One unit of background price research, keyed by the (category, brand,
+ * partNumber) combo rather than by an Expected Part or Listing id
+ * (assumption A1): Expected Part ids are recreated on every Listing save,
+ * and the researched value is Listing-independent anyway, so one job
+ * prices every row sharing the combo. `errorMessage` is set only on the
+ * `failed` stage; `startedAt`/`completedAt` are null until the job is
+ * claimed / reaches a terminal stage.
+ */
+export interface PricePartsJob {
+  id: string;
+  category: ComponentCategory;
+  brand: string;
+  partNumber: string;
+  stage: PricePartsJobStage;
+  errorMessage: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
 }

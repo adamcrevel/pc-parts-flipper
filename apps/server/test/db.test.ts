@@ -94,6 +94,7 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'identity_candidates',
     'ai_confidence',
     'ai_source',
+    'price_source',
   ],
   purchases: ['id', 'listing_id', 'status', 'price_paid', 'purchase_date', 'created_at', 'updated_at'],
   teardown_results: [
@@ -187,10 +188,41 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'completed_at',
     'updated_at',
   ],
+  // Cache of AI-researched resale-value estimates for a given
+  // (component_category, brand, part_number) combo (part-price-estimation
+  // feature), so a part identified a second time with the same combo reuses
+  // the prior research instead of re-querying the AI price-research module.
+  part_price_cache: [
+    'id',
+    'component_category',
+    'brand',
+    'part_number',
+    'estimated_resale_value',
+    'last_researched_at',
+    'created_at',
+    'updated_at',
+  ],
+  // Price-research job queue (part-price-estimation feature): same
+  // queued-row/poll-for-completion shape as identify_parts_jobs above, but
+  // keyed on the (component_category, brand, part_number) triple rather than
+  // a listing_id, since one price-research job can serve any Expected Part
+  // sharing that combo, not just the one that triggered it.
+  price_parts_jobs: [
+    'id',
+    'component_category',
+    'brand',
+    'part_number',
+    'stage',
+    'error_message',
+    'created_at',
+    'started_at',
+    'completed_at',
+    'updated_at',
+  ],
 };
 
 describe('migrations create every table with the correct columns', () => {
-  it('creates exactly the 9 tables named in the Requirements plus part_reference_photos (ai-visual-identification), part_reference_sourcing_attempts (ai-reference-autosourcing), part_catalog_sourcing_attempts (ai-catalog-sourcing), and identify_parts_jobs (async identify-parts-queue)', async () => {
+  it('creates exactly the 9 tables named in the Requirements plus part_reference_photos (ai-visual-identification), part_reference_sourcing_attempts (ai-reference-autosourcing), part_catalog_sourcing_attempts (ai-catalog-sourcing), identify_parts_jobs (async identify-parts-queue), part_price_cache (part-price-estimation), and price_parts_jobs (part-price-estimation)', async () => {
     const connection = await getConnection();
     const reader = await connection.runAndReadAll(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'main' ORDER BY table_name`,

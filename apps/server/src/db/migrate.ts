@@ -89,11 +89,12 @@ async function migrateExpectedPartsNullablePrice(connection: DuckDBConnection): 
     part_number VARCHAR,
     identity_candidates VARCHAR DEFAULT '[]',
     ai_confidence VARCHAR,
-    ai_source VARCHAR
+    ai_source VARCHAR,
+    price_source VARCHAR
   )`);
   await connection.run(
-    `INSERT INTO expected_parts_new (id, listing_id, component_category, description, estimated_resale_value, created_at, updated_at, brand, part_number, identity_candidates, ai_confidence, ai_source)
-     SELECT id, listing_id, component_category, description, estimated_resale_value, created_at, updated_at, brand, part_number, identity_candidates, ai_confidence, ai_source FROM expected_parts`,
+    `INSERT INTO expected_parts_new (id, listing_id, component_category, description, estimated_resale_value, created_at, updated_at, brand, part_number, identity_candidates, ai_confidence, ai_source, price_source)
+     SELECT id, listing_id, component_category, description, estimated_resale_value, created_at, updated_at, brand, part_number, identity_candidates, ai_confidence, ai_source, price_source FROM expected_parts`,
   );
 
   await connection.run(`CREATE TABLE teardown_results_backup (

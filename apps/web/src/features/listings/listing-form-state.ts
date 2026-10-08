@@ -49,6 +49,13 @@ export function initialListingFormFields(initialValue?: ListingDetail): ListingF
  * complete, so the badge survives reopening the Listing later, not only
  * the one poll that saw the job finish.
  *
+ * `priceSource` round-trips the same way — read straight off the
+ * persisted part whenever it carries a claim ('auto' or 'manual'), so an
+ * untouched row stays server-auto-managed across reopenings and a row the
+ * user has taken over stays theirs. A persisted null (nobody has decided
+ * yet) is dropped entirely rather than carried, which reads the same as
+ * undefined on the row (assumption A22).
+ *
  * `collapsed` defaults to true — already-reviewed data only needs its
  * compact summary line.
  */
@@ -64,6 +71,7 @@ function expectedPartToRow(part: ExpectedPart): ExpectedPartRow {
     ...(part.aiConfidence != null && part.aiSource != null
       ? { aiSuggested: true, aiConfidence: part.aiConfidence, aiSource: part.aiSource }
       : {}),
+    ...(part.priceSource === 'auto' || part.priceSource === 'manual' ? { priceSource: part.priceSource } : {}),
   };
 }
 

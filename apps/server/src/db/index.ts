@@ -18,3 +18,5 @@ export * from './queries/catalogSourcingAttempts.js';
 export * from './queries/referencePhotoLookup.js';
 export * from './queries/sales.js';
 export * from './queries/identifyPartsJobs.js';
+export * from './queries/partPriceCache.js';
+export * from './queries/pricePartsJobs.js';

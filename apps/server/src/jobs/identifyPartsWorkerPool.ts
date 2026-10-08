@@ -22,6 +22,7 @@ import {
   getListingById,
 } from '../db/index.js';
 import { identifyListingParts } from '../ai/partIdentification.js';
+import { triggerPriceLookups } from './pricePartsTrigger.js';
 import type { IdentifyPartsJob, IdentifyPartsResponse } from '@pc-parts-flipper/shared';
 
 /**
@@ -85,9 +86,17 @@ async function pump(): Promise<void> {
  * where they're genuinely known, and persisting them here is what lets
  * the "AI suggested" badge survive the Listing being reopened later,
  * instead of only showing for the one poll that saw the job complete.
+ * `priceSource` is `'auto'` for every part the model identified fully
+ * (brand *and* partNumber): nobody has claimed those rows' prices, so the
+ * background pipeline owns them, and it is that flag the cache propagation
+ * matches on later. A part the model could not pin down gets null — it can
+ * never be researched, so there is nothing for the pipeline to own.
+ * Once every row is in, the full set is handed to triggerPriceLookups,
+ * which decides per combo between an instant cached value and a queued
+ * research job (Req 5-7).
  */
 async function persistIdentifiedParts(listingId: string, result: IdentifyPartsResponse): Promise<void> {
-  await Promise.all(
+  const created = await Promise.all(
     result.parts.map((part) =>
       createExpectedPart({
         listingId,
@@ -99,9 +108,11 @@ async function persistIdentifiedParts(listingId: string, result: IdentifyPartsRe
         identityCandidates: part.identityCandidates,
         aiConfidence: part.confidence,
         aiSource: part.source,
+        priceSource: part.brand && part.partNumber ? 'auto' : null,
       }),
     ),
   );
+  await triggerPriceLookups(created);
 }
 
 /**

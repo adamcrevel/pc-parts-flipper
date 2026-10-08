@@ -16,6 +16,8 @@ import { registerIdentifyPartsRoutes } from './routes/identifyParts.js';
 import { registerIdentifyPartsJobsRoutes } from './routes/identifyPartsJobs.js';
 import { startScheduler } from './scan/scheduler.js';
 import { startIdentifyPartsWorkerPool } from './jobs/identifyPartsWorkerPool.js';
+import { startPricePartsWorkerPool } from './jobs/pricePartsWorkerPool.js';
+import { startPriceRefreshScheduler } from './jobs/priceRefreshScheduler.js';
 import { closeConnection } from './db/client.js';
 import { PHOTOS_DIR } from './photos/photoStorage.js';
 
@@ -79,6 +81,17 @@ const scheduledTask = startScheduler();
 // Capturing the returned handle so the SIGTERM/SIGINT handler below can stop
 // the pool cleanly during shutdown before closing the server.
 const identifyPartsPool = startIdentifyPartsWorkerPool();
+// Starts the once-daily price-refresh scheduler (part-price-estimation
+// feature, Req 8), mirroring startScheduler() above. Capturing the
+// returned ScheduledTask so the SIGTERM/SIGINT handler below can stop it
+// cleanly during shutdown instead of leaving a dangling cron timer.
+const priceRefreshScheduledTask = startPriceRefreshScheduler();
+// Starts the price-parts worker pool (part-price-estimation feature) that
+// processes queued price_parts_jobs concurrently, mirroring
+// startIdentifyPartsWorkerPool() above. Capturing the returned handle so
+// the SIGTERM/SIGINT handler below can stop the pool cleanly during
+// shutdown before closing the server.
+const pricePartsPool = startPricePartsWorkerPool();
 
 // Port the server listens on; configurable for deployment, defaults to 3001
 // for local development.
@@ -129,6 +142,8 @@ async function gracefulShutdown(signal: NodeJS.Signals): Promise<void> {
   logger.info({ signal }, 'Shutdown signal received, starting graceful shutdown');
   scheduledTask.stop();
   identifyPartsPool.stop();
+  priceRefreshScheduledTask.stop();
+  pricePartsPool.stop();
   await server.close();
   await closeConnection();
   logger.info('Graceful shutdown complete');
