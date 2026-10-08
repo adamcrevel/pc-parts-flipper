@@ -1,0 +1,751 @@
+<title>Walkthrough</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--add-bg:rgba(31,95,79,.10);--del-bg:rgba(163,49,42,.10);--radius:8px}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74;
+--add-bg:rgba(79,181,154,.14);--del-bg:rgba(224,123,116,.14)}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+h1{margin:0 0 8px;font-size:20px;letter-spacing:-.01em}
+.overview-text{margin:0;font-size:15px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.card-head,.file-head{width:100%;display:flex;justify-content:space-between;align-items:center;
+gap:12px;font:inherit;text-align:left;background:none;border:none;color:var(--ink);cursor:pointer;
+padding:14px 18px}
+.card-head{font-weight:600}
+.card-head .meta{font-size:12px;color:var(--muted);font-weight:400}
+.card-body{padding:0 18px 16px;display:grid;gap:12px}
+.summary{margin:0;font-size:14px}
+.note{font-size:12px;color:var(--muted);margin:2px 0}
+.flow{overflow-x:auto}
+.flow-svg{display:block}
+.flow-box{fill:var(--bg);stroke:var(--line)}
+.flow-box-text{width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;
+justify-content:center;align-items:center;gap:4px;padding:8px 12px;text-align:center;
+font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.flow-label{font-size:12px;font-weight:600;color:var(--ink);line-height:1.25;margin:0;
+display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+text-overflow:ellipsis;word-break:break-word}
+.flow-note{font-size:10.5px;color:var(--muted);line-height:1.3;margin:0;
+display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+text-overflow:ellipsis;word-break:break-word}
+.flow-arrow{stroke:var(--muted);stroke-width:1.5}
+.flow-arrowhead{fill:var(--muted)}
+.files{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.file-group{padding:10px 4px 12px}
+.file-group:not(:last-child){border-bottom:1px solid var(--line)}
+.file-note{margin:0 0 8px;font-size:13px}
+.file-rows{list-style:none;margin:0;padding:0}
+.file{border-top:1px solid var(--line)}
+.file:first-child{border-top:none}
+.file-head{padding:10px 4px;font-size:13px}
+.file-head .path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.tag{display:inline-block;padding:0 6px;border:1px solid var(--line);border-radius:999px;
+font-size:11px;color:var(--muted)}
+.file-body{padding:0 4px 12px;display:grid;gap:8px}
+.hunk{overflow-x:auto;border:1px solid var(--line);border-radius:6px}
+.hunk-head{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);
+padding:5px 9px;border-bottom:1px solid var(--line)}
+.hunk pre{margin:0;padding:6px 9px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+white-space:pre}
+.hunk pre span{display:block;padding:0 4px}
+.hunk pre .add{background:var(--add-bg);color:var(--good)}
+.hunk pre .del{background:var(--del-bg);color:var(--bad)}
+</style>
+<main>
+<section class="panel overview">
+<h1>Walkthrough</h1>
+<p class="overview-text">Re-running &quot;Identify Parts&quot; on a Listing that already had Expected Parts used to duplicate them, because the job only ever inserted and never cleared the old rows. This feature makes that a full replace instead, and separately raises the AI call timeout from 2 to 4 minutes now that identification runs as a polled background job rather than behind an open HTTP request. Fixing the first change also surfaced two incomplete test mocks and a stale cross-file comment, all patched along the way so the suite stays green and accurate.</p>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Replace, don&#x27;t duplicate, Expected Parts on rerun</span><span class="meta">2 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">`persistIdentifiedParts` now deletes every Expected Part already on the job&#x27;s Listing</p>
+<p class="note">Tasks: T1</p>
+<div class="flow"><svg viewBox="0 0 1150 108" role="img" aria-label="data flow" class="flow-svg">
+<rect x="8" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="8" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Job completes</div><div class="flow-note">`processJob` reaches the success path after `identifyListingParts` resolves</div></div></foreignObject>
+<line x1="198" y1="54" x2="238" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="244" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="244" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">List existing</div><div class="flow-note">`listExpectedPartsByListing` fetches the Listing&#x27;s current Expected Parts</div></div></foreignObject>
+<line x1="434" y1="54" x2="474" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="480" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="480" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Delete all</div><div class="flow-note">each existing part is removed via `deleteExpectedPart`</div></div></foreignObject>
+<line x1="670" y1="54" x2="710" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="716" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="716" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Insert fresh</div><div class="flow-note">the newly-identified parts are created via `createExpectedPart`</div></div></foreignObject>
+<line x1="906" y1="54" x2="946" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="952" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="952" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Trigger pricing</div><div class="flow-note">only the newly-created parts are handed to `triggerPriceLookups`</div></div></foreignObject>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" class="flow-arrowhead"/></marker></defs>
+</svg></div>
+<ul class="files"><li class="file-group">
+<p class="file-note">adds the delete-then-insert full replace inside `persistIdentifiedParts`, gated so it only runs on the already-guarded successful path.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/jobs/identifyPartsWorkerPool.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -16,7 +16,9 @@ import {</div><pre><span class="ctx">   claimNextQueuedJob,</span>
+<span class="ctx">   completeJob,</span>
+<span class="ctx">   createExpectedPart,</span>
+<span class="add">+  deleteExpectedPart,</span>
+<span class="ctx">   failJob,</span>
+<span class="add">+  listExpectedPartsByListing,</span>
+<span class="ctx">   resetOrphanedJobsToQueued,</span>
+<span class="ctx">   updateJobStage,</span>
+<span class="ctx">   getListingById,</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -96,6 +98,12 @@ async function pump(): Promise&lt;void&gt; {</div><pre><span class="ctx">  * research job (Req 5-7).</span>
+<span class="ctx">  */</span>
+<span class="ctx"> async function persistIdentifiedParts(listingId: string, result: IdentifyPartsResponse): Promise&lt;void&gt; {</span>
+<span class="add">+  // Full replace: a rerun of Identify Parts must not duplicate previously</span>
+<span class="add">+  // saved Expected Parts, so the existing set is cleared and recreated</span>
+<span class="add">+  // rather than diffed — same pattern as the manual Listing-save route</span>
+<span class="add">+  // (routes/listings.ts&#x27;s PUT /api/listings/:id).</span>
+<span class="add">+  const existingParts = await listExpectedPartsByListing(listingId);</span>
+<span class="add">+  await Promise.all(existingParts.map((part) =&gt; deleteExpectedPart(part.id)));</span>
+<span class="ctx">   const created = await Promise.all(</span>
+<span class="ctx">     result.parts.map((part) =&gt;</span>
+<span class="ctx">       createExpectedPart({</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">adds two new tests driven through the real `processJob` path proving the replace removes both hand-entered and prior AI-sourced parts and leaves them untouched on job failure.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/test/identifyPartsWorkerPool.test.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Replace, don&#x27;t duplicate, Expected Parts on rerun, Latent bugs caught by review, test, and UAT) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -12,7 +12,7 @@</div><pre><span class="ctx"> import { afterEach, beforeEach, describe, expect, it, vi } from &#x27;vitest&#x27;;</span>
+<span class="ctx"> import type { IdentifyPartsJob, IdentifyPartsResponse } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> import { logger } from &#x27;../src/logger.js&#x27;;</span>
+<span class="del">-import type { Listing } from &#x27;../src/db/index.js&#x27;;</span>
+<span class="add">+import type { CreateExpectedPartInput, ExpectedPart, Listing } from &#x27;../src/db/index.js&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> const claimNextQueuedJob = vi.fn&lt;[], Promise&lt;IdentifyPartsJob | null&gt;&gt;();</span>
+<span class="ctx"> const completeJob = vi.fn&lt;[string, IdentifyPartsResponse], Promise&lt;void&gt;&gt;();</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -20,6 +20,14 @@ const failJob = vi.fn&lt;[string, string], Promise&lt;void&gt;&gt;();</div><pre><span class="ctx"> const resetOrphanedJobsToQueued = vi.fn&lt;[], Promise&lt;string[]&gt;&gt;();</span>
+<span class="ctx"> const updateJobStage = vi.fn&lt;[string, &#x27;sourcing_references&#x27; | &#x27;comparing&#x27;], Promise&lt;void&gt;&gt;();</span>
+<span class="ctx"> const getListingById = vi.fn&lt;[string], Promise&lt;Listing | null&gt;&gt;();</span>
+<span class="add">+// The three functions persistIdentifiedParts (Req 1-2&#x27;s full-replace dedupe)</span>
+<span class="add">+// drives directly: a real fake store (not just call-recording) backs these</span>
+<span class="add">+// three in the &quot;persistIdentifiedParts dedupe &amp; job-failure data integrity&quot;</span>
+<span class="add">+// describe block below, so that suite can assert the Listing&#x27;s *final* set</span>
+<span class="add">+// of Expected Parts, not merely that some function was called.</span>
+<span class="add">+const listExpectedPartsByListing = vi.fn&lt;[string], Promise&lt;ExpectedPart[]&gt;&gt;();</span>
+<span class="add">+const deleteExpectedPart = vi.fn&lt;[string], Promise&lt;void&gt;&gt;();</span>
+<span class="add">+const createExpectedPart = vi.fn&lt;[CreateExpectedPartInput], Promise&lt;ExpectedPart&gt;&gt;();</span>
+<span class="ctx"> </span>
+<span class="ctx"> // Mocking the whole db/index.js barrel (rather than the single</span>
+<span class="ctx"> // identifyPartsJobs.ts query file) matches how the worker pool itself</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -34,6 +42,20 @@ vi.mock(&#x27;../src/db/index.js&#x27;, () =&gt; ({</div><pre><span class="ctx">   resetOrphanedJobsToQueued: (...args: []) =&gt; resetOrphanedJobsToQueued(...args),</span>
+<span class="ctx">   updateJobStage: (...args: [string, &#x27;sourcing_references&#x27; | &#x27;comparing&#x27;]) =&gt; updateJobStage(...args),</span>
+<span class="ctx">   getListingById: (...args: [string]) =&gt; getListingById(...args),</span>
+<span class="add">+  listExpectedPartsByListing: (...args: [string]) =&gt; listExpectedPartsByListing(...args),</span>
+<span class="add">+  deleteExpectedPart: (...args: [string]) =&gt; deleteExpectedPart(...args),</span>
+<span class="add">+  createExpectedPart: (...args: [CreateExpectedPartInput]) =&gt; createExpectedPart(...args),</span>
+<span class="add">+}));</span>
+<span class="add">+</span>
+<span class="add">+// persistIdentifiedParts hands its freshly-created rows to triggerPriceLookups</span>
+<span class="add">+// (pricePartsTrigger.ts) as its very last step. That module has its own</span>
+<span class="add">+// direct suite (pricePartsTrigger.test.ts); mocking it away here keeps this</span>
+<span class="add">+// file&#x27;s focus on persistIdentifiedParts&#x27;s own delete/create dedupe logic,</span>
+<span class="add">+// the same way identifyListingParts (also separately tested) is mocked</span>
+<span class="add">+// below rather than exercised for real.</span>
+<span class="add">+const triggerPriceLookups = vi.fn&lt;[ExpectedPart[]], Promise&lt;void&gt;&gt;();</span>
+<span class="add">+vi.mock(&#x27;../src/jobs/pricePartsTrigger.js&#x27;, () =&gt; ({</span>
+<span class="add">+  triggerPriceLookups: (...args: [ExpectedPart[]]) =&gt; triggerPriceLookups(...args),</span>
+<span class="ctx"> }));</span>
+<span class="ctx"> </span>
+<span class="ctx"> type OnStage = (stage: &#x27;sourcing_references&#x27; | &#x27;comparing&#x27;) =&gt; void;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -94,6 +116,10 @@ beforeEach(() =&gt; {</div><pre><span class="ctx">   updateJobStage.mockReset().mockResolvedValue(undefined);</span>
+<span class="ctx">   getListingById.mockReset().mockResolvedValue(null);</span>
+<span class="ctx">   identifyListingParts.mockReset();</span>
+<span class="add">+  listExpectedPartsByListing.mockReset().mockResolvedValue([]);</span>
+<span class="add">+  deleteExpectedPart.mockReset().mockResolvedValue(undefined);</span>
+<span class="add">+  createExpectedPart.mockReset();</span>
+<span class="add">+  triggerPriceLookups.mockReset().mockResolvedValue(undefined);</span>
+<span class="ctx">   vi.spyOn(logger, &#x27;info&#x27;).mockImplementation(() =&gt; logger);</span>
+<span class="ctx">   vi.spyOn(logger, &#x27;error&#x27;).mockImplementation(() =&gt; logger);</span>
+<span class="ctx"> });</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -229,6 +255,206 @@ describe(&#x27;startIdentifyPartsWorkerPool (T2, Req 4, 5, 6)&#x27;, () =&gt; {</div><pre><span class="ctx">   });</span>
+<span class="ctx"> });</span>
+<span class="ctx"> </span>
+<span class="add">+// T1 proof: identifyPartsWorkerPool.ts&#x27;s persistIdentifiedParts (Req 1-2).</span>
+<span class="add">+// Runs through the real startIdentifyPartsWorkerPool -&gt; processJob -&gt;</span>
+<span class="add">+// persistIdentifiedParts path (the same harness as the describe block</span>
+<span class="add">+// above), but backs listExpectedPartsByListing/deleteExpectedPart/</span>
+<span class="add">+// createExpectedPart with an in-memory store keyed by listingId instead of</span>
+<span class="add">+// just recording calls, so these tests can assert the Listing&#x27;s *final*</span>
+<span class="add">+// set of Expected Parts after the job runs — not merely that some function</span>
+<span class="add">+// was called with some argument.</span>
+<span class="add">+describe(&#x27;persistIdentifiedParts dedupe &amp; job-failure data integrity (T1, Req 1-2)&#x27;, () =&gt; {</span>
+<span class="add">+  it(&#x27;rerunning Identify Parts replaces a hand-entered part and a prior AI-sourced part with exactly the newly identified set, no duplicates&#x27;, async () =&gt; {</span>
+<span class="add">+    const listing = listingFixture(&#x27;listing-dedupe&#x27;);</span>
+<span class="add">+    const job = jobFixture(&#x27;job-dedupe&#x27;, &#x27;listing-dedupe&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    const handEntered: ExpectedPart = {</span>
+<span class="add">+      id: &#x27;hand-1&#x27;,</span>
+<span class="add">+      listingId: &#x27;listing-dedupe&#x27;,</span>
+<span class="add">+      componentCategory: &#x27;GPU&#x27;,</span>
+<span class="add">+      brand: &#x27;NVIDIA&#x27;,</span>
+<span class="add">+      partNumber: &#x27;RTX-OLD&#x27;,</span>
+<span class="add">+      description: &#x27;Hand-entered GPU&#x27;,</span>
+<span class="add">+      estimatedResaleValue: 200,</span>
+<span class="add">+      identityCandidates: [],</span>
+<span class="add">+      aiConfidence: null,</span>
+<span class="add">+      aiSource: null,</span>
+<span class="add">+      priceSource: &#x27;manual&#x27;,</span>
+<span class="add">+      createdAt: &#x27;2026-01-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+      updatedAt: &#x27;2026-01-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+    };</span>
+<span class="add">+    const priorAiPart: ExpectedPart = {</span>
+<span class="add">+      id: &#x27;ai-old-1&#x27;,</span>
+<span class="add">+      listingId: &#x27;listing-dedupe&#x27;,</span>
+<span class="add">+      componentCategory: &#x27;CPU&#x27;,</span>
+<span class="add">+      brand: &#x27;Intel&#x27;,</span>
+<span class="add">+      partNumber: &#x27;i5-old&#x27;,</span>
+<span class="add">+      description: &#x27;Prior AI CPU&#x27;,</span>
+<span class="add">+      estimatedResaleValue: null,</span>
+<span class="add">+      identityCandidates: [],</span>
+<span class="add">+      aiConfidence: &#x27;high&#x27;,</span>
+<span class="add">+      aiSource: &#x27;text&#x27;,</span>
+<span class="add">+      priceSource: &#x27;auto&#x27;,</span>
+<span class="add">+      createdAt: &#x27;2026-01-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+      updatedAt: &#x27;2026-01-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+    };</span>
+<span class="add">+    const store = new Map&lt;string, ExpectedPart[]&gt;([[&#x27;listing-dedupe&#x27;, [handEntered, priorAiPart]]]);</span>
+<span class="add">+</span>
+<span class="add">+    listExpectedPartsByListing.mockImplementation(async (listingId) =&gt; store.get(listingId) ?? []);</span>
+<span class="add">+    deleteExpectedPart.mockImplementation(async (id) =&gt; {</span>
+<span class="add">+      for (const [key, parts] of store) {</span>
+<span class="add">+        store.set(key, parts.filter((p) =&gt; p.id !== id));</span>
+<span class="add">+      }</span>
+<span class="add">+    });</span>
+<span class="add">+    let createdCounter = 0;</span>
+<span class="add">+    createExpectedPart.mockImplementation(async (input) =&gt; {</span>
+<span class="add">+      createdCounter += 1;</span>
+<span class="add">+      const row: ExpectedPart = {</span>
+<span class="add">+        id: `new-${createdCounter}`,</span>
+<span class="add">+        listingId: input.listingId,</span>
+<span class="add">+        componentCategory: input.componentCategory,</span>
+<span class="add">+        brand: input.brand,</span>
+<span class="add">+        partNumber: input.partNumber,</span>
+<span class="add">+        description: input.description,</span>
+<span class="add">+        estimatedResaleValue: input.estimatedResaleValue,</span>
+<span class="add">+        identityCandidates: input.identityCandidates,</span>
+<span class="add">+        aiConfidence: input.aiConfidence,</span>
+<span class="add">+        aiSource: input.aiSource,</span>
+<span class="add">+        priceSource: input.priceSource ?? null,</span>
+<span class="add">+        createdAt: &#x27;2026-02-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+        updatedAt: &#x27;2026-02-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+      };</span>
+<span class="add">+      store.set(input.listingId, [...(store.get(input.listingId) ?? []), row]);</span>
+<span class="add">+      return row;</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    const freshResult: IdentifyPartsResponse = {</span>
+<span class="add">+      parts: [</span>
+<span class="add">+        {</span>
+<span class="add">+          category: &#x27;GPU&#x27;,</span>
+<span class="add">+          brand: &#x27;NVIDIA&#x27;,</span>
+<span class="add">+          partNumber: &#x27;RTX-NEW&#x27;,</span>
+<span class="add">+          description: &#x27;Newly identified GPU&#x27;,</span>
+<span class="add">+          confidence: &#x27;high&#x27;,</span>
+<span class="add">+          source: &#x27;text&#x27;,</span>
+<span class="add">+          identityCandidates: [],</span>
+<span class="add">+        },</span>
+<span class="add">+      ],</span>
+<span class="add">+      notes: &#x27;rerun&#x27;,</span>
+<span class="add">+    };</span>
+<span class="add">+</span>
+<span class="add">+    claimNextQueuedJob.mockResolvedValueOnce(job).mockResolvedValue(null);</span>
+<span class="add">+    getListingById.mockResolvedValue(listing);</span>
+<span class="add">+    identifyListingParts.mockResolvedValue(freshResult);</span>
+<span class="add">+</span>
+<span class="add">+    activeHandle = startIdentifyPartsWorkerPool();</span>
+<span class="add">+</span>
+<span class="add">+    await vi.waitFor(() =&gt; expect(completeJob).toHaveBeenCalledTimes(1));</span>
+<span class="add">+</span>
+<span class="add">+    // Both the hand-entered part and the prior AI-sourced part were</span>
+<span class="add">+    // deleted — deletion is not filtered by aiSource.</span>
+<span class="add">+    expect(deleteExpectedPart).toHaveBeenCalledWith(&#x27;hand-1&#x27;);</span>
+<span class="add">+    expect(deleteExpectedPart).toHaveBeenCalledWith(&#x27;ai-old-1&#x27;);</span>
+<span class="add">+    expect(deleteExpectedPart).toHaveBeenCalledTimes(2);</span>
+<span class="add">+</span>
+<span class="add">+    // Exactly one new part was created, carrying the fresh result&#x27;s own</span>
+<span class="add">+    // data (full object, not a subset) through persistIdentifiedParts&#x27;s</span>
+<span class="add">+    // own field mapping.</span>
+<span class="add">+    expect(createExpectedPart).toHaveBeenCalledTimes(1);</span>
+<span class="add">+    expect(createExpectedPart).toHaveBeenCalledWith({</span>
+<span class="add">+      listingId: &#x27;listing-dedupe&#x27;,</span>
+<span class="add">+      componentCategory: &#x27;GPU&#x27;,</span>
+<span class="add">+      brand: &#x27;NVIDIA&#x27;,</span>
+<span class="add">+      partNumber: &#x27;RTX-NEW&#x27;,</span>
+<span class="add">+      description: &#x27;Newly identified GPU&#x27;,</span>
+<span class="add">+      estimatedResaleValue: null,</span>
+<span class="add">+      identityCandidates: [],</span>
+<span class="add">+      aiConfidence: &#x27;high&#x27;,</span>
+<span class="add">+      aiSource: &#x27;text&#x27;,</span>
+<span class="add">+      priceSource: &#x27;auto&#x27;,</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    // The store (standing in for the Listing&#x27;s real Expected Parts) now</span>
+<span class="add">+    // holds exactly the one newly-identified part: the old hand-entered and</span>
+<span class="add">+    // prior-AI rows are gone, and nothing is duplicated.</span>
+<span class="add">+    const finalParts = store.get(&#x27;listing-dedupe&#x27;) ?? [];</span>
+<span class="add">+    expect(finalParts.map((p) =&gt; p.id)).toEqual([&#x27;new-1&#x27;]);</span>
+<span class="add">+    expect(finalParts[0]).toMatchObject({ brand: &#x27;NVIDIA&#x27;, partNumber: &#x27;RTX-NEW&#x27; });</span>
+<span class="add">+</span>
+<span class="add">+    // Only the freshly-created part is handed downstream to price lookups —</span>
+<span class="add">+    // the deleted rows never reach it.</span>
+<span class="add">+    expect(triggerPriceLookups).toHaveBeenCalledTimes(1);</span>
+<span class="add">+    expect(triggerPriceLookups).toHaveBeenCalledWith([expect.objectContaining({ id: &#x27;new-1&#x27; })]);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;leaves existing Expected Parts completely untouched when the job fails (identifyListingParts throws)&#x27;, async () =&gt; {</span>
+<span class="add">+    const listing = listingFixture(&#x27;listing-fail-keep&#x27;);</span>
+<span class="add">+    const job = jobFixture(&#x27;job-fail-keep&#x27;, &#x27;listing-fail-keep&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    const original: ExpectedPart[] = [</span>
+<span class="add">+      {</span>
+<span class="add">+        id: &#x27;hand-2&#x27;,</span>
+<span class="add">+        listingId: &#x27;listing-fail-keep&#x27;,</span>
+<span class="add">+        componentCategory: &#x27;PSU&#x27;,</span>
+<span class="add">+        brand: null,</span>
+<span class="add">+        partNumber: null,</span>
+<span class="add">+        description: &#x27;Hand PSU&#x27;,</span>
+<span class="add">+        estimatedResaleValue: 40,</span>
+<span class="add">+        identityCandidates: [],</span>
+<span class="add">+        aiConfidence: null,</span>
+<span class="add">+        aiSource: null,</span>
+<span class="add">+        priceSource: null,</span>
+<span class="add">+        createdAt: &#x27;2026-01-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+        updatedAt: &#x27;2026-01-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+      },</span>
+<span class="add">+      {</span>
+<span class="add">+        id: &#x27;ai-2&#x27;,</span>
+<span class="add">+        listingId: &#x27;listing-fail-keep&#x27;,</span>
+<span class="add">+        componentCategory: &#x27;RAM&#x27;,</span>
+<span class="add">+        brand: &#x27;Corsair&#x27;,</span>
+<span class="add">+        partNumber: &#x27;CMK16&#x27;,</span>
+<span class="add">+        description: &#x27;Prior AI RAM&#x27;,</span>
+<span class="add">+        estimatedResaleValue: null,</span>
+<span class="add">+        identityCandidates: [],</span>
+<span class="add">+        aiConfidence: &#x27;medium&#x27;,</span>
+<span class="add">+        aiSource: &#x27;photo&#x27;,</span>
+<span class="add">+        priceSource: &#x27;auto&#x27;,</span>
+<span class="add">+        createdAt: &#x27;2026-01-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+        updatedAt: &#x27;2026-01-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+      },</span>
+<span class="add">+    ];</span>
+<span class="add">+    const store = new Map&lt;string, ExpectedPart[]&gt;([[&#x27;listing-fail-keep&#x27;, original]]);</span>
+<span class="add">+</span>
+<span class="add">+    listExpectedPartsByListing.mockImplementation(async (listingId) =&gt; store.get(listingId) ?? []);</span>
+<span class="add">+    deleteExpectedPart.mockImplementation(async (id) =&gt; {</span>
+<span class="add">+      for (const [key, parts] of store) {</span>
+<span class="add">+        store.set(key, parts.filter((p) =&gt; p.id !== id));</span>
+<span class="add">+      }</span>
+<span class="add">+    });</span>
+<span class="add">+    createExpectedPart.mockImplementation(async () =&gt; {</span>
+<span class="add">+      throw new Error(&#x27;createExpectedPart must not be called when the job fails&#x27;);</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    claimNextQueuedJob.mockResolvedValueOnce(job).mockResolvedValue(null);</span>
+<span class="add">+    getListingById.mockResolvedValue(listing);</span>
+<span class="add">+    identifyListingParts.mockRejectedValue(new Error(&#x27;AI pipeline exploded&#x27;));</span>
+<span class="add">+</span>
+<span class="add">+    activeHandle = startIdentifyPartsWorkerPool();</span>
+<span class="add">+</span>
+<span class="add">+    await vi.waitFor(() =&gt; expect(failJob).toHaveBeenCalledTimes(1));</span>
+<span class="add">+</span>
+<span class="add">+    expect(failJob).toHaveBeenCalledWith(&#x27;job-fail-keep&#x27;, &#x27;AI pipeline exploded&#x27;);</span>
+<span class="add">+    expect(completeJob).not.toHaveBeenCalled();</span>
+<span class="add">+    expect(listExpectedPartsByListing).not.toHaveBeenCalled();</span>
+<span class="add">+    expect(deleteExpectedPart).not.toHaveBeenCalled();</span>
+<span class="add">+    expect(createExpectedPart).not.toHaveBeenCalled();</span>
+<span class="add">+    expect(triggerPriceLookups).not.toHaveBeenCalled();</span>
+<span class="add">+</span>
+<span class="add">+    // Same ids, same rows — nothing deleted or added.</span>
+<span class="add">+    expect(store.get(&#x27;listing-fail-keep&#x27;)).toEqual(original);</span>
+<span class="add">+  });</span>
+<span class="add">+});</span>
+<span class="add">+</span>
+<span class="ctx"> // T2 Cycle-0 fix proof: an empty-string or non-numeric</span>
+<span class="ctx"> // IDENTIFY_PARTS_POOL_SIZE must not silently become POOL_SIZE 0/NaN (which</span>
+<span class="ctx"> // makes pump()&#x27;s `activeCount &lt; POOL_SIZE` false forever, so jobs enqueue</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Raise the AI call timeout for the async job model</span><span class="meta">2 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">`DEFAULT_OMP_TIMEOUT_MS` moves from 120s to 240s because identification/comparison calls</p>
+<p class="note">Tasks: T2</p>
+<ul class="files"><li class="file-group">
+<p class="file-note">doubles `DEFAULT_OMP_TIMEOUT_MS` to 240_000 and rewrites the doc comment to explain the async-job context and the 300s ceiling it must stay under.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/ai/ompRunner.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -19,12 +19,17 @@ import { logger } from &#x27;../logger.js&#x27;;</div><pre><span class="ctx"> const OMP_BINARY = &#x27;omp&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> /**</span>
+<span class="del">- * Hard ceiling on one identification call. Real observed round-trips were ~9s</span>
+<span class="del">- * for one image and ~34s for eight, so 120s is roughly 3.5x the worst measured</span>
+<span class="del">- * case — generous enough that a slow-but-working call is never cut off, short</span>
+<span class="del">- * enough that a wedged child process cannot pin a request open indefinitely.</span>
+<span class="add">+ * Hard ceiling on one identification/comparison call. This call now runs</span>
+<span class="add">+ * inside an asynchronous background job bounded by a worker-pool slot,</span>
+<span class="add">+ * rather than behind an open HTTP request — the original 120-second value</span>
+<span class="add">+ * was sized for a synchronous request waiting on a client connection, a</span>
+<span class="add">+ * constraint that no longer applies. The new value is double the original:</span>
+<span class="add">+ * generous for a slow-but-working call, while staying strictly below</span>
+<span class="add">+ * DEFAULT_OMP_SOURCING_TIMEOUT_MS (300_000, ompSourcingRunner.ts) so that</span>
+<span class="add">+ * file&#x27;s own existing test asserting its timeout is strictly greater than</span>
+<span class="add">+ * this one keeps passing.</span>
+<span class="ctx">  */</span>
+<span class="del">-export const DEFAULT_OMP_TIMEOUT_MS = 120_000;</span>
+<span class="add">+export const DEFAULT_OMP_TIMEOUT_MS = 240_000;</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** Narrow slice of node:child_process.spawn this module actually uses, so tests can substitute a fake. */</span>
+<span class="ctx"> export type SpawnFn = (command: string, args: readonly string[], options: SpawnOptions) =&gt; ChildProcess;</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">updates the two tests that pinned the old 120_000 value and `&#x27;timed out after 120000ms&#x27;` message to the new 240_000/240000ms.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/test/partIdentification.test.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -623,7 +623,7 @@ describe(&#x27;runOmpIdentification process handling&#x27;, () =&gt; {</div><pre><span class="ctx">     expect(await waitForProcessGone(grandchildPid)).toBe(true);</span>
+<span class="ctx">   }, 30_000);</span>
+<span class="ctx"> </span>
+<span class="del">-  it(&#x27;applies the 120-second default timeout when no timeoutMs is given&#x27;, async () =&gt; {</span>
+<span class="add">+  it(&#x27;applies the 240-second default timeout when no timeoutMs is given&#x27;, async () =&gt; {</span>
+<span class="ctx">     // Every other runner test passes an explicit short timeoutMs, so without</span>
+<span class="ctx">     // this one the production default is never executed and could be lowered,</span>
+<span class="ctx">     // raised or deleted with the suite still green. Fake timers plus a child</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -651,15 +651,15 @@ describe(&#x27;runOmpIdentification process handling&#x27;, () =&gt; {</div><pre><span class="ctx">     await vi.advanceTimersByTimeAsync(1);</span>
+<span class="ctx">     expect(state).toBe(&#x27;rejected&#x27;);</span>
+<span class="ctx">     await expect(promise).rejects.toThrow(</span>
+<span class="del">-      expect.objectContaining({ statusCode: 504, message: expect.stringContaining(&#x27;timed out after 120000ms&#x27;) }),</span>
+<span class="add">+      expect.objectContaining({ statusCode: 504, message: expect.stringContaining(&#x27;timed out after 240000ms&#x27;) }),</span>
+<span class="ctx">     );</span>
+<span class="ctx">     // The group kill, not the direct kill: a negated pid signals the whole group.</span>
+<span class="ctx">     expect(killSpy).toHaveBeenCalledWith(-fakePid, &#x27;SIGKILL&#x27;);</span>
+<span class="ctx">     expect(child.kill).not.toHaveBeenCalled();</span>
+<span class="ctx">   });</span>
+<span class="ctx"> </span>
+<span class="del">-  it(&#x27;pins the default timeout to the documented 120 seconds&#x27;, () =&gt; {</span>
+<span class="del">-    expect(runner.DEFAULT_OMP_TIMEOUT_MS).toBe(120_000);</span>
+<span class="add">+  it(&#x27;pins the default timeout to the documented 240 seconds&#x27;, () =&gt; {</span>
+<span class="add">+    expect(runner.DEFAULT_OMP_TIMEOUT_MS).toBe(240_000);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> </span>
+<span class="ctx">   it(&#x27;falls back to node:child_process.spawn when no spawnFn is injected&#x27;, async () =&gt; {</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Latent bugs caught by review, test, and UAT</span><span class="meta">3 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">three small, pre-existing issues surfaced only because T1 and T2 exercised code paths</p>
+<p class="note">Tasks: T1, T2</p>
+<ul class="files"><li class="file-group">
+<p class="file-note">its mock barrel for `db/index.js` was missing `listExpectedPartsByListing`/`deleteExpectedPart`/`createExpectedPart`, so T1&#x27;s new calls broke 5 of 8 pre-existing tests until the barrel was completed.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/test/identifyPartsWorkerPool.test.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Replace, don&#x27;t duplicate, Expected Parts on rerun, Latent bugs caught by review, test, and UAT) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -12,7 +12,7 @@</div><pre><span class="ctx"> import { afterEach, beforeEach, describe, expect, it, vi } from &#x27;vitest&#x27;;</span>
+<span class="ctx"> import type { IdentifyPartsJob, IdentifyPartsResponse } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> import { logger } from &#x27;../src/logger.js&#x27;;</span>
+<span class="del">-import type { Listing } from &#x27;../src/db/index.js&#x27;;</span>
+<span class="add">+import type { CreateExpectedPartInput, ExpectedPart, Listing } from &#x27;../src/db/index.js&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> const claimNextQueuedJob = vi.fn&lt;[], Promise&lt;IdentifyPartsJob | null&gt;&gt;();</span>
+<span class="ctx"> const completeJob = vi.fn&lt;[string, IdentifyPartsResponse], Promise&lt;void&gt;&gt;();</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -20,6 +20,14 @@ const failJob = vi.fn&lt;[string, string], Promise&lt;void&gt;&gt;();</div><pre><span class="ctx"> const resetOrphanedJobsToQueued = vi.fn&lt;[], Promise&lt;string[]&gt;&gt;();</span>
+<span class="ctx"> const updateJobStage = vi.fn&lt;[string, &#x27;sourcing_references&#x27; | &#x27;comparing&#x27;], Promise&lt;void&gt;&gt;();</span>
+<span class="ctx"> const getListingById = vi.fn&lt;[string], Promise&lt;Listing | null&gt;&gt;();</span>
+<span class="add">+// The three functions persistIdentifiedParts (Req 1-2&#x27;s full-replace dedupe)</span>
+<span class="add">+// drives directly: a real fake store (not just call-recording) backs these</span>
+<span class="add">+// three in the &quot;persistIdentifiedParts dedupe &amp; job-failure data integrity&quot;</span>
+<span class="add">+// describe block below, so that suite can assert the Listing&#x27;s *final* set</span>
+<span class="add">+// of Expected Parts, not merely that some function was called.</span>
+<span class="add">+const listExpectedPartsByListing = vi.fn&lt;[string], Promise&lt;ExpectedPart[]&gt;&gt;();</span>
+<span class="add">+const deleteExpectedPart = vi.fn&lt;[string], Promise&lt;void&gt;&gt;();</span>
+<span class="add">+const createExpectedPart = vi.fn&lt;[CreateExpectedPartInput], Promise&lt;ExpectedPart&gt;&gt;();</span>
+<span class="ctx"> </span>
+<span class="ctx"> // Mocking the whole db/index.js barrel (rather than the single</span>
+<span class="ctx"> // identifyPartsJobs.ts query file) matches how the worker pool itself</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -34,6 +42,20 @@ vi.mock(&#x27;../src/db/index.js&#x27;, () =&gt; ({</div><pre><span class="ctx">   resetOrphanedJobsToQueued: (...args: []) =&gt; resetOrphanedJobsToQueued(...args),</span>
+<span class="ctx">   updateJobStage: (...args: [string, &#x27;sourcing_references&#x27; | &#x27;comparing&#x27;]) =&gt; updateJobStage(...args),</span>
+<span class="ctx">   getListingById: (...args: [string]) =&gt; getListingById(...args),</span>
+<span class="add">+  listExpectedPartsByListing: (...args: [string]) =&gt; listExpectedPartsByListing(...args),</span>
+<span class="add">+  deleteExpectedPart: (...args: [string]) =&gt; deleteExpectedPart(...args),</span>
+<span class="add">+  createExpectedPart: (...args: [CreateExpectedPartInput]) =&gt; createExpectedPart(...args),</span>
+<span class="add">+}));</span>
+<span class="add">+</span>
+<span class="add">+// persistIdentifiedParts hands its freshly-created rows to triggerPriceLookups</span>
+<span class="add">+// (pricePartsTrigger.ts) as its very last step. That module has its own</span>
+<span class="add">+// direct suite (pricePartsTrigger.test.ts); mocking it away here keeps this</span>
+<span class="add">+// file&#x27;s focus on persistIdentifiedParts&#x27;s own delete/create dedupe logic,</span>
+<span class="add">+// the same way identifyListingParts (also separately tested) is mocked</span>
+<span class="add">+// below rather than exercised for real.</span>
+<span class="add">+const triggerPriceLookups = vi.fn&lt;[ExpectedPart[]], Promise&lt;void&gt;&gt;();</span>
+<span class="add">+vi.mock(&#x27;../src/jobs/pricePartsTrigger.js&#x27;, () =&gt; ({</span>
+<span class="add">+  triggerPriceLookups: (...args: [ExpectedPart[]]) =&gt; triggerPriceLookups(...args),</span>
+<span class="ctx"> }));</span>
+<span class="ctx"> </span>
+<span class="ctx"> type OnStage = (stage: &#x27;sourcing_references&#x27; | &#x27;comparing&#x27;) =&gt; void;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -94,6 +116,10 @@ beforeEach(() =&gt; {</div><pre><span class="ctx">   updateJobStage.mockReset().mockResolvedValue(undefined);</span>
+<span class="ctx">   getListingById.mockReset().mockResolvedValue(null);</span>
+<span class="ctx">   identifyListingParts.mockReset();</span>
+<span class="add">+  listExpectedPartsByListing.mockReset().mockResolvedValue([]);</span>
+<span class="add">+  deleteExpectedPart.mockReset().mockResolvedValue(undefined);</span>
+<span class="add">+  createExpectedPart.mockReset();</span>
+<span class="add">+  triggerPriceLookups.mockReset().mockResolvedValue(undefined);</span>
+<span class="ctx">   vi.spyOn(logger, &#x27;info&#x27;).mockImplementation(() =&gt; logger);</span>
+<span class="ctx">   vi.spyOn(logger, &#x27;error&#x27;).mockImplementation(() =&gt; logger);</span>
+<span class="ctx"> });</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -229,6 +255,206 @@ describe(&#x27;startIdentifyPartsWorkerPool (T2, Req 4, 5, 6)&#x27;, () =&gt; {</div><pre><span class="ctx">   });</span>
+<span class="ctx"> });</span>
+<span class="ctx"> </span>
+<span class="add">+// T1 proof: identifyPartsWorkerPool.ts&#x27;s persistIdentifiedParts (Req 1-2).</span>
+<span class="add">+// Runs through the real startIdentifyPartsWorkerPool -&gt; processJob -&gt;</span>
+<span class="add">+// persistIdentifiedParts path (the same harness as the describe block</span>
+<span class="add">+// above), but backs listExpectedPartsByListing/deleteExpectedPart/</span>
+<span class="add">+// createExpectedPart with an in-memory store keyed by listingId instead of</span>
+<span class="add">+// just recording calls, so these tests can assert the Listing&#x27;s *final*</span>
+<span class="add">+// set of Expected Parts after the job runs — not merely that some function</span>
+<span class="add">+// was called with some argument.</span>
+<span class="add">+describe(&#x27;persistIdentifiedParts dedupe &amp; job-failure data integrity (T1, Req 1-2)&#x27;, () =&gt; {</span>
+<span class="add">+  it(&#x27;rerunning Identify Parts replaces a hand-entered part and a prior AI-sourced part with exactly the newly identified set, no duplicates&#x27;, async () =&gt; {</span>
+<span class="add">+    const listing = listingFixture(&#x27;listing-dedupe&#x27;);</span>
+<span class="add">+    const job = jobFixture(&#x27;job-dedupe&#x27;, &#x27;listing-dedupe&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    const handEntered: ExpectedPart = {</span>
+<span class="add">+      id: &#x27;hand-1&#x27;,</span>
+<span class="add">+      listingId: &#x27;listing-dedupe&#x27;,</span>
+<span class="add">+      componentCategory: &#x27;GPU&#x27;,</span>
+<span class="add">+      brand: &#x27;NVIDIA&#x27;,</span>
+<span class="add">+      partNumber: &#x27;RTX-OLD&#x27;,</span>
+<span class="add">+      description: &#x27;Hand-entered GPU&#x27;,</span>
+<span class="add">+      estimatedResaleValue: 200,</span>
+<span class="add">+      identityCandidates: [],</span>
+<span class="add">+      aiConfidence: null,</span>
+<span class="add">+      aiSource: null,</span>
+<span class="add">+      priceSource: &#x27;manual&#x27;,</span>
+<span class="add">+      createdAt: &#x27;2026-01-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+      updatedAt: &#x27;2026-01-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+    };</span>
+<span class="add">+    const priorAiPart: ExpectedPart = {</span>
+<span class="add">+      id: &#x27;ai-old-1&#x27;,</span>
+<span class="add">+      listingId: &#x27;listing-dedupe&#x27;,</span>
+<span class="add">+      componentCategory: &#x27;CPU&#x27;,</span>
+<span class="add">+      brand: &#x27;Intel&#x27;,</span>
+<span class="add">+      partNumber: &#x27;i5-old&#x27;,</span>
+<span class="add">+      description: &#x27;Prior AI CPU&#x27;,</span>
+<span class="add">+      estimatedResaleValue: null,</span>
+<span class="add">+      identityCandidates: [],</span>
+<span class="add">+      aiConfidence: &#x27;high&#x27;,</span>
+<span class="add">+      aiSource: &#x27;text&#x27;,</span>
+<span class="add">+      priceSource: &#x27;auto&#x27;,</span>
+<span class="add">+      createdAt: &#x27;2026-01-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+      updatedAt: &#x27;2026-01-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+    };</span>
+<span class="add">+    const store = new Map&lt;string, ExpectedPart[]&gt;([[&#x27;listing-dedupe&#x27;, [handEntered, priorAiPart]]]);</span>
+<span class="add">+</span>
+<span class="add">+    listExpectedPartsByListing.mockImplementation(async (listingId) =&gt; store.get(listingId) ?? []);</span>
+<span class="add">+    deleteExpectedPart.mockImplementation(async (id) =&gt; {</span>
+<span class="add">+      for (const [key, parts] of store) {</span>
+<span class="add">+        store.set(key, parts.filter((p) =&gt; p.id !== id));</span>
+<span class="add">+      }</span>
+<span class="add">+    });</span>
+<span class="add">+    let createdCounter = 0;</span>
+<span class="add">+    createExpectedPart.mockImplementation(async (input) =&gt; {</span>
+<span class="add">+      createdCounter += 1;</span>
+<span class="add">+      const row: ExpectedPart = {</span>
+<span class="add">+        id: `new-${createdCounter}`,</span>
+<span class="add">+        listingId: input.listingId,</span>
+<span class="add">+        componentCategory: input.componentCategory,</span>
+<span class="add">+        brand: input.brand,</span>
+<span class="add">+        partNumber: input.partNumber,</span>
+<span class="add">+        description: input.description,</span>
+<span class="add">+        estimatedResaleValue: input.estimatedResaleValue,</span>
+<span class="add">+        identityCandidates: input.identityCandidates,</span>
+<span class="add">+        aiConfidence: input.aiConfidence,</span>
+<span class="add">+        aiSource: input.aiSource,</span>
+<span class="add">+        priceSource: input.priceSource ?? null,</span>
+<span class="add">+        createdAt: &#x27;2026-02-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+        updatedAt: &#x27;2026-02-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+      };</span>
+<span class="add">+      store.set(input.listingId, [...(store.get(input.listingId) ?? []), row]);</span>
+<span class="add">+      return row;</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    const freshResult: IdentifyPartsResponse = {</span>
+<span class="add">+      parts: [</span>
+<span class="add">+        {</span>
+<span class="add">+          category: &#x27;GPU&#x27;,</span>
+<span class="add">+          brand: &#x27;NVIDIA&#x27;,</span>
+<span class="add">+          partNumber: &#x27;RTX-NEW&#x27;,</span>
+<span class="add">+          description: &#x27;Newly identified GPU&#x27;,</span>
+<span class="add">+          confidence: &#x27;high&#x27;,</span>
+<span class="add">+          source: &#x27;text&#x27;,</span>
+<span class="add">+          identityCandidates: [],</span>
+<span class="add">+        },</span>
+<span class="add">+      ],</span>
+<span class="add">+      notes: &#x27;rerun&#x27;,</span>
+<span class="add">+    };</span>
+<span class="add">+</span>
+<span class="add">+    claimNextQueuedJob.mockResolvedValueOnce(job).mockResolvedValue(null);</span>
+<span class="add">+    getListingById.mockResolvedValue(listing);</span>
+<span class="add">+    identifyListingParts.mockResolvedValue(freshResult);</span>
+<span class="add">+</span>
+<span class="add">+    activeHandle = startIdentifyPartsWorkerPool();</span>
+<span class="add">+</span>
+<span class="add">+    await vi.waitFor(() =&gt; expect(completeJob).toHaveBeenCalledTimes(1));</span>
+<span class="add">+</span>
+<span class="add">+    // Both the hand-entered part and the prior AI-sourced part were</span>
+<span class="add">+    // deleted — deletion is not filtered by aiSource.</span>
+<span class="add">+    expect(deleteExpectedPart).toHaveBeenCalledWith(&#x27;hand-1&#x27;);</span>
+<span class="add">+    expect(deleteExpectedPart).toHaveBeenCalledWith(&#x27;ai-old-1&#x27;);</span>
+<span class="add">+    expect(deleteExpectedPart).toHaveBeenCalledTimes(2);</span>
+<span class="add">+</span>
+<span class="add">+    // Exactly one new part was created, carrying the fresh result&#x27;s own</span>
+<span class="add">+    // data (full object, not a subset) through persistIdentifiedParts&#x27;s</span>
+<span class="add">+    // own field mapping.</span>
+<span class="add">+    expect(createExpectedPart).toHaveBeenCalledTimes(1);</span>
+<span class="add">+    expect(createExpectedPart).toHaveBeenCalledWith({</span>
+<span class="add">+      listingId: &#x27;listing-dedupe&#x27;,</span>
+<span class="add">+      componentCategory: &#x27;GPU&#x27;,</span>
+<span class="add">+      brand: &#x27;NVIDIA&#x27;,</span>
+<span class="add">+      partNumber: &#x27;RTX-NEW&#x27;,</span>
+<span class="add">+      description: &#x27;Newly identified GPU&#x27;,</span>
+<span class="add">+      estimatedResaleValue: null,</span>
+<span class="add">+      identityCandidates: [],</span>
+<span class="add">+      aiConfidence: &#x27;high&#x27;,</span>
+<span class="add">+      aiSource: &#x27;text&#x27;,</span>
+<span class="add">+      priceSource: &#x27;auto&#x27;,</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    // The store (standing in for the Listing&#x27;s real Expected Parts) now</span>
+<span class="add">+    // holds exactly the one newly-identified part: the old hand-entered and</span>
+<span class="add">+    // prior-AI rows are gone, and nothing is duplicated.</span>
+<span class="add">+    const finalParts = store.get(&#x27;listing-dedupe&#x27;) ?? [];</span>
+<span class="add">+    expect(finalParts.map((p) =&gt; p.id)).toEqual([&#x27;new-1&#x27;]);</span>
+<span class="add">+    expect(finalParts[0]).toMatchObject({ brand: &#x27;NVIDIA&#x27;, partNumber: &#x27;RTX-NEW&#x27; });</span>
+<span class="add">+</span>
+<span class="add">+    // Only the freshly-created part is handed downstream to price lookups —</span>
+<span class="add">+    // the deleted rows never reach it.</span>
+<span class="add">+    expect(triggerPriceLookups).toHaveBeenCalledTimes(1);</span>
+<span class="add">+    expect(triggerPriceLookups).toHaveBeenCalledWith([expect.objectContaining({ id: &#x27;new-1&#x27; })]);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;leaves existing Expected Parts completely untouched when the job fails (identifyListingParts throws)&#x27;, async () =&gt; {</span>
+<span class="add">+    const listing = listingFixture(&#x27;listing-fail-keep&#x27;);</span>
+<span class="add">+    const job = jobFixture(&#x27;job-fail-keep&#x27;, &#x27;listing-fail-keep&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    const original: ExpectedPart[] = [</span>
+<span class="add">+      {</span>
+<span class="add">+        id: &#x27;hand-2&#x27;,</span>
+<span class="add">+        listingId: &#x27;listing-fail-keep&#x27;,</span>
+<span class="add">+        componentCategory: &#x27;PSU&#x27;,</span>
+<span class="add">+        brand: null,</span>
+<span class="add">+        partNumber: null,</span>
+<span class="add">+        description: &#x27;Hand PSU&#x27;,</span>
+<span class="add">+        estimatedResaleValue: 40,</span>
+<span class="add">+        identityCandidates: [],</span>
+<span class="add">+        aiConfidence: null,</span>
+<span class="add">+        aiSource: null,</span>
+<span class="add">+        priceSource: null,</span>
+<span class="add">+        createdAt: &#x27;2026-01-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+        updatedAt: &#x27;2026-01-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+      },</span>
+<span class="add">+      {</span>
+<span class="add">+        id: &#x27;ai-2&#x27;,</span>
+<span class="add">+        listingId: &#x27;listing-fail-keep&#x27;,</span>
+<span class="add">+        componentCategory: &#x27;RAM&#x27;,</span>
+<span class="add">+        brand: &#x27;Corsair&#x27;,</span>
+<span class="add">+        partNumber: &#x27;CMK16&#x27;,</span>
+<span class="add">+        description: &#x27;Prior AI RAM&#x27;,</span>
+<span class="add">+        estimatedResaleValue: null,</span>
+<span class="add">+        identityCandidates: [],</span>
+<span class="add">+        aiConfidence: &#x27;medium&#x27;,</span>
+<span class="add">+        aiSource: &#x27;photo&#x27;,</span>
+<span class="add">+        priceSource: &#x27;auto&#x27;,</span>
+<span class="add">+        createdAt: &#x27;2026-01-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+        updatedAt: &#x27;2026-01-01T00:00:00.000Z&#x27;,</span>
+<span class="add">+      },</span>
+<span class="add">+    ];</span>
+<span class="add">+    const store = new Map&lt;string, ExpectedPart[]&gt;([[&#x27;listing-fail-keep&#x27;, original]]);</span>
+<span class="add">+</span>
+<span class="add">+    listExpectedPartsByListing.mockImplementation(async (listingId) =&gt; store.get(listingId) ?? []);</span>
+<span class="add">+    deleteExpectedPart.mockImplementation(async (id) =&gt; {</span>
+<span class="add">+      for (const [key, parts] of store) {</span>
+<span class="add">+        store.set(key, parts.filter((p) =&gt; p.id !== id));</span>
+<span class="add">+      }</span>
+<span class="add">+    });</span>
+<span class="add">+    createExpectedPart.mockImplementation(async () =&gt; {</span>
+<span class="add">+      throw new Error(&#x27;createExpectedPart must not be called when the job fails&#x27;);</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    claimNextQueuedJob.mockResolvedValueOnce(job).mockResolvedValue(null);</span>
+<span class="add">+    getListingById.mockResolvedValue(listing);</span>
+<span class="add">+    identifyListingParts.mockRejectedValue(new Error(&#x27;AI pipeline exploded&#x27;));</span>
+<span class="add">+</span>
+<span class="add">+    activeHandle = startIdentifyPartsWorkerPool();</span>
+<span class="add">+</span>
+<span class="add">+    await vi.waitFor(() =&gt; expect(failJob).toHaveBeenCalledTimes(1));</span>
+<span class="add">+</span>
+<span class="add">+    expect(failJob).toHaveBeenCalledWith(&#x27;job-fail-keep&#x27;, &#x27;AI pipeline exploded&#x27;);</span>
+<span class="add">+    expect(completeJob).not.toHaveBeenCalled();</span>
+<span class="add">+    expect(listExpectedPartsByListing).not.toHaveBeenCalled();</span>
+<span class="add">+    expect(deleteExpectedPart).not.toHaveBeenCalled();</span>
+<span class="add">+    expect(createExpectedPart).not.toHaveBeenCalled();</span>
+<span class="add">+    expect(triggerPriceLookups).not.toHaveBeenCalled();</span>
+<span class="add">+</span>
+<span class="add">+    // Same ids, same rows — nothing deleted or added.</span>
+<span class="add">+    expect(store.get(&#x27;listing-fail-keep&#x27;)).toEqual(original);</span>
+<span class="add">+  });</span>
+<span class="add">+});</span>
+<span class="add">+</span>
+<span class="ctx"> // T2 Cycle-0 fix proof: an empty-string or non-numeric</span>
+<span class="ctx"> // IDENTIFY_PARTS_POOL_SIZE must not silently become POOL_SIZE 0/NaN (which</span>
+<span class="ctx"> // makes pump()&#x27;s `activeCount &lt; POOL_SIZE` false forever, so jobs enqueue</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">shared the same `db/index.js` mock barrel gap as the file above — found and fixed for the same reason, before it could break under a future change.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/test/identifyPartsPriceTrigger.test.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -19,6 +19,8 @@ const failJob = vi.fn&lt;[string, string], Promise&lt;void&gt;&gt;();</div><pre><span class="ctx"> const resetOrphanedJobsToQueued = vi.fn&lt;[], Promise&lt;string[]&gt;&gt;();</span>
+<span class="ctx"> const updateJobStage = vi.fn&lt;[string, &#x27;sourcing_references&#x27; | &#x27;comparing&#x27;], Promise&lt;void&gt;&gt;();</span>
+<span class="ctx"> const getListingById = vi.fn&lt;[string], Promise&lt;Listing | null&gt;&gt;();</span>
+<span class="add">+const listExpectedPartsByListing = vi.fn&lt;[string], Promise&lt;ExpectedPart[]&gt;&gt;();</span>
+<span class="add">+const deleteExpectedPart = vi.fn&lt;[string], Promise&lt;void&gt;&gt;();</span>
+<span class="ctx"> const createExpectedPart = vi.fn&lt;[CreateExpectedPartInput], Promise&lt;ExpectedPart&gt;&gt;();</span>
+<span class="ctx"> </span>
+<span class="ctx"> vi.mock(&#x27;../src/db/index.js&#x27;, () =&gt; ({</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -28,6 +30,8 @@ vi.mock(&#x27;../src/db/index.js&#x27;, () =&gt; ({</div><pre><span class="ctx">   resetOrphanedJobsToQueued: (...args: []) =&gt; resetOrphanedJobsToQueued(...args),</span>
+<span class="ctx">   updateJobStage: (...args: [string, &#x27;sourcing_references&#x27; | &#x27;comparing&#x27;]) =&gt; updateJobStage(...args),</span>
+<span class="ctx">   getListingById: (...args: [string]) =&gt; getListingById(...args),</span>
+<span class="add">+  listExpectedPartsByListing: (...args: [string]) =&gt; listExpectedPartsByListing(...args),</span>
+<span class="add">+  deleteExpectedPart: (...args: [string]) =&gt; deleteExpectedPart(...args),</span>
+<span class="ctx">   createExpectedPart: (...args: [CreateExpectedPartInput]) =&gt; createExpectedPart(...args),</span>
+<span class="ctx"> }));</span>
+<span class="ctx"> </span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -105,6 +109,8 @@ beforeEach(() =&gt; {</div><pre><span class="ctx">   claimNextQueuedJob.mockResolvedValue(null);</span>
+<span class="ctx">   resetOrphanedJobsToQueued.mockResolvedValue([]);</span>
+<span class="ctx">   getListingById.mockResolvedValue(null);</span>
+<span class="add">+  listExpectedPartsByListing.mockResolvedValue([]);</span>
+<span class="add">+  deleteExpectedPart.mockResolvedValue(undefined);</span>
+<span class="ctx">   triggerPriceLookups.mockResolvedValue(undefined);</span>
+<span class="ctx">   let rowCounter = 0;</span>
+<span class="ctx">   createExpectedPart.mockImplementation(async (input) =&gt; {</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">its doc comment described the sourcing timeout as &quot;2.5x ompRunner.ts&#x27;s 120s&quot;, a ratio that went stale the moment T2 raised that constant to 240s; corrected to &quot;1.25x ompRunner.ts&#x27;s 240s&quot; by the reviewer pass on T2.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/ai/ompSourcingRunner.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -11,7 +11,7 @@ import { runOmpProcess } from &#x27;./ompRunner.js&#x27;;</div><pre><span class="ctx">  * Hard ceiling on one sourcing call. A tools-enabled call has to browse the</span>
+<span class="ctx">  * web (search, open pages, inspect images) rather than just read an attached</span>
+<span class="ctx">  * photo, which is a fundamentally slower operation than plain identification</span>
+<span class="del">- * — set to 5 minutes (2.5x ompRunner.ts&#x27;s 120s identification timeout) to</span>
+<span class="add">+ * — set to 5 minutes (1.25x ompRunner.ts&#x27;s 240s identification timeout) to</span>
+<span class="ctx">  * give real browsing round-trips room without letting a wedged call pin a</span>
+<span class="ctx">  * request open indefinitely.</span>
+<span class="ctx">  */</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+</main><script>
+function toggleSection(btn){
+  var body = btn.nextElementSibling;
+  body.hidden = !body.hidden;
+  btn.setAttribute('aria-expanded', String(!body.hidden));
+}
+function toggleFile(btn){
+  var body = btn.nextElementSibling;
+  body.hidden = !body.hidden;
+  btn.setAttribute('aria-expanded', String(!body.hidden));
+}
+</script>

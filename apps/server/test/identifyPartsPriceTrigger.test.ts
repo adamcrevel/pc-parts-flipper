@@ -19,6 +19,8 @@ const failJob = vi.fn<[string, string], Promise<void>>();
 const resetOrphanedJobsToQueued = vi.fn<[], Promise<string[]>>();
 const updateJobStage = vi.fn<[string, 'sourcing_references' | 'comparing'], Promise<void>>();
 const getListingById = vi.fn<[string], Promise<Listing | null>>();
+const listExpectedPartsByListing = vi.fn<[string], Promise<ExpectedPart[]>>();
+const deleteExpectedPart = vi.fn<[string], Promise<void>>();
 const createExpectedPart = vi.fn<[CreateExpectedPartInput], Promise<ExpectedPart>>();
 
 vi.mock('../src/db/index.js', () => ({
@@ -28,6 +30,8 @@ vi.mock('../src/db/index.js', () => ({
   resetOrphanedJobsToQueued: (...args: []) => resetOrphanedJobsToQueued(...args),
   updateJobStage: (...args: [string, 'sourcing_references' | 'comparing']) => updateJobStage(...args),
   getListingById: (...args: [string]) => getListingById(...args),
+  listExpectedPartsByListing: (...args: [string]) => listExpectedPartsByListing(...args),
+  deleteExpectedPart: (...args: [string]) => deleteExpectedPart(...args),
   createExpectedPart: (...args: [CreateExpectedPartInput]) => createExpectedPart(...args),
 }));
 
@@ -105,6 +109,8 @@ beforeEach(() => {
   claimNextQueuedJob.mockResolvedValue(null);
   resetOrphanedJobsToQueued.mockResolvedValue([]);
   getListingById.mockResolvedValue(null);
+  listExpectedPartsByListing.mockResolvedValue([]);
+  deleteExpectedPart.mockResolvedValue(undefined);
   triggerPriceLookups.mockResolvedValue(undefined);
   let rowCounter = 0;
   createExpectedPart.mockImplementation(async (input) => {

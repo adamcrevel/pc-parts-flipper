@@ -1,0 +1,270 @@
+<title>Feature</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--radius:8px}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74}}
+*{box-sizing:border-box;overflow-wrap:break-word}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+/* Grid tracks default to fitting their content's full, unbroken width -- a single
+   long token (a file path, a backtick-quoted identifier) anywhere in a panel would
+   otherwise stretch the whole page past max-width, no matter how long the gap or how
+   small every other panel is. min-width:0 is what lets a grid item shrink below that
+   and actually wrap instead. Confirmed live: this is what was making every real plan
+   (which is full of exactly these long tokens) render many times wider than the
+   viewport, independent of the DOCTYPE/viewport fix. */
+main{max-width:1000px;margin:0 auto;padding:24px;display:grid;gap:20px}
+main>*{min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);
+border-radius:var(--radius);padding:20px 22px}
+h1{margin:0 0 4px;font-size:21px;letter-spacing:-.01em}
+h2{margin:22px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+h2:first-of-type{margin-top:14px}
+.panel>p{line-height:1.65;margin:0 0 4px}
+.totals{display:flex;gap:32px;flex-wrap:wrap;margin:12px 0}
+.total .n{font-size:26px;font-variant-numeric:tabular-nums}
+.total .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+details{margin-top:8px}summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;
+border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--good);border-color:var(--good);color:var(--panel)}
+.scroll{overflow-x:auto}
+/* table-layout:auto (the default) sizes a column from its content's own natural
+   width -- for a nowrap+ellipsis cell, that is the FULL unwrapped text, which is
+   exactly the width ellipsis is meant to avoid ever reaching. It is a well-known
+   gap in the auto algorithm, not a quirk of this page: the standard fix is
+   table-layout:fixed, with every narrow column given an explicit width so the
+   description column (the one left unset) absorbs the rest and actually holds
+   .desc to it. Confirmed live: without this, a single real task description
+   dragged the whole table into a wide horizontal scrollbar regardless of how
+   short every other column's content was. */
+table{width:100%;border-collapse:collapse;font-size:14px;table-layout:fixed}
+/* The status column's own text ("In progress &middot; running long.") is real
+   prose, not a single short token -- 28px forced it to wrap, and the page's own
+   global overflow-wrap:break-word (needed elsewhere, see main>* above) then broke
+   it mid-word instead of at a space. Wide enough for the longest badge on two
+   lines, with normal word-wrapping restored just for this column. */
+th:first-child,td:first-child{width:112px;overflow-wrap:normal}
+th:nth-child(2),td:nth-child(2){width:52px}
+th:nth-child(4),td:nth-child(4){width:130px}
+th:nth-child(5),td:nth-child(5){width:150px}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.good .dot,.dot.good{background:var(--good)}.bad .dot,.dot.bad{background:var(--bad)}
+.neutral .dot,.dot.neutral{background:var(--muted)}
+.sub td{border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);padding-top:0}
+/* .desc is a <span> -- inline by default, and width/overflow/text-overflow are all
+   spec-ignored on a plain inline box, so none of this ever actually truncated
+   anything on its own. display:block (now that its <td> has a real fixed width to
+   fill, from table-layout:fixed above) is what makes the rest of this rule do
+   anything at all. */
+.desc{display:block;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.desc.open{white-space:normal;overflow:visible}
+.more{font:inherit;font-size:11px;border:none;background:none;color:var(--muted);cursor:pointer}
+.tag{display:inline-block;padding:0 6px;margin-right:4px;border:1px solid var(--line);
+border-radius:999px;font-size:11px;font-variant-numeric:tabular-nums}
+.banner{border-left:3px solid var(--bad);padding:10px 14px;background:var(--panel);
+border-radius:var(--radius);margin-bottom:14px}
+.fail{background:rgba(163,49,42,.09);padding:6px 9px;border-radius:6px;margin-top:6px}
+ul,ol{margin:8px 0;padding-left:24px}
+li{margin:8px 0;line-height:1.6}
+/* Requirements and Assumptions are both "one short id, one longer text" --
+   the same shape a table row has, so they get the same row-grid treatment
+   the task table already uses (a border between rows, an aligned label
+   column), instead of reading as a looser bulleted paragraph. Plain bullet
+   lists (Findings, UAT checks) keep the plainer rule above. The id badge
+   reuses .tag -- the exact same pill the task table's own id column uses now
+   -- so a reader learns one visual language for "this is an id" instead of
+   three different ones. */
+.items{list-style:none;margin:8px 0;padding:0;display:grid;gap:0}
+.items li{margin:0;display:grid;grid-template-columns:34px 1fr;gap:10px;
+padding:10px 2px;border-bottom:1px solid var(--line);line-height:1.6}
+.items li:last-child{border-bottom:none}
+/* A grid item's own display:inline-block is not enough to stop it stretching
+   to fill its whole cell -- CSS Grid stretches an item's box to its area by
+   default regardless, so the pill's border was being drawn around the full
+   34px-by-row-height cell instead of snugly around "A1". justify/align-self
+   opt back out of that stretch. */
+.items li>:first-child{justify-self:start;align-self:start}
+.note{font-size:12px;color:var(--muted)}
+.btn{display:inline-block;padding:8px 16px;margin:2px 0;border-radius:8px;
+background:var(--good);color:var(--panel);text-decoration:none;font-size:13px;font-weight:600}
+.btn:hover{opacity:.85}
+pre{font-family:inherit;white-space:pre-wrap;word-break:break-word;margin:0;line-height:1.65}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9em;
+background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+</style>
+<main>
+<section class="panel">
+<h1>Feature</h1>
+<p class="note">Status done &middot; cycle 0 of 3 &middot; refreshes in <span data-refresh-in>5m 0s</span></p>
+<h2>Goal</h2><p>Fix two problems in the Identify Parts flow. First, running Identify Parts again on a Listing that already has Expected Parts duplicates them instead of replacing them — <code>persistIdentifiedParts</code> only ever inserts, never removes old entries. Second, the AI identification/comparison calls behind this flow still use a 120-second timeout sized for a synchronous request, even though the flow now runs as an asynchronous background job that the client polls; a slow-but-working call can get cut off, producing an avoidable timeout error.</p>
+<h2>Requirements</h2><ul class="items"><li><span class="tag">1</span><span><code>persistIdentifiedParts</code> (<code>apps/server/src/jobs/identifyPartsWorkerPool.ts</code>), which only runs once an identify-parts job finishes successfully, must delete every Expected Part already on the job&#x27;s Listing — using the same <code>listExpectedPartsByListing</code> + <code>deleteExpectedPart</code> pattern already used by the manual Listing-save route (<code>apps/server/src/routes/listings.ts</code>&#x27;s <code>PUT /api/listings/:id</code>, lines 205-206) — before inserting the parts the job just identified. This is a full replace, not a merge: a part that existed before the run but isn&#x27;t in the new result is removed; a part that didn&#x27;t exist before but is in the new result is added.</span></li><li><span class="tag">2</span><span>A job that fails, or hasn&#x27;t yet reached <code>completed</code>, must never delete or change the Listing&#x27;s existing Expected Parts — the replace described in Requirement 1 only happens on the already-guarded successful-persistence path inside <code>processJob</code>&#x27;s try block, and nothing else changes there.</span></li><li><span class="tag">3</span><span><code>DEFAULT_OMP_TIMEOUT_MS</code> (<code>apps/server/src/ai/ompRunner.ts</code>) — the per-call limit for both the &quot;identifying&quot; and &quot;comparing&quot; AI steps of the identify-parts pipeline — goes up from 120 000ms (2 minutes) to 240 000ms (4 minutes): double the original, while staying strictly below <code>DEFAULT_OMP_SOURCING_TIMEOUT_MS</code> (300 000ms, reference-photo sourcing) so <code>ompSourcingRunner.test.ts</code>&#x27;s existing invariant — sourcing&#x27;s own timeout must stay longer than identification&#x27;s, since sourcing does real multi-site browsing per part and is inherently the slower operation — keeps holding. Its doc comment is rewritten: the original 120s value was chosen for a synchronous request (&quot;short enough that a wedged child process cannot pin a request open indefinitely&quot;); since that call now runs inside an asynchronous background job limited by a worker-pool slot rather than an open HTTP request, the new comment should explain that instead.</span></li></ul>
+<p><a href="https://gist.githack.com/adamcrevel/308356192af4094d101d4aaec9394763/raw/walkthrough.html" target="_blank" rel="noopener noreferrer">Walkthrough</a></p>
+<div class="totals">
+<div class="total"><div class="n" data-since="2026-10-08T05:43:02Z">&mdash;</div><div class="l">total time</div></div>
+<div class="total"><div class="n">169,501</div><div class="l">total tokens</div></div>
+</div>
+<details><summary>Where that token figure comes from</summary><p class="note">input 0 + output 24,184 + cache-write 38,588 + cache-read 99,229, across 58 turns</p><p class="note">Most of a long conversation's token count is cache-read: the accumulated context is resent on every turn and billed at a fraction of the normal rate. A high total reflects the turn count over time, not necessarily a large bill.</p></details>
+<h2>Retrospective</h2><pre># Retrospective
+
+## What happened
+
+This was a clean, single-cycle run: Cycle 0 only, no cycle increment, 2 builder tasks (T1, T2),
+their paired reviewer/tester rows (R1/TE1, R2/TE2), and one UAT pass (U0) — all PASS on the first
+dispatch of each, no must_fix routed back to a builder, no second cycle triggered.
+
+- **T2&#x27;s first build attempt used 300\_000ms, not the 240\_000ms that shipped — corrected before
+  R2/TE2 were ever dispatched.** <code>plan-cycle0.md</code> (the plan as frozen before any task ran) sized
+  Requirement 3 at <code>300_000</code> — matching <code>DEFAULT_OMP_SOURCING_TIMEOUT_MS</code> exactly. Assumption A3
+  records that this was &quot;caught during this orchestrator&#x27;s own pre-handoff check of T2&#x27;s first
+  build attempt,&quot; because an equal (not strictly-greater) sourcing/identification timeout breaks
+  <code>ompSourcingRunner.test.ts</code>&#x27;s existing <code>toBeGreaterThan</code> invariant. The requirement and T2&#x27;s row
+  were rewritten to <code>240_000</code> (double the original 120s, still strictly below sourcing&#x27;s 300s)
+  before T2 was handed to review/test. The final plan.md shows only the corrected value; the
+  300\_000 attempt is visible solely by diffing it against <code>plan-cycle0.md</code>.
+- **Two further mid-run self-corrections are named in this feature&#x27;s assignment but left no trace
+  in <code>plan.md</code> or <code>plan-cycle0.md</code> to independently verify from the record alone**: an
+  orchestrator-side mistake of creating R1/TE1/R2/TE2 rows prematurely (before T1/T2 were actually
+  done), fixed before the plan was frozen; and a builder sub-agent fabrication caught during an
+  integration-style check. Neither shows up in either snapshot because both snapshots only capture
+  state *after* each correction — <code>plan-cycle0.md</code> (before any task ran) has no R/TE rows at all,
+  and <code>plan.md</code> (final) shows only clean PASS rows with no must_fix language attached to either T1
+  or T2&#x27;s own builder row. This is a traceability gap: the written record preserves post-freeze
+  corrections (A3) but not every pre-freeze one.
+- **T1&#x27;s fix broke pre-existing tests via a shared mock barrel, and a second file sharing that same
+  barrel had the identical latent gap.** TE1 found T1&#x27;s new, previously-unmocked
+  <code>listExpectedPartsByListing</code>/<code>deleteExpectedPart</code>/<code>createExpectedPart</code>/<code>triggerPriceLookups</code> calls
+  broke 5/8 existing tests in <code>identifyPartsWorkerPool.test.ts</code>; fixed by extending that file&#x27;s mock
+  barrel, then adding two new tests through the real <code>processJob</code> path. The Cycle Log separately
+  records that <code>test/identifyPartsPriceTrigger.test.ts</code> — a second file using the same <code>db/index.js</code>
+  mock barrel and exercising the same code path — had the identical missing-mock gap, &quot;found and
+  fixed directly (same two-line mock addition pattern as TE1&#x27;s fix)&quot; only once the full suite was
+  run, outside TE1&#x27;s own named scope (T1 only).
+- **One real must_fix surfaced and was closed in the same cycle**: R2 found a stale cross-file doc
+  comment in <code>ompSourcingRunner.ts:14</code> (&quot;2.5x ompRunner.ts&#x27;s 120s&quot;) left inaccurate by T2&#x27;s
+  240\_000 change; TE2 fixed it to &quot;1.25x ompRunner.ts&#x27;s 240s&quot; alongside updating the two
+  <code>partIdentification.test.ts</code> tests that pinned the old 120\_000 value/message.
+- **Model-alias dispatch failed reactively, not up front**: T2&#x27;s planned model, <code>derek-zoolander</code>,
+  could not be resolved for its own reviewer (R2) and tester (TE2) dispatches; both rows record
+  &quot;unavailable; ran as feature-reviewer-small/feature-tester-small per Main&#x27;s correction — role/size
+  is the real dispatch signal, not a literal model string.&quot; This cost a failed dispatch attempt and
+  a correction round-trip on both R2 and TE2, not a cycle, but it is the one place this run&#x27;s task
+  table shows friction that wasn&#x27;t about the code itself.
+- **No <code>context_split</code> and no reactive model escalation** otherwise: every task&#x27;s real scope stayed
+  on its own row (T1→R1/TE1, T2→R2/TE2, no task spilling into a second id), and the only
+  non-default model (<code>derek-zoolander</code>, sized for T2&#x27;s &quot;single mechanical constant-and-comment
+  edit&quot;) was assigned up front, not escalated after the fact — it simply couldn&#x27;t be resolved as
+  named.
+- **Both builder tasks ran well under their token estimates** (T1: 8000 estimated → 5300 actual;
+  T2: 3000 estimated → 2200 actual) and under/at their expected_minutes (T1: 10 expected, ~12
+  actual; T2: 5 expected, ~6 actual) — no task overran in either dimension. U0 (UAT) is the one row
+  that ran well past its expected_minutes: 20 expected vs. ~44 real minutes
+  (<code>2026-10-08T07:13:27Z</code>→<code>07:57:16Z</code>), driven by two real, unstubbed <code>omp</code> CLI runs — one
+  ~23-minute success-path job and a second failure-path job — exercised live rather than mocked.
+
+## Proposals
+
+- **Check cross-constant invariant tests at plan-authoring time, not after a build attempt.** T2&#x27;s
+  300\_000→240\_000 correction (A3) was only caught by the orchestrator&#x27;s own pre-handoff check
+  after a builder had already implemented the original, wrong-by-invariant value. The break was
+  knowable by reading <code>ompSourcingRunner.test.ts</code>&#x27;s existing <code>toBeGreaterThan</code> relationship before
+  writing Requirement 3&#x27;s number into the plan at all. Add to planning: when a requirement changes
+  a numeric constant that another file&#x27;s test asserts a relationship against (greater-than,
+  ratio, etc.), read that test first and size the new value to satisfy it, rather than discovering
+  the violation during or after the build.
+- **Record pre-freeze self-corrections the same way A3 records a post-freeze one.** The premature
+  reviewer/tester-row creation and the builder fabrication this feature&#x27;s own assignment names both
+  happened but left nothing in <code>plan.md</code>/<code>plan-cycle0.md</code> for a retrospective to verify directly —
+  only A3-style corrections that happen to straddle a snapshot boundary get preserved. Add a
+  one-line Cycle Log or Assumption note at the moment any self-correction is made, even if it&#x27;s
+  reversed before the next frozen snapshot, so retrospectives don&#x27;t have to rely on out-of-band
+  testimony for process-level findings.
+- **When a task&#x27;s fix touches a shared test mock barrel, grep all files importing that barrel for
+  the same gap in the same pass, not just the one named in the task.** T1&#x27;s db-call changes broke
+  <code>identifyPartsWorkerPool.test.ts</code> (caught by TE1, in-scope) and separately broke
+  <code>identifyPartsPriceTrigger.test.ts</code> (caught later, only when the full suite ran, out of TE1&#x27;s
+  named scope). A single <code>grep -l</code> for the shared barrel&#x27;s import across <code>apps/server/test/</code> at the
+  point TE1 extends the mock would have caught both in one pass instead of two.
+- **Resolve role-aliased model dispatch (<code>feature-reviewer-small</code>/<code>feature-tester-small</code>, not a
+  literal model string) before the first attempt, not after a failure.** <code>derek-zoolander</code> failed
+  for both R2 and TE2 and had to be corrected by Main mid-run to the role/size-based dispatch. Since
+  this is now a known-working substitution pattern (recorded directly in both rows), default new
+  dispatches straight to the role-and-size form and skip the literal-model-string attempt entirely.
+
+---
+This report cost approximately 8000 tokens (self-reported estimate) / not available (measured;
+the measured figure comes from whoever dispatched this retrospective) tokens. Not counted in the
+feature&#x27;s own total — this analysis happened after the feature was already done.
+</pre>
+</section>
+<nav class="tabs">
+<button data-cycle-tab="0" aria-selected="true" onclick="showCycle(0)">Cycle 0</button>
+</nav>
+<section class="panel" data-cycle-panel="0">
+<h2>Cycle 0</h2>
+<p><strong>Trigger.</strong> initial</p>
+<p><span class="good"><span class="dot"></span>UAT passed.</span></p>
+<ul><li>Ran a real identify-parts job (real omp CLI, queued -&gt; identifying -&gt; sourcing_references -&gt; comparing -&gt; completed, ~23m14s) on a Listing with one hand-entered Expected Part.</li><li>GET /api/listings/&lt;id&gt; afterward returned exactly the 7 newly-identified parts; the original hand-entered row was gone.</li><li>No part was duplicated in either the API response or the browser UI&#x27;s Expected Parts panel.</li><li>Restarted the server with a fake `omp` binary that exits 1, triggering the real spawn-failure path (not mocked).</li><li>POST .../identify-parts on a second Listing (one hand-entered Expected Part) transitioned queued -&gt; failed with a real error message.</li><li>GET /api/listings/&lt;id&gt; after the failure showed the Listing&#x27;s Expected Parts completely unchanged — same row, same id, same brand/partNumber.</li><li>The browser UI showed the failure banner with the pre-existing Expected Part row still intact.</li><li>Read `processJob` directly: `persistIdentifiedParts` (the delete-then-insert replace) is reached only after a successful `identifyListingParts` resolution; any throw skips straight to `failJob` without touching Expected Parts — matches both live observations above.</li><li>Imported `ompRunner.ts` live and read the exported constant directly: `DEFAULT_OMP_TIMEOUT_MS = 240000`, strictly below `DEFAULT_OMP_SOURCING_TIMEOUT_MS = 300000`.</li><li>The ~23-minute real run in the first check completed every identification/sourcing call with no timeout error from either ceiling.</li><li>`git status --short` before and after UAT showed the identical pre-existing modified-file set — UAT made no source edits of its own.</li></ul>
+<p class="note">7 task(s). Estimated 35 min. Actual tokens 7,500, estimated 11,000. This never includes the driving conversation's own tokens, which cannot honestly be split by cycle.
+<div class="scroll"><table><thead><tr><th></th><th>Id</th><th>Description</th><th>Duration (Estimate)</th><th>Started At (Estimate)</th></tr></thead><tbody><tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td><span class="tag">T1</span></td><td><span class="desc">Fix duplicate Expected Parts on identify-parts completion (Req 1-2): in <code>persistIdentifiedParts</code> (<code>apps/server/src/jobs/identifyPartsWorkerPool.ts</code>), fetch the Listing&#x27;s existing Expected Parts via <code>listExpectedPartsByListing</code> and delete each with <code>deleteExpectedPart</code> before the existing <code>createExpectedPart</code> insert loop — same pattern as <code>routes/listings.ts</code>&#x27;s <code>PUT /api/listings/:id</code> (lines 205-206), not a new helper.</span></td><td><span data-at="2026-10-07T00:12:00Z" hidden></span>2026-10-07T00:12:00Z (10 min)</td><td><span data-at="2026-10-07T00:00:00Z">2026-10-07T00:00:00Z</span> (2026-10-08T06:24:30Z)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens 8000 &middot; Actual tokens 5300</td></tr>
+<tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td><span class="tag">T2</span></td><td><span class="desc">Raise <code>DEFAULT_OMP_TIMEOUT_MS</code> from 120\_000 to 240\_000 in <code>apps/server/src/ai/ompRunner.ts</code> and rewrite its doc comment per Requirement 3 — a single mechanical constant-and-comment edit, no other line in the file changes. Two existing tests in <code>apps/server/test/partIdentification.test.ts</code> (&quot;applies the 120-second default timeout...&quot;, &quot;pins the default timeout to the documented 120 seconds&quot;) pin the old <code>120_000</code> value and the old <code>&#x27;timed out after 120000ms&#x27;</code> message text — these are TE2&#x27;s to update to the new value, not T2&#x27;s.</span></td><td><span data-at="2026-10-08T06:38:00Z" hidden></span>2026-10-08T06:38:00Z (5 min)</td><td><span data-at="2026-10-08T06:32:00Z">2026-10-08T06:32:00Z</span> (2026-10-08T06:34:30Z)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens 3000 &middot; Actual tokens 2200</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R1</span></td><td><span class="desc">Review T1 (Req 1-2): confirm delete-then-insert happens only on the successful-completion path, deletes exactly the Listing&#x27;s own Expected Parts, happens before (not after/interleaved with) the insert; confirm no new exported function needs doc-comment coverage; confirm nothing imports @duckdb/node-api directly. PASS — all 5 checks confirmed against real file content/git diff: single call site gated inside processJob&#x27;s try block before completeJob; delete scoped to listingId via listExpectedPartsByListing + per-row id; delete fully awaited before insert loop starts; no new exported symbol; no @duckdb/node-api import. No must_fix.</span></td><td>&mdash; (&mdash;)</td><td>&mdash; (—)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE1</span></td><td><span class="desc">Test T1 (Req 1-2): prove rerunning Identify Parts on a Listing with existing Expected Parts (hand-entered and from a prior identify-parts run) ends with exactly the newly-identified set (no duplicates); a failed job leaves existing Expected Parts untouched. PASS — real harness is apps/server/test/identifyPartsWorkerPool.test.ts (identifyPartsConcurrency/identifyPartsJobsRoute.test.ts don&#x27;t exercise processJob at all); T1&#x27;s change had broken 5/8 existing tests there (new unmocked db calls) — fixed the mock barrel, then added two new tests driven through the real startIdentifyPartsWorkerPool→processJob→persistIdentifiedParts path proving full-replace dedup (hand-entered + AI-sourced parts both deleted, exactly the new set remains) and failure-leaves-parts-untouched (byte-for-byte unchanged store). 16/16 passing across the three files, tsc clean. No must_fix.</span></td><td>&mdash; (&mdash;)</td><td>&mdash; (—)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R2</span></td><td><span class="desc">Review T2 (Req 3): confirm DEFAULT_OMP_TIMEOUT_MS is exactly 240_000 (not 300_000), nothing else in the file changed, comment accurately describes the async-job/worker-pool-slot context. PASS — 240_000 confirmed at ompRunner.ts:32, git diff shows only the constant+comment changed, comment accurately describes the context and the 300_000 ceiling. must_fix found and fixed by TE2: a sibling file (ompSourcingRunner.ts:14) had a stale &quot;2.5x ompRunner.ts&#x27;s 120s&quot; comment, now corrected to &quot;1.25x ompRunner.ts&#x27;s 240s&quot;.</span></td><td>&mdash; (&mdash;)</td><td>&mdash; (—)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE2</span></td><td><span class="desc">Test T2 (Req 3): confirm the constant&#x27;s value directly; update the two existing partIdentification.test.ts tests pinning the old 120_000 value/message to the new 240_000/&#x27;timed out after 240000ms&#x27;. PASS — 240_000 confirmed; both tests updated in place (names + &#x27;timed out after 240000ms&#x27;), mutation-proven in both directions (lower to 120_000 and raise to 300_000 both kill the tests); also fixed the stale ratio comment in ompSourcingRunner.ts:14 R2 flagged. 59/59 passing in partIdentification.test.ts. No remaining must_fix.</span></td><td>&mdash; (&mdash;)</td><td>&mdash; (—)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">U0</span></td><td><span class="desc">UAT pass over the whole feature: a real identify-parts run against a Listing that already has Expected Parts (both hand-entered and from a prior identify-parts run), confirming the final set is exactly the newly-identified parts (no duplicates), plus confirming the raised 240s timeout via the real async job/poll flow, exercised together in the running app, not task by task. PASS — see Cycle Log for the full checks list.</span></td><td><span data-at="2026-10-08T07:57:16Z" hidden></span>2026-10-08T07:57:16Z (20 min)</td><td><span data-at="2026-10-08T07:13:27Z">2026-10-08T07:13:27Z</span> (2026-10-08T07:13:27Z)</td></tr>
+<tr class="sub"><td colspan="5">uat &middot; <span class="tag">UI</span> &middot; Est tokens — &middot; Actual tokens null</td></tr></tbody></table></div>
+<h2>Assumptions</h2><ul class="items"><li><span class="tag">A1</span><span>&quot;Identify Parts&quot; is only ever reachable from the Listings page&#x27;s edit form, before a Listing becomes a Purchase/Teardown — <code>teardown_results.expected_part_id</code> references <code>expected_parts(id)</code> with no <code>ON DELETE CASCADE</code>, so deleting an Expected Part that a teardown has already recorded against would orphan that reference. This is an existing, accepted risk: the manual Listing-save route (the same precedent Requirement 1 follows) already deletes and recreates every Expected Part on every save with the same exposure, undocumented and unguarded today — so Requirement 1 carries exactly the same risk as code already in production, not a new one.</span></li><li><span class="tag">A2</span><span>No database transaction wraps the delete-then-insert in Requirement 1, matching the codebase&#x27;s own established pattern (the manual-save route, and every other write path in this project — no file anywhere uses <code>BEGIN TRANSACTION</code>). If an insert fails partway through after the delete (e.g. the N+1th <code>createExpectedPart</code> call throwing), a Listing could end up with fewer Expected Parts than either the old or new set. Adding transactional safety here, when the rest of the codebase has none, would be a cross-cutting change outside what was asked for.</span></li><li><span class="tag">A3</span><span>Requirement 3&#x27;s new value (240 000ms) is double the original 120 000ms — addressing the user&#x27;s report of an observed ~2-minute cutoff — while staying strictly below <code>DEFAULT_OMP_SOURCING_TIMEOUT_MS</code> (300 000ms) specifically to preserve <code>ompSourcingRunner.test.ts</code>&#x27;s existing <code>toBeGreaterThan</code> invariant test between the two constants (caught during this orchestrator&#x27;s own pre-handoff check of T2&#x27;s first build attempt, which had used 300 000ms — an equal, not greater, value — breaking that test). No new timing data was gathered beyond this existing-test constraint and the user&#x27;s reported cutoff.</span></li><li><span class="tag">A4</span><span>No other timeout in the identify-parts pipeline needed changing. <code>DEFAULT_OMP_SOURCING_TIMEOUT_MS</code> (reference-photo sourcing, 5 minutes per call) and the client&#x27;s job-stage polling (<code>identify-parts-button.tsx</code>&#x27;s <code>startPolling</code>, which has no poll-count give-up of its own, unlike the separate price-estimation polling) were both reviewed and found already consistent with the async job model — left untouched since the user&#x27;s report named only the ~2-minute figure Requirement 3 fixes.</span></li></ul>
+</section>
+</main><script>
+// One redraw every five minutes carries a republish to anyone already looking.
+// REFRESH_MS and LOADED_AT are shared with the countdown below, so the two
+// can never drift apart from each other.
+var REFRESH_MS=300000, LOADED_AT=Date.now();
+setTimeout(function(){location.reload();}, REFRESH_MS);
+
+// Durations count up client-side, so an in-progress row does not freeze between
+// publishes, and every timestamp reads in the viewer's own zone rather than one
+// chosen when the page was written.
+function fmt(ms){var s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),
+m=Math.floor(s%3600/60);return h?h+'h '+m+'m':m+'m';}
+function fmtCountdown(ms){var s=Math.max(0,Math.round(ms/1000)),
+m=Math.floor(s/60);return m+'m '+(s%60)+'s';}
+function tick(){
+  var now=Date.now();
+  document.querySelectorAll('[data-since]').forEach(function(el){
+    el.textContent=fmt(now-Date.parse(el.dataset.since));});
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){
+    el.textContent=fmtCountdown(REFRESH_MS-(now-LOADED_AT));});
+}
+document.querySelectorAll('[data-at]').forEach(function(el){
+  var d=new Date(el.dataset.at);
+  var today=new Date().toDateString()===d.toDateString();
+  el.textContent=today?d.toLocaleTimeString():d.toLocaleString();});
+tick(); setInterval(tick,1000);
+
+// A description gets an expand control only when it truly does not fit.
+document.querySelectorAll('.desc').forEach(function(el){
+  if(el.scrollWidth<=el.clientWidth) return;
+  var b=document.createElement('button');b.className='more';b.textContent='more';
+  b.onclick=function(){el.classList.toggle('open');
+    b.textContent=el.classList.contains('open')?'less':'more';};
+  el.parentNode.appendChild(b);});
+
+function showCycle(n){
+  document.querySelectorAll('[data-cycle-panel]').forEach(function(p){
+    p.hidden=(p.dataset.cyclePanel!==String(n));});
+  document.querySelectorAll('[data-cycle-tab]').forEach(function(t){
+    t.setAttribute('aria-selected',t.dataset.cycleTab===String(n));});
+}
+</script>

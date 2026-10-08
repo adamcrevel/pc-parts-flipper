@@ -623,7 +623,7 @@ describe('runOmpIdentification process handling', () => {
     expect(await waitForProcessGone(grandchildPid)).toBe(true);
   }, 30_000);
 
-  it('applies the 120-second default timeout when no timeoutMs is given', async () => {
+  it('applies the 240-second default timeout when no timeoutMs is given', async () => {
     // Every other runner test passes an explicit short timeoutMs, so without
     // this one the production default is never executed and could be lowered,
     // raised or deleted with the suite still green. Fake timers plus a child
@@ -651,15 +651,15 @@ describe('runOmpIdentification process handling', () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(state).toBe('rejected');
     await expect(promise).rejects.toThrow(
-      expect.objectContaining({ statusCode: 504, message: expect.stringContaining('timed out after 120000ms') }),
+      expect.objectContaining({ statusCode: 504, message: expect.stringContaining('timed out after 240000ms') }),
     );
     // The group kill, not the direct kill: a negated pid signals the whole group.
     expect(killSpy).toHaveBeenCalledWith(-fakePid, 'SIGKILL');
     expect(child.kill).not.toHaveBeenCalled();
   });
 
-  it('pins the default timeout to the documented 120 seconds', () => {
-    expect(runner.DEFAULT_OMP_TIMEOUT_MS).toBe(120_000);
+  it('pins the default timeout to the documented 240 seconds', () => {
+    expect(runner.DEFAULT_OMP_TIMEOUT_MS).toBe(240_000);
   });
 
   it('falls back to node:child_process.spawn when no spawnFn is injected', async () => {

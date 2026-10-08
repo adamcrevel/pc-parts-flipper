@@ -16,7 +16,9 @@ import {
   claimNextQueuedJob,
   completeJob,
   createExpectedPart,
+  deleteExpectedPart,
   failJob,
+  listExpectedPartsByListing,
   resetOrphanedJobsToQueued,
   updateJobStage,
   getListingById,
@@ -96,6 +98,12 @@ async function pump(): Promise<void> {
  * research job (Req 5-7).
  */
 async function persistIdentifiedParts(listingId: string, result: IdentifyPartsResponse): Promise<void> {
+  // Full replace: a rerun of Identify Parts must not duplicate previously
+  // saved Expected Parts, so the existing set is cleared and recreated
+  // rather than diffed — same pattern as the manual Listing-save route
+  // (routes/listings.ts's PUT /api/listings/:id).
+  const existingParts = await listExpectedPartsByListing(listingId);
+  await Promise.all(existingParts.map((part) => deleteExpectedPart(part.id)));
   const created = await Promise.all(
     result.parts.map((part) =>
       createExpectedPart({

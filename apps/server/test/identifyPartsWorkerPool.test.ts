@@ -12,7 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IdentifyPartsJob, IdentifyPartsResponse } from '@pc-parts-flipper/shared';
 import { logger } from '../src/logger.js';
-import type { Listing } from '../src/db/index.js';
+import type { CreateExpectedPartInput, ExpectedPart, Listing } from '../src/db/index.js';
 
 const claimNextQueuedJob = vi.fn<[], Promise<IdentifyPartsJob | null>>();
 const completeJob = vi.fn<[string, IdentifyPartsResponse], Promise<void>>();
@@ -20,6 +20,14 @@ const failJob = vi.fn<[string, string], Promise<void>>();
 const resetOrphanedJobsToQueued = vi.fn<[], Promise<string[]>>();
 const updateJobStage = vi.fn<[string, 'sourcing_references' | 'comparing'], Promise<void>>();
 const getListingById = vi.fn<[string], Promise<Listing | null>>();
+// The three functions persistIdentifiedParts (Req 1-2's full-replace dedupe)
+// drives directly: a real fake store (not just call-recording) backs these
+// three in the "persistIdentifiedParts dedupe & job-failure data integrity"
+// describe block below, so that suite can assert the Listing's *final* set
+// of Expected Parts, not merely that some function was called.
+const listExpectedPartsByListing = vi.fn<[string], Promise<ExpectedPart[]>>();
+const deleteExpectedPart = vi.fn<[string], Promise<void>>();
+const createExpectedPart = vi.fn<[CreateExpectedPartInput], Promise<ExpectedPart>>();
 
 // Mocking the whole db/index.js barrel (rather than the single
 // identifyPartsJobs.ts query file) matches how the worker pool itself
@@ -34,6 +42,20 @@ vi.mock('../src/db/index.js', () => ({
   resetOrphanedJobsToQueued: (...args: []) => resetOrphanedJobsToQueued(...args),
   updateJobStage: (...args: [string, 'sourcing_references' | 'comparing']) => updateJobStage(...args),
   getListingById: (...args: [string]) => getListingById(...args),
+  listExpectedPartsByListing: (...args: [string]) => listExpectedPartsByListing(...args),
+  deleteExpectedPart: (...args: [string]) => deleteExpectedPart(...args),
+  createExpectedPart: (...args: [CreateExpectedPartInput]) => createExpectedPart(...args),
+}));
+
+// persistIdentifiedParts hands its freshly-created rows to triggerPriceLookups
+// (pricePartsTrigger.ts) as its very last step. That module has its own
+// direct suite (pricePartsTrigger.test.ts); mocking it away here keeps this
+// file's focus on persistIdentifiedParts's own delete/create dedupe logic,
+// the same way identifyListingParts (also separately tested) is mocked
+// below rather than exercised for real.
+const triggerPriceLookups = vi.fn<[ExpectedPart[]], Promise<void>>();
+vi.mock('../src/jobs/pricePartsTrigger.js', () => ({
+  triggerPriceLookups: (...args: [ExpectedPart[]]) => triggerPriceLookups(...args),
 }));
 
 type OnStage = (stage: 'sourcing_references' | 'comparing') => void;
@@ -94,6 +116,10 @@ beforeEach(() => {
   updateJobStage.mockReset().mockResolvedValue(undefined);
   getListingById.mockReset().mockResolvedValue(null);
   identifyListingParts.mockReset();
+  listExpectedPartsByListing.mockReset().mockResolvedValue([]);
+  deleteExpectedPart.mockReset().mockResolvedValue(undefined);
+  createExpectedPart.mockReset();
+  triggerPriceLookups.mockReset().mockResolvedValue(undefined);
   vi.spyOn(logger, 'info').mockImplementation(() => logger);
   vi.spyOn(logger, 'error').mockImplementation(() => logger);
 });
@@ -226,6 +252,206 @@ describe('startIdentifyPartsWorkerPool (T2, Req 4, 5, 6)', () => {
     activeHandle.stop();
 
     expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// T1 proof: identifyPartsWorkerPool.ts's persistIdentifiedParts (Req 1-2).
+// Runs through the real startIdentifyPartsWorkerPool -> processJob ->
+// persistIdentifiedParts path (the same harness as the describe block
+// above), but backs listExpectedPartsByListing/deleteExpectedPart/
+// createExpectedPart with an in-memory store keyed by listingId instead of
+// just recording calls, so these tests can assert the Listing's *final*
+// set of Expected Parts after the job runs — not merely that some function
+// was called with some argument.
+describe('persistIdentifiedParts dedupe & job-failure data integrity (T1, Req 1-2)', () => {
+  it('rerunning Identify Parts replaces a hand-entered part and a prior AI-sourced part with exactly the newly identified set, no duplicates', async () => {
+    const listing = listingFixture('listing-dedupe');
+    const job = jobFixture('job-dedupe', 'listing-dedupe');
+
+    const handEntered: ExpectedPart = {
+      id: 'hand-1',
+      listingId: 'listing-dedupe',
+      componentCategory: 'GPU',
+      brand: 'NVIDIA',
+      partNumber: 'RTX-OLD',
+      description: 'Hand-entered GPU',
+      estimatedResaleValue: 200,
+      identityCandidates: [],
+      aiConfidence: null,
+      aiSource: null,
+      priceSource: 'manual',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const priorAiPart: ExpectedPart = {
+      id: 'ai-old-1',
+      listingId: 'listing-dedupe',
+      componentCategory: 'CPU',
+      brand: 'Intel',
+      partNumber: 'i5-old',
+      description: 'Prior AI CPU',
+      estimatedResaleValue: null,
+      identityCandidates: [],
+      aiConfidence: 'high',
+      aiSource: 'text',
+      priceSource: 'auto',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const store = new Map<string, ExpectedPart[]>([['listing-dedupe', [handEntered, priorAiPart]]]);
+
+    listExpectedPartsByListing.mockImplementation(async (listingId) => store.get(listingId) ?? []);
+    deleteExpectedPart.mockImplementation(async (id) => {
+      for (const [key, parts] of store) {
+        store.set(key, parts.filter((p) => p.id !== id));
+      }
+    });
+    let createdCounter = 0;
+    createExpectedPart.mockImplementation(async (input) => {
+      createdCounter += 1;
+      const row: ExpectedPart = {
+        id: `new-${createdCounter}`,
+        listingId: input.listingId,
+        componentCategory: input.componentCategory,
+        brand: input.brand,
+        partNumber: input.partNumber,
+        description: input.description,
+        estimatedResaleValue: input.estimatedResaleValue,
+        identityCandidates: input.identityCandidates,
+        aiConfidence: input.aiConfidence,
+        aiSource: input.aiSource,
+        priceSource: input.priceSource ?? null,
+        createdAt: '2026-02-01T00:00:00.000Z',
+        updatedAt: '2026-02-01T00:00:00.000Z',
+      };
+      store.set(input.listingId, [...(store.get(input.listingId) ?? []), row]);
+      return row;
+    });
+
+    const freshResult: IdentifyPartsResponse = {
+      parts: [
+        {
+          category: 'GPU',
+          brand: 'NVIDIA',
+          partNumber: 'RTX-NEW',
+          description: 'Newly identified GPU',
+          confidence: 'high',
+          source: 'text',
+          identityCandidates: [],
+        },
+      ],
+      notes: 'rerun',
+    };
+
+    claimNextQueuedJob.mockResolvedValueOnce(job).mockResolvedValue(null);
+    getListingById.mockResolvedValue(listing);
+    identifyListingParts.mockResolvedValue(freshResult);
+
+    activeHandle = startIdentifyPartsWorkerPool();
+
+    await vi.waitFor(() => expect(completeJob).toHaveBeenCalledTimes(1));
+
+    // Both the hand-entered part and the prior AI-sourced part were
+    // deleted — deletion is not filtered by aiSource.
+    expect(deleteExpectedPart).toHaveBeenCalledWith('hand-1');
+    expect(deleteExpectedPart).toHaveBeenCalledWith('ai-old-1');
+    expect(deleteExpectedPart).toHaveBeenCalledTimes(2);
+
+    // Exactly one new part was created, carrying the fresh result's own
+    // data (full object, not a subset) through persistIdentifiedParts's
+    // own field mapping.
+    expect(createExpectedPart).toHaveBeenCalledTimes(1);
+    expect(createExpectedPart).toHaveBeenCalledWith({
+      listingId: 'listing-dedupe',
+      componentCategory: 'GPU',
+      brand: 'NVIDIA',
+      partNumber: 'RTX-NEW',
+      description: 'Newly identified GPU',
+      estimatedResaleValue: null,
+      identityCandidates: [],
+      aiConfidence: 'high',
+      aiSource: 'text',
+      priceSource: 'auto',
+    });
+
+    // The store (standing in for the Listing's real Expected Parts) now
+    // holds exactly the one newly-identified part: the old hand-entered and
+    // prior-AI rows are gone, and nothing is duplicated.
+    const finalParts = store.get('listing-dedupe') ?? [];
+    expect(finalParts.map((p) => p.id)).toEqual(['new-1']);
+    expect(finalParts[0]).toMatchObject({ brand: 'NVIDIA', partNumber: 'RTX-NEW' });
+
+    // Only the freshly-created part is handed downstream to price lookups —
+    // the deleted rows never reach it.
+    expect(triggerPriceLookups).toHaveBeenCalledTimes(1);
+    expect(triggerPriceLookups).toHaveBeenCalledWith([expect.objectContaining({ id: 'new-1' })]);
+  });
+
+  it('leaves existing Expected Parts completely untouched when the job fails (identifyListingParts throws)', async () => {
+    const listing = listingFixture('listing-fail-keep');
+    const job = jobFixture('job-fail-keep', 'listing-fail-keep');
+
+    const original: ExpectedPart[] = [
+      {
+        id: 'hand-2',
+        listingId: 'listing-fail-keep',
+        componentCategory: 'PSU',
+        brand: null,
+        partNumber: null,
+        description: 'Hand PSU',
+        estimatedResaleValue: 40,
+        identityCandidates: [],
+        aiConfidence: null,
+        aiSource: null,
+        priceSource: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        id: 'ai-2',
+        listingId: 'listing-fail-keep',
+        componentCategory: 'RAM',
+        brand: 'Corsair',
+        partNumber: 'CMK16',
+        description: 'Prior AI RAM',
+        estimatedResaleValue: null,
+        identityCandidates: [],
+        aiConfidence: 'medium',
+        aiSource: 'photo',
+        priceSource: 'auto',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ];
+    const store = new Map<string, ExpectedPart[]>([['listing-fail-keep', original]]);
+
+    listExpectedPartsByListing.mockImplementation(async (listingId) => store.get(listingId) ?? []);
+    deleteExpectedPart.mockImplementation(async (id) => {
+      for (const [key, parts] of store) {
+        store.set(key, parts.filter((p) => p.id !== id));
+      }
+    });
+    createExpectedPart.mockImplementation(async () => {
+      throw new Error('createExpectedPart must not be called when the job fails');
+    });
+
+    claimNextQueuedJob.mockResolvedValueOnce(job).mockResolvedValue(null);
+    getListingById.mockResolvedValue(listing);
+    identifyListingParts.mockRejectedValue(new Error('AI pipeline exploded'));
+
+    activeHandle = startIdentifyPartsWorkerPool();
+
+    await vi.waitFor(() => expect(failJob).toHaveBeenCalledTimes(1));
+
+    expect(failJob).toHaveBeenCalledWith('job-fail-keep', 'AI pipeline exploded');
+    expect(completeJob).not.toHaveBeenCalled();
+    expect(listExpectedPartsByListing).not.toHaveBeenCalled();
+    expect(deleteExpectedPart).not.toHaveBeenCalled();
+    expect(createExpectedPart).not.toHaveBeenCalled();
+    expect(triggerPriceLookups).not.toHaveBeenCalled();
+
+    // Same ids, same rows — nothing deleted or added.
+    expect(store.get('listing-fail-keep')).toEqual(original);
   });
 });
 

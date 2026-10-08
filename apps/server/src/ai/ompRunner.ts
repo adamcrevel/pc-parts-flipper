@@ -19,12 +19,17 @@ import { logger } from '../logger.js';
 const OMP_BINARY = 'omp';
 
 /**
- * Hard ceiling on one identification call. Real observed round-trips were ~9s
- * for one image and ~34s for eight, so 120s is roughly 3.5x the worst measured
- * case — generous enough that a slow-but-working call is never cut off, short
- * enough that a wedged child process cannot pin a request open indefinitely.
+ * Hard ceiling on one identification/comparison call. This call now runs
+ * inside an asynchronous background job bounded by a worker-pool slot,
+ * rather than behind an open HTTP request — the original 120-second value
+ * was sized for a synchronous request waiting on a client connection, a
+ * constraint that no longer applies. The new value is double the original:
+ * generous for a slow-but-working call, while staying strictly below
+ * DEFAULT_OMP_SOURCING_TIMEOUT_MS (300_000, ompSourcingRunner.ts) so that
+ * file's own existing test asserting its timeout is strictly greater than
+ * this one keeps passing.
  */
-export const DEFAULT_OMP_TIMEOUT_MS = 120_000;
+export const DEFAULT_OMP_TIMEOUT_MS = 240_000;
 
 /** Narrow slice of node:child_process.spawn this module actually uses, so tests can substitute a fake. */
 export type SpawnFn = (command: string, args: readonly string[], options: SpawnOptions) => ChildProcess;

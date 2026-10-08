@@ -11,7 +11,7 @@ import { runOmpProcess } from './ompRunner.js';
  * Hard ceiling on one sourcing call. A tools-enabled call has to browse the
  * web (search, open pages, inspect images) rather than just read an attached
  * photo, which is a fundamentally slower operation than plain identification
- * — set to 5 minutes (2.5x ompRunner.ts's 120s identification timeout) to
+ * — set to 5 minutes (1.25x ompRunner.ts's 240s identification timeout) to
  * give real browsing round-trips room without letting a wedged call pin a
  * request open indefinitely.
  */
