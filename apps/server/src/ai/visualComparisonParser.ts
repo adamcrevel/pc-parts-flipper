@@ -11,7 +11,7 @@
 import type { IdentityCandidate } from '@pc-parts-flipper/shared';
 import { AppError } from '../error-handler.js';
 import { logger } from '../logger.js';
-import { coerceIdentityCandidates, coerceIdentityField, stripCodeFence } from './identificationParser.js';
+import { coerceIdentityCandidates, coerceIdentityField, extractBracketedJson, stripCodeFence } from './identificationParser.js';
 
 /** One visual-comparison update: the second pass's view of a single eligible part. */
 export interface VisualComparisonUpdate {
@@ -76,7 +76,21 @@ function normalizeVisualComparisonEntry(
  */
 export function parseVisualComparisonResponse(rawStdout: string): VisualComparisonUpdate[] {
   const text = stripCodeFence(rawStdout);
-  const parsed = parseJson(text);
+  let parsed = parseJson(text);
+
+  // The cheap direct-parse attempt above already covers a bare or
+  // fully-fenced JSON payload. This fallback only runs when that attempt
+  // failed, and searches the ORIGINAL raw text (not the fence-stripped
+  // version — bracket search is immune to whether a fence wraps the
+  // payload or not) for an outermost `[...]` payload, recovering a response
+  // that embeds valid JSON inside incidental prose the model added despite
+  // being told not to.
+  if (parsed === undefined) {
+    const extracted = extractBracketedJson(rawStdout, 'array');
+    if (extracted !== undefined) {
+      parsed = parseJson(extracted);
+    }
+  }
 
   if (!Array.isArray(parsed)) {
     logger.error({ outputPreview: text.slice(0, 200) }, 'AI visual comparison output was not a JSON array');
