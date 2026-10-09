@@ -1,0 +1,275 @@
+<title>Feature</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--radius:8px;
+--autorefresh-bg:rgba(31,95,79,.14);--refresh-bg:rgba(42,95,143,.14);--refresh-ink:#2a5f8f}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74;
+--autorefresh-bg:rgba(79,181,154,.18);--refresh-bg:rgba(111,168,220,.18);--refresh-ink:#8fc1ef}}
+*{box-sizing:border-box;overflow-wrap:break-word}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+/* Grid tracks default to fitting their content's full, unbroken width -- a single
+   long token (a file path, a backtick-quoted identifier) anywhere in a panel would
+   otherwise stretch the whole page past max-width, no matter how long the gap or how
+   small every other panel is. min-width:0 is what lets a grid item shrink below that
+   and actually wrap instead. Confirmed live: this is what was making every real plan
+   (which is full of exactly these long tokens) render many times wider than the
+   viewport, independent of the DOCTYPE/viewport fix. */
+main{max-width:1300px;margin:0 auto;padding:24px;display:grid;gap:20px}
+main>*{min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);
+border-radius:var(--radius);padding:20px 22px}
+h1{margin:0 0 4px;font-size:21px;letter-spacing:-.01em}
+h2{margin:22px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+h2:first-of-type{margin-top:14px}
+.panel>p{line-height:1.65;margin:0 0 4px}
+.totals{display:flex;gap:32px;flex-wrap:wrap;margin:12px 0}
+.total .n{font-size:26px;font-variant-numeric:tabular-nums}
+.total .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+details{margin-top:8px}summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;
+border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--good);border-color:var(--good);color:var(--panel)}
+.scroll{overflow-x:auto}
+/* table-layout:auto (the default) sizes a column from its content's own natural
+   width -- for a nowrap+ellipsis cell, that is the FULL unwrapped text, which is
+   exactly the width ellipsis is meant to avoid ever reaching. It is a well-known
+   gap in the auto algorithm, not a quirk of this page: the standard fix is
+   table-layout:fixed, with every narrow column given an explicit width so the
+   description column (the one left unset) absorbs the rest and actually holds
+   .desc to it. Confirmed live: without this, a single real task description
+   dragged the whole table into a wide horizontal scrollbar regardless of how
+   short every other column's content was. */
+table{width:100%;border-collapse:collapse;font-size:14px;table-layout:fixed}
+/* The status column's own text ("In progress &middot; running long.") is real
+   prose, not a single short token -- 28px forced it to wrap, and the page's own
+   global overflow-wrap:break-word (needed elsewhere, see main>* above) then broke
+   it mid-word instead of at a space. Wide enough for the longest badge on two
+   lines, with normal word-wrapping restored just for this column. */
+th:first-child,td:first-child{width:112px;overflow-wrap:normal}
+th:nth-child(2),td:nth-child(2){width:52px}
+th:nth-child(4),td:nth-child(4){width:160px}
+th:nth-child(5),td:nth-child(5){width:300px}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.good .dot,.dot.good{background:var(--good)}.bad .dot,.dot.bad{background:var(--bad)}
+.neutral .dot,.dot.neutral{background:var(--muted)}
+.sub td{border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);padding-top:0}
+/* .desc is a <span> -- inline by default, and width/overflow/text-overflow are all
+   spec-ignored on a plain inline box, so none of this ever actually truncated
+   anything on its own. display:block (now that its <td> has a real fixed width to
+   fill, from table-layout:fixed above) is what makes the rest of this rule do
+   anything at all. */
+.desc{display:block;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.desc.open{white-space:normal;overflow:visible}
+.more{font:inherit;font-size:11px;border:none;background:none;color:var(--muted);cursor:pointer}
+.tag{display:inline-block;padding:0 6px;margin-right:4px;border:1px solid var(--line);
+border-radius:999px;font-size:11px;font-variant-numeric:tabular-nums}
+.banner{border-left:3px solid var(--bad);padding:10px 14px;background:var(--panel);
+border-radius:var(--radius);margin-bottom:14px}
+.fail{background:rgba(163,49,42,.09);padding:6px 9px;border-radius:6px;margin-top:6px}
+ul,ol{margin:8px 0;padding-left:24px}
+li{margin:8px 0;line-height:1.6}
+/* Requirements and Assumptions are both "one short id, one longer text" --
+   the same shape a table row has, so they get the same row-grid treatment
+   the task table already uses (a border between rows, an aligned label
+   column), instead of reading as a looser bulleted paragraph. Plain bullet
+   lists (Findings, UAT checks) keep the plainer rule above. The id badge
+   reuses .tag -- the exact same pill the task table's own id column uses now
+   -- so a reader learns one visual language for "this is an id" instead of
+   three different ones. */
+.items{list-style:none;margin:8px 0;padding:0;display:grid;gap:0}
+.items li{margin:0;display:grid;grid-template-columns:34px 1fr;gap:10px;
+padding:10px 2px;border-bottom:1px solid var(--line);line-height:1.6}
+.items li:last-child{border-bottom:none}
+/* A grid item's own display:inline-block is not enough to stop it stretching
+   to fill its whole cell -- CSS Grid stretches an item's box to its area by
+   default regardless, so the pill's border was being drawn around the full
+   34px-by-row-height cell instead of snugly around "A1". justify/align-self
+   opt back out of that stretch. */
+.items li>:first-child{justify-self:start;align-self:start}
+.note{font-size:12px;color:var(--muted)}
+.btn{display:inline-block;padding:8px 16px;margin:2px 0;border-radius:8px;
+background:var(--good);color:var(--panel);text-decoration:none;font-size:13px;font-weight:600}
+.btn:hover{opacity:.85}
+/* Same shape for both so they read as a pair of related controls; a different
+   background on each is the only thing telling them apart at a glance -- a toggle
+   and an immediate action should not look identical. */
+.ghost-btn{font:inherit;font-size:12px;padding:4px 12px;border-radius:999px;
+border:none;cursor:pointer}
+.ghost-btn.autorefresh{background:var(--autorefresh-bg);color:var(--good)}
+.ghost-btn.refresh-now{background:var(--refresh-bg);color:var(--refresh-ink)}
+.ghost-btn:hover{opacity:.8}
+.refresh-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+pre{font-family:inherit;white-space:pre-wrap;word-break:break-word;margin:0;line-height:1.65}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9em;
+background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+/* A retrospective's own markdown headings nest two levels below this section's own
+   h2, so "What happened" reads as a sub-heading of "Retrospective", never a peer of
+   it or of another panel's h2 entirely. */
+.prose h3{margin:18px 0 8px;font-size:15px}
+.prose h4,.prose h5,.prose h6{margin:14px 0 6px;font-size:14px;color:var(--muted)}
+.prose p{margin:8px 0;line-height:1.65}
+/* A bullet whose own text opens with a bold phrase is using it as the item's own
+   title, not as mid-sentence emphasis -- block-level + its own line is what actually
+   separates the two instead of letting the body run on immediately after it. */
+.prose .bullet-title{display:block;margin-bottom:2px}
+.prose .bullet-body{display:block}
+</style>
+<main>
+<section class="panel">
+<h1>Feature</h1>
+<p class="note">Status done &middot; cycle 0 of 3</p>
+<p class="note refresh-controls" data-feature-done><button type="button" id="autorefresh" class="ghost-btn autorefresh" aria-pressed="false">Auto refresh off</button> <button type="button" id="refresh-now" class="ghost-btn refresh-now">Refresh now</button> &middot; <span data-refresh-in>5m 0s</span><span data-refresh-off-note hidden>Auto-refresh is off.</span></p>
+<h2>Goal</h2><p>Both AI parsing stages of the identify-parts pipeline — first-pass identification
+(<code>parseIdentificationResponse</code>) and the second-pass visual comparison
+(<code>parseVisualComparisonResponse</code>) — share one fragile helper, <code>stripCodeFence()</code>
+(<code>apps/server/src/ai/identificationParser.ts</code>). It only strips a markdown code fence when
+the model&#x27;s *entire* trimmed response starts with and ends with a bare <code> </code>`<code> </code> fence, with
+nothing else. If the model adds even one sentence of commentary before or after the JSON
+(e.g. &quot;I can&#x27;t fully confirm this, but here&#x27;s my comparison:\n``<code>json\n[...]\n</code>`<code>&quot;), despite
+the prompt&#x27;s explicit &quot;no commentary before or after&quot; instruction, </code>stripCodeFence<code> returns
+the text unchanged, </code>JSON.parse<code> fails on the mixed prose+JSON, and the whole job fails —
+surfacing as </code>AppError(502, &#x27;The AI model did not return a JSON array for visual comparison&#x27;)<code>
+or the equivalent identification-stage message — **even when the model produced a genuinely
+valid JSON payload**, just not perfectly isolated at the exact string boundaries.
+
+This has been observed as a real, repeated failure during live identify-parts runs. Confirmed
+via source read (the anchoring regexes require an exact whole-string match) and via the test
+suite (neither parser&#x27;s tests exercise a fenced response, or any leading/trailing-prose case,
+at all).
+
+The fix adds a tolerant fallback: when a direct parse (after the existing fence-strip, which
+stays as the cheap first attempt) still fails, extract the outermost bracketed JSON payload —
+the substring from the first </code>{<code>/</code>[<code> to the last matching </code>}<code>/</code>]<code> in the raw text — and retry
+parsing that substring before giving up. This recovers the common &quot;valid JSON surrounded by
+incidental prose&quot; case without weakening the existing contract that genuinely malformed output
+(no JSON present at all) still fails loudly with the same </code>AppError(502)`.</p>
+<h2>Requirements</h2><ul class="items"><li><span class="tag">1</span><span>A model response that is a bare, well-formed JSON payload (today&#x27;s only fully-working case)
+   continues to parse exactly as it does today — this fix changes nothing about the
+   already-succeeding path, confirmed by the existing test suite passing unchanged.</span></li><li><span class="tag">2</span><span>A model response that is a pure code-fence-wrapped JSON payload with nothing else
+   (<code> </code>`<code>json\n[...]\n</code>`<code> </code>) continues to parse correctly via the existing <code>stripCodeFence</code>
+   direct-parse path, unaffected by this fix — confirmed already covered by one pre-existing
+   test per parser (found during implementation; the plan&#x27;s original premise that this case had
+   zero coverage was wrong, corrected in Assumption A6 rather than left standing).</span></li><li><span class="tag">3</span><span>A model response that includes incidental prose *before* a code-fenced or bare JSON payload
+   (e.g. a caveat sentence) is successfully parsed by extracting the JSON payload rather than
+   failing outright, in both the identification and visual-comparison parsers.</span></li><li><span class="tag">4</span><span>A model response that includes incidental prose *after* a code-fenced or bare JSON payload
+   is successfully parsed the same way, in both parsers.</span></li><li><span class="tag">5</span><span>A model response containing no JSON payload at all (e.g. a plain-language refusal) still
+   fails with the same <code>AppError(502)</code> it does today, with the same log line at Error level —
+   this fix narrows false failures, it does not loosen the &quot;structural failure is fatal&quot;
+   contract for genuinely unparseable output.</span></li><li><span class="tag">6</span><span>The new fallback extraction is only ever attempted after a direct parse has already failed
+   — a response that already parses cleanly never pays its cost, and its own behavior is
+   covered by a dedicated unit test independent of either parser (so a future change to one
+   parser&#x27;s call site can&#x27;t silently stop exercising it).</span></li></ul>
+<div class="totals">
+<div class="total"><div class="n" data-since="2026-10-09T15:55:00Z">&mdash;</div><div class="l">total time</div></div>
+<div class="total"><div class="n">0</div><div class="l">total tokens</div></div>
+</div>
+<details><summary>Where that token figure comes from</summary><p class="note">not recorded</p><p class="note">Most of a long conversation's token count is cache-read: the accumulated context is resent on every turn and billed at a fraction of the normal rate. A high total reflects the turn count over time, not necessarily a large bill.</p></details>
+</section>
+<nav class="tabs">
+<button data-cycle-tab="0" aria-selected="true" onclick="showCycle(0)">Cycle 0</button>
+</nav>
+<section class="panel" data-cycle-panel="0">
+<h2>Cycle 0</h2>
+<p><strong>Trigger.</strong> initial</p>
+<p><span class="neutral"><span class="dot"></span>UAT not run.</span></p>
+<p class="note">4 task(s). Estimated 65 min. Actual tokens 0, estimated 35,000. This never includes the driving conversation's own tokens, which cannot honestly be split by cycle.
+<div class="scroll"><table><thead><tr><th></th><th>Id</th><th>Description</th><th>Duration (Estimate)</th><th>Started At (Estimate)</th></tr></thead><tbody><tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T1</span></td><td><span class="desc">Add a tolerant JSON-extraction fallback to <code>apps/server/src/ai/identificationParser.ts</code> (Req 1-6). New exported function <code>extractBracketedJson(text: string, kind: &#x27;object&#x27; | &#x27;array&#x27;): string | undefined</code> — finds the first occurrence of the opening bracket matching <code>kind</code> (<code>{</code> for <code>&#x27;object&#x27;</code>, <code>[</code> for <code>&#x27;array&#x27;</code>) and the LAST occurrence of its matching closing bracket in <code>text</code>, returning the substring between them inclusive, or <code>undefined</code> if either bracket is absent or the close precedes the open. Pure string search, no JSON validation of its own — the caller still runs the result through the existing <code>parseJson</code>/<code>JSON.parse</code> to confirm it is actually valid. Update the local <code>parseJson</code>-calling sites in both <code>parseIdentificationResponse</code> (this file, <code>kind: &#x27;object&#x27;</code>) and <code>parseVisualComparisonResponse</code> (<code>visualComparisonParser.ts</code>, <code>kind: &#x27;array&#x27;</code>) so that when the existing <code>stripCodeFence</code> + direct-parse attempt returns <code>undefined</code>, a second attempt runs <code>extractBracketedJson</code> against the ORIGINAL raw (unstripped) text and re-parses that substring before falling through to the existing <code>AppError(502)</code> — change nothing else about either function&#x27;s existing structural-failure/field-coercion logic. Add unit tests: a standalone <code>describe(&#x27;extractBracketedJson&#x27;)</code> block (object and array kind, present/absent bracket cases, extra brackets inside the payload) independent of either parser; extend <code>partIdentification.test.ts</code>&#x27;s <code>parseIdentificationResponse</code> describe block with a pure-fence case, a leading-prose+fence case, a leading-prose+bare-object case, and a trailing-prose case; extend <code>visualComparison.test.ts</code>&#x27;s <code>parseVisualComparisonResponse</code> describe block with the equivalent four cases for the array shape. Confirm by reverting the fallback call (not the extraction function itself) that each new prose/fence test case genuinely fails without it — a real regression-catching addition, not a vacuous assertion.</span></td><td><span data-since="2026-10-09T15:58:00Z" data-until="2026-10-09T16:12:00Z">&mdash;</span> (30 min)</td><td><span data-at="2026-10-09T15:58:00Z">&mdash;</span> (&mdash;)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens 15000 &middot; Actual tokens —</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R1</span></td><td><span class="desc">Review T1 against Req 1-6: confirm the fallback only runs after direct parse fails, operates on the original raw text (A5), genuinely malformed input still throws the unchanged AppError(502) (Req 5), the six new fallback-dependent tests and the standalone extractBracketedJson unit block are non-vacuous, and A6&#x27;s correction is accurate by reading both pre-existing fence tests directly.</span></td><td><span data-since="2026-10-09T16:20:00Z" data-until="2026-10-09T16:27:22Z">&mdash;</span> (10 min)</td><td><span data-at="2026-10-09T16:20:00Z">&mdash;</span> (<span data-at="2026-10-09T16:20:00Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 12000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE1</span></td><td><span class="desc">Test T1: run partIdentification.test.ts and visualComparison.test.ts in full; independently falsify (revert only the fallback trigger, confirm the six new tests fail, restore, confirm green) to prove they are genuine regression guards. Report real pass/fail output.</span></td><td><span data-since="2026-10-09T16:20:00Z" data-until="2026-10-09T16:23:00Z">&mdash;</span> (10 min)</td><td><span data-at="2026-10-09T16:20:00Z">&mdash;</span> (<span data-at="2026-10-09T16:20:00Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 8000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">U1</span></td><td><span class="desc">Operational verification (no UI, no browser UAT needed for a pure backend parsing fix): construct one real end-to-end throwaway script calling <code>parseIdentificationResponse</code> and <code>parseVisualComparisonResponse</code> directly with a handcrafted &quot;prose + fenced JSON&quot; string matching the exact shape of the real observed failure (<code>&quot;I can&#x27;t fully confirm this, but here&#x27;s my comparison:\n</code>`<code>json\n[...]\n</code>`<code>&quot;</code>), confirm both now parse successfully where they would have thrown before this fix (verified by running the same string against the pre-fix version via <code>git show</code> of the old file content), and confirm a genuinely contentless response (e.g. <code>&quot;I&#x27;m sorry, I can&#x27;t help with that.&quot;</code>) still throws the same <code>AppError(502)</code> unchanged. Report the real output.</span></td><td><span data-since="2026-10-09T16:29:00Z" data-until="2026-10-09T16:31:00Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-09T16:29:00Z">&mdash;</span> (<span data-at="2026-10-09T16:29:00Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">uat &middot; Est tokens null &middot; Actual tokens null</td></tr></tbody></table></div>
+<h2>Assumptions</h2><ul class="items"><li><span class="tag">A1</span><span><code>BaselineTests</code> is 775 (550 server + 215 web + 10 shared), <code>BaselineSuite: pass</code>,</span></li><li><span class="tag">A2</span><span>This is a pure <code>apps/server</code>-only backend fix (shared AI-response-parsing</span></li><li><span class="tag">A3</span><span>No prototype task — this feature has no UI component at all (ui: no on its only</span></li><li><span class="tag">A4</span><span>The fallback is scoped to &quot;find outermost matching brackets in the raw text&quot; —</span></li><li><span class="tag">A5</span><span><code>extractBracketedJson</code> takes the raw, pre-<code>stripCodeFence</code> text as its input</span></li><li><span></span><span>A6 (cycle 0) — corrects Requirement 2/the Goal&#x27;s &quot;never actually tested&quot; premise: T1&#x27;s</span></li><li><span class="tag">A7</span><span>Independently re-verified by the orchestrator (not solely on the builder&#x27;s own</span></li></ul>
+</section>
+</main><script>
+// REFRESH_MS and LOADED_AT drive the scheduled reload, the on-page countdown, and
+// the auto-refresh toggle below, so none of them can ever disagree with each other.
+var REFRESH_MS=300000, LOADED_AT=Date.now();
+var AUTOREFRESH_KEY='feature-dashboard-autorefresh';
+var reloadTimer=null;
+
+function armReload(){
+  if(reloadTimer) clearTimeout(reloadTimer);
+  reloadTimer=setTimeout(function(){location.reload();}, REFRESH_MS-(Date.now()-LOADED_AT));
+}
+function disarmReload(){
+  if(reloadTimer){clearTimeout(reloadTimer);reloadTimer=null;}
+}
+function storedAutorefreshPref(){
+  try{return localStorage.getItem(AUTOREFRESH_KEY);}catch(e){return null;}
+}
+function setAutorefreshUI(button,on){
+  button.textContent='Auto refresh '+(on?'on':'off');
+  button.setAttribute('aria-pressed',String(on));
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){el.hidden=!on;});
+  document.querySelectorAll('[data-refresh-off-note]').forEach(function(el){el.hidden=on;});
+}
+
+// Durations count up client-side, so an in-progress row does not freeze between
+// publishes, and every timestamp reads in the viewer's own zone rather than one
+// chosen when the page was written.
+function fmt(ms){var s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),
+m=Math.floor(s%3600/60);return h?h+'h '+m+'m':m+'m';}
+function fmtCountdown(ms){var s=Math.max(0,Math.round(ms/1000)),
+m=Math.floor(s/60);return m+'m '+(s%60)+'s';}
+var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtAt(d){
+  var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'pm':'am';
+  h=h%12;if(h===0)h=12;
+  var mm=m<10?'0'+m:m;
+  return MONTHS[d.getMonth()]+' '+d.getDate()+', '+h+':'+mm+ap;
+}
+function tick(){
+  var now=Date.now();
+  document.querySelectorAll('[data-since]').forEach(function(el){
+    var until=el.dataset.until?Date.parse(el.dataset.until):now;
+    el.textContent=fmt(until-Date.parse(el.dataset.since));});
+  document.querySelectorAll('[data-at]').forEach(function(el){
+    el.textContent=fmtAt(new Date(el.dataset.at));});
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){
+    el.textContent=fmtCountdown(REFRESH_MS-(now-LOADED_AT));});
+}
+tick(); setInterval(tick,1000);
+
+// Auto-refresh defaults off once the feature is done (data-feature-done, set by the
+// page itself) and on otherwise, unless this browser already recorded its own choice.
+(function(){
+  var button=document.getElementById('autorefresh');
+  if(!button) return;
+  var stored=storedAutorefreshPref();
+  var defaultOn=!document.querySelector('[data-feature-done]');
+  var isOn=stored===null?defaultOn:stored==='on';
+  setAutorefreshUI(button,isOn);
+  if(isOn) armReload();
+  button.addEventListener('click',function(){
+    var on=button.getAttribute('aria-pressed')!=='true';
+    try{localStorage.setItem(AUTOREFRESH_KEY,on?'on':'off');}catch(e){}
+    setAutorefreshUI(button,on);
+    if(on){LOADED_AT=Date.now();armReload();}else{disarmReload();}
+  });
+  var refreshNow=document.getElementById('refresh-now');
+  if(refreshNow) refreshNow.addEventListener('click',function(){location.reload();});
+})();
+
+// A description gets an expand control only when it truly does not fit.
+document.querySelectorAll('.desc').forEach(function(el){
+  if(el.scrollWidth<=el.clientWidth) return;
+  var b=document.createElement('button');b.className='more';b.textContent='more';
+  b.onclick=function(){el.classList.toggle('open');
+    b.textContent=el.classList.contains('open')?'less':'more';};
+  el.parentNode.appendChild(b);});
+
+function showCycle(n){
+  document.querySelectorAll('[data-cycle-panel]').forEach(function(p){
+    p.hidden=(p.dataset.cyclePanel!==String(n));});
+  document.querySelectorAll('[data-cycle-tab]').forEach(function(t){
+    t.setAttribute('aria-selected',t.dataset.cycleTab===String(n));});
+}
+</script>
