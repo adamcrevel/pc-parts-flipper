@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Listings Queue — Bulk Identify Parts (Prototype)</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23059669'/%3E%3Cpath d='M6 9h3v9H6zM10.5 6h3v12h-3zM15 12h3v6h-3z' fill='white'/%3E%3C/svg%3E" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          border: 'hsl(var(--border))',
+          input: 'hsl(var(--input))',
+          ring: 'hsl(var(--ring))',
+          background: 'hsl(var(--background))',
+          foreground: 'hsl(var(--foreground))',
+          primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
+          secondary: { DEFAULT: 'hsl(var(--secondary))', foreground: 'hsl(var(--secondary-foreground))' },
+          save: { DEFAULT: 'hsl(var(--save))', foreground: 'hsl(var(--save-foreground))' },
+          cancel: 'hsl(var(--cancel))',
+          destructive: { DEFAULT: 'hsl(var(--destructive))', foreground: 'hsl(var(--destructive-foreground))' },
+          muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
+          accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
+          card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
+        },
+        borderRadius: { lg: 'var(--radius)', md: 'calc(var(--radius) - 2px)', sm: 'calc(var(--radius) - 4px)' },
+      },
+    },
+  };
+</script>
+<style>
+  /* Exact copy of apps/web/src/index.css :root block (light mode only — the
+     real app's shadcn "slate" theme), so every bg-*/text-*/border-* utility
+     below resolves to the same color the production screen renders. */
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --save: 222.2 47.4% 11.2%;
+    --save-foreground: 210 40% 98%;
+    --cancel: 0 0% 100%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+  }
+  body { background: hsl(var(--background)); color: hsl(var(--foreground)); }
+
+  /* identify-parts-status "In progress" pill: the only non-terminal state,
+     given a soft pulse so a glance at the table shows it's still moving —
+     same signal the prototype's auto-refresh (Req 12) will later back with
+     real polling. */
+  @keyframes status-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+  .status-pulse-dot { animation: status-pulse 1.6s ease-in-out infinite; }
+
+  /* Tri-state header checkbox: the indeterminate visual (a dash, not a
+     check) is a browser-native rendering of the `indeterminate` DOM
+     property — toggled from script.js below, never from a class/attribute,
+     matching how T5 will have to set it (no JSX prop for it either). */
+  input[type="checkbox"] { accent-color: hsl(var(--primary)); }
+</style>
+</head>
+<body class="min-h-screen">
+
+<div class="mx-auto max-w-6xl space-y-4 p-6 pb-28">
+  <!-- Page header + filters row, copied from listings-queue-page.tsx's
+       top <div className="flex items-center justify-between"> -->
+  <div class="flex items-center justify-between">
+    <h1 class="text-2xl font-semibold">Listings Queue</h1>
+    <div class="flex gap-2">
+      <select class="h-9 rounded-md border border-input bg-cancel px-3 text-sm shadow-sm" disabled>
+        <option>All statuses</option>
+      </select>
+      <select class="h-9 rounded-md border border-input bg-cancel px-3 text-sm shadow-sm" disabled>
+        <option>All sources</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Card wrapper, copied from components/ui/card.tsx's Card/CardHeader/CardTitle/CardContent -->
+  <div class="rounded-xl border bg-card text-card-foreground shadow">
+    <div class="flex flex-col space-y-1.5 p-6">
+      <div class="font-semibold leading-none tracking-tight">Listings</div>
+    </div>
+    <div class="space-y-4 p-6 pt-0">
+      <div class="overflow-x-auto">
+        <table class="w-full border-collapse text-left text-sm">
+          <thead>
+            <tr class="border-b border-border text-muted-foreground">
+              <!-- Req 2/3: header checkbox, tri-state via the indeterminate
+                   DOM property set in script.js, never via a CSS class. -->
+              <th class="w-8 px-4 py-2 font-medium">
+                <input id="header-cb" type="checkbox" aria-label="Select all filtered listings" onchange="onHeaderToggle()" />
+              </th>
+              <th class="px-4 py-2 font-medium">Title</th>
+              <th class="px-4 py-2 font-medium">Source</th>
+              <th class="px-4 py-2 font-medium">Status</th>
+              <th class="px-4 py-2 font-medium">Asking Price</th>
+              <th class="px-4 py-2 font-medium">Expected Resale</th>
+              <th class="px-4 py-2 font-medium">Difference</th>
+              <!-- Req 10/11: new identify-parts-status column -->
+              <th class="px-4 py-2 font-medium">Identify Parts</th>
+              <th class="px-4 py-2 font-medium"></th>
+            </tr>
+          </thead>
+          <tbody id="rows-body">
+            <!-- Row 1: no job yet, eBay-scanned -->
+            <tr class="row border-b border-border" data-row>
+              <td class="px-4 py-3"><input type="checkbox" class="row-cb" onchange="updateSelection()" /></td>
+              <td class="px-4 py-3 font-medium">
+                <div class="flex items-center gap-2">
+                  <span>Gigabyte B550 AORUS Elite Motherboard</span>
+                  <span class="inline-flex items-center rounded-full border border-emerald-600/40 bg-emerald-600/10 px-2 py-0.5 text-xs font-medium text-emerald-700">Found via eBay scan</span>
+                </div>
+              </td>
+              <td class="px-4 py-3">Facebook Marketplace</td>
+              <td class="px-4 py-3 capitalize">open</td>
+              <td class="px-4 py-3">$85.00</td>
+              <td class="px-4 py-3">$120.00</td>
+              <td class="px-4 py-3 font-medium text-emerald-600">$35.00</td>
+              <td class="px-4 py-3">
+                <span class="text-xs text-muted-foreground">—</span>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-right">
+                <div class="flex justify-end gap-2">
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-cancel text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs">Accept</button>
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 h-8 px-3 text-xs font-medium">Reject</button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 2: in progress, non-working -->
+            <tr class="row border-b border-border" data-row>
+              <td class="px-4 py-3"><input type="checkbox" class="row-cb" checked onchange="updateSelection()" /></td>
+              <td class="px-4 py-3 font-medium">
+                <div class="flex items-center gap-2">
+                  <span>AMD Ryzen 7 5700X CPU</span>
+                  <span class="inline-flex items-center rounded-full border border-amber-600/40 bg-amber-600/10 px-2 py-0.5 text-xs font-medium text-amber-700">Non-working</span>
+                </div>
+              </td>
+              <td class="px-4 py-3">Craigslist</td>
+              <td class="px-4 py-3 capitalize">open</td>
+              <td class="px-4 py-3">$120.00</td>
+              <td class="px-4 py-3">$160.00</td>
+              <td class="px-4 py-3 font-medium text-emerald-600">$40.00</td>
+              <td class="px-4 py-3">
+                <span class="inline-flex items-center gap-1.5 rounded-full border border-sky-600/40 bg-sky-600/10 px-2 py-0.5 text-xs font-medium text-sky-700">
+                  <span class="status-pulse-dot h-1.5 w-1.5 rounded-full bg-sky-600"></span>
+                  In progress
+                </span>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-right">
+                <div class="flex justify-end gap-2">
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-cancel text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs">Accept</button>
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 h-8 px-3 text-xs font-medium">Reject</button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 3: complete, eBay + would-be AI-suggested parts -->
+            <tr class="row border-b border-border" data-row>
+              <td class="px-4 py-3"><input type="checkbox" class="row-cb" checked onchange="updateSelection()" /></td>
+              <td class="px-4 py-3 font-medium">
+                <div class="flex items-center gap-2">
+                  <span>EVGA RTX 3070 FTW3 GPU</span>
+                  <span class="inline-flex items-center rounded-full border border-emerald-600/40 bg-emerald-600/10 px-2 py-0.5 text-xs font-medium text-emerald-700">Found via eBay scan</span>
+                </div>
+              </td>
+              <td class="px-4 py-3">OfferUp</td>
+              <td class="px-4 py-3 capitalize">open</td>
+              <td class="px-4 py-3">$350.00</td>
+              <td class="px-4 py-3">$430.00</td>
+              <td class="px-4 py-3 font-medium text-emerald-600">$80.00</td>
+              <td class="px-4 py-3">
+                <span class="inline-flex items-center rounded-full border border-emerald-600/40 bg-emerald-600/10 px-2 py-0.5 text-xs font-medium text-emerald-700">Complete</span>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-right">
+                <div class="flex justify-end gap-2">
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-cancel text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs">Accept</button>
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 h-8 px-3 text-xs font-medium">Reject</button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 4: failed, hover tooltip via native title attribute -->
+            <tr class="row border-b border-border" data-row>
+              <td class="px-4 py-3"><input type="checkbox" class="row-cb" onchange="updateSelection()" /></td>
+              <td class="px-4 py-3 font-medium">
+                <div class="flex items-center gap-2">
+                  <span>Corsair RM750x 750W PSU</span>
+                </div>
+              </td>
+              <td class="px-4 py-3">Craigslist</td>
+              <td class="px-4 py-3 capitalize">open</td>
+              <td class="px-4 py-3">$40.00</td>
+              <td class="px-4 py-3">$55.00</td>
+              <td class="px-4 py-3 font-medium text-emerald-600">$15.00</td>
+              <td class="px-4 py-3">
+                <span
+                  class="inline-flex cursor-help items-center rounded-full border border-destructive/50 bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive"
+                  title="AI model timed out after 3 retries contacting the vision API."
+                >Failed</span>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-right">
+                <div class="flex justify-end gap-2">
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-cancel text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs">Accept</button>
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 h-8 px-3 text-xs font-medium">Reject</button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 5: no job yet -->
+            <tr class="row border-b border-border" data-row>
+              <td class="px-4 py-3"><input type="checkbox" class="row-cb" onchange="updateSelection()" /></td>
+              <td class="px-4 py-3 font-medium">
+                <div class="flex items-center gap-2"><span>16GB (2x8GB) DDR4 3200 RAM Kit</span></div>
+              </td>
+              <td class="px-4 py-3">Facebook Marketplace</td>
+              <td class="px-4 py-3 capitalize">open</td>
+              <td class="px-4 py-3">$30.00</td>
+              <td class="px-4 py-3">$38.00</td>
+              <td class="px-4 py-3 font-medium text-emerald-600">$8.00</td>
+              <td class="px-4 py-3"><span class="text-xs text-muted-foreground">—</span></td>
+              <td class="whitespace-nowrap px-4 py-3 text-right">
+                <div class="flex justify-end gap-2">
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-cancel text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs">Accept</button>
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 h-8 px-3 text-xs font-medium">Reject</button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 6: in progress (queued stage), eBay scan -->
+            <tr class="row border-b border-border" data-row>
+              <td class="px-4 py-3"><input type="checkbox" class="row-cb" checked onchange="updateSelection()" /></td>
+              <td class="px-4 py-3 font-medium">
+                <div class="flex items-center gap-2">
+                  <span>Samsung 970 EVO Plus 1TB NVMe SSD</span>
+                  <span class="inline-flex items-center rounded-full border border-emerald-600/40 bg-emerald-600/10 px-2 py-0.5 text-xs font-medium text-emerald-700">Found via eBay scan</span>
+                </div>
+              </td>
+              <td class="px-4 py-3">OfferUp</td>
+              <td class="px-4 py-3 capitalize">open</td>
+              <td class="px-4 py-3">$55.00</td>
+              <td class="px-4 py-3">$70.00</td>
+              <td class="px-4 py-3 font-medium text-emerald-600">$15.00</td>
+              <td class="px-4 py-3">
+                <span class="inline-flex items-center gap-1.5 rounded-full border border-sky-600/40 bg-sky-600/10 px-2 py-0.5 text-xs font-medium text-sky-700">
+                  <span class="status-pulse-dot h-1.5 w-1.5 rounded-full bg-sky-600"></span>
+                  Waiting to run…
+                </span>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-right">
+                <div class="flex justify-end gap-2">
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-cancel text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs">Accept</button>
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 h-8 px-3 text-xs font-medium">Reject</button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 7: complete -->
+            <tr class="row border-b border-border" data-row>
+              <td class="px-4 py-3"><input type="checkbox" class="row-cb" onchange="updateSelection()" /></td>
+              <td class="px-4 py-3 font-medium">
+                <div class="flex items-center gap-2"><span>Fractal Design Meshify C ATX Case</span></div>
+              </td>
+              <td class="px-4 py-3">Craigslist</td>
+              <td class="px-4 py-3 capitalize">open</td>
+              <td class="px-4 py-3">$45.00</td>
+              <td class="px-4 py-3">$60.00</td>
+              <td class="px-4 py-3 font-medium text-emerald-600">$15.00</td>
+              <td class="px-4 py-3">
+                <span class="inline-flex items-center rounded-full border border-emerald-600/40 bg-emerald-600/10 px-2 py-0.5 text-xs font-medium text-emerald-700">Complete</span>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-right">
+                <div class="flex justify-end gap-2">
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-cancel text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs">Accept</button>
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 h-8 px-3 text-xs font-medium">Reject</button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 8: failed, non-working, different tooltip message -->
+            <tr class="row border-b border-border" data-row>
+              <td class="px-4 py-3"><input type="checkbox" class="row-cb" onchange="updateSelection()" /></td>
+              <td class="px-4 py-3 font-medium">
+                <div class="flex items-center gap-2">
+                  <span>Corsair H100i AIO Cooler 240mm</span>
+                  <span class="inline-flex items-center rounded-full border border-amber-600/40 bg-amber-600/10 px-2 py-0.5 text-xs font-medium text-amber-700">Non-working</span>
+                </div>
+              </td>
+              <td class="px-4 py-3">Facebook Marketplace</td>
+              <td class="px-4 py-3 capitalize">open</td>
+              <td class="px-4 py-3">$25.00</td>
+              <td class="px-4 py-3">$35.00</td>
+              <td class="px-4 py-3 font-medium text-emerald-600">$10.00</td>
+              <td class="px-4 py-3">
+                <span
+                  class="inline-flex cursor-help items-center rounded-full border border-destructive/50 bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive"
+                  title="Listing photos were too low-resolution to identify parts confidently."
+                >Failed</span>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-right">
+                <div class="flex justify-end gap-2">
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-cancel text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs">Accept</button>
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 h-8 px-3 text-xs font-medium">Reject</button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 9: no job yet -->
+            <tr class="row border-b border-border" data-row>
+              <td class="px-4 py-3"><input type="checkbox" class="row-cb" onchange="updateSelection()" /></td>
+              <td class="px-4 py-3 font-medium">
+                <div class="flex items-center gap-2"><span>ASRock B450M Pro4 Motherboard</span></div>
+              </td>
+              <td class="px-4 py-3">OfferUp</td>
+              <td class="px-4 py-3 capitalize">open</td>
+              <td class="px-4 py-3">$38.00</td>
+              <td class="px-4 py-3">$50.00</td>
+              <td class="px-4 py-3 font-medium text-emerald-600">$12.00</td>
+              <td class="px-4 py-3"><span class="text-xs text-muted-foreground">—</span></td>
+              <td class="whitespace-nowrap px-4 py-3 text-right">
+                <div class="flex justify-end gap-2">
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-cancel text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs">Accept</button>
+                  <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 h-8 px-3 text-xs font-medium">Reject</button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Row 10: complete, closed/accepted status (no action buttons, matching the real table's `listing.status === 'open'` guard) -->
+            <tr class="row last:border-0" data-row>
+              <td class="px-4 py-3"><input type="checkbox" class="row-cb" onchange="updateSelection()" /></td>
+              <td class="px-4 py-3 font-medium">
+                <div class="flex items-center gap-2"><span>AMD RX 6700 XT GPU</span></div>
+              </td>
+              <td class="px-4 py-3">Craigslist</td>
+              <td class="px-4 py-3 capitalize">accepted</td>
+              <td class="px-4 py-3">$220.00</td>
+              <td class="px-4 py-3">$260.00</td>
+              <td class="px-4 py-3 font-medium text-emerald-600">$40.00</td>
+              <td class="px-4 py-3">
+                <span class="inline-flex items-center rounded-full border border-emerald-600/40 bg-emerald-600/10 px-2 py-0.5 text-xs font-medium text-emerald-700">Complete</span>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-right"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- PaginationControls, copied from components/pagination-controls.tsx -->
+      <div class="flex items-center justify-between pt-2 text-sm">
+        <span class="text-muted-foreground">Page 1 of 8 (143 total)</span>
+        <div class="flex gap-2">
+          <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-cancel text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs" disabled>Previous</button>
+          <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-cancel text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs">Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Req 5-9: fixed bottom action bar. Hidden (translate-y-full) until the
+     selection is non-empty; swaps to a result-summary state after a bulk
+     request "completes". -->
+<div id="action-bar" class="fixed inset-x-0 bottom-0 translate-y-full border-t border-border bg-card shadow-[0_-4px_12px_rgba(0,0,0,0.06)] transition-transform duration-150">
+  <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
+    <!-- Selection state -->
+    <div id="bar-selection" class="flex w-full items-center justify-between">
+      <span id="selection-count" class="text-sm font-medium">0 selected</span>
+      <button
+        id="identify-btn"
+        onclick="onIdentifyClick()"
+        class="inline-flex items-center justify-center whitespace-nowrap rounded-md bg-save text-save-foreground shadow hover:bg-save/90 h-9 px-4 py-2 text-sm font-medium"
+      >Identify Parts</button>
+    </div>
+
+    <!-- Loading state -->
+    <div id="bar-loading" class="hidden w-full items-center justify-between">
+      <span class="text-sm text-muted-foreground">Enqueuing identify-parts jobs…</span>
+      <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"></span>
+    </div>
+
+    <!-- Result-summary state -->
+    <div id="bar-summary" class="hidden w-full items-center justify-between">
+      <span id="summary-text" class="text-sm font-medium text-emerald-700"></span>
+      <button
+        onclick="onDismissSummary()"
+        class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-input bg-cancel text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3 text-xs"
+      >Dismiss</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Wiring for the prototype's three interactive pieces (Req 2-9): the
+  // tri-state header checkbox, the fixed bottom action bar's
+  // selection -> loading -> summary sequence, and per-row checkbox toggling.
+  // No framework — this mirrors what T5/T6 will do with React state, but as
+  // plain DOM so the prototype is a single static file.
+
+  function rowCheckboxes() {
+    return Array.from(document.querySelectorAll('.row-cb'));
+  }
+
+  function updateSelection() {
+    const boxes = rowCheckboxes();
+    const checkedCount = boxes.filter((b) => b.checked).length;
+    const header = document.getElementById('header-cb');
+    header.checked = checkedCount === boxes.length && boxes.length > 0;
+    header.indeterminate = checkedCount > 0 && checkedCount < boxes.length;
+
+    const bar = document.getElementById('action-bar');
+    const selectionCount = document.getElementById('selection-count');
+    selectionCount.textContent = checkedCount + ' selected';
+
+    if (checkedCount > 0) {
+      bar.classList.remove('translate-y-full');
+    } else {
+      bar.classList.add('translate-y-full');
+    }
+  }
+
+  function onHeaderToggle() {
+    const header = document.getElementById('header-cb');
+    // Browser already flipped header.checked on click; apply that to every
+    // row (Req 2: every filtered Listing, represented here by every row on
+    // this page since the prototype has no real pagination/filter data).
+    rowCheckboxes().forEach((b) => { b.checked = header.checked; });
+    updateSelection();
+  }
+
+  function showBarState(stateId) {
+    ['bar-selection', 'bar-loading', 'bar-summary'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (id === stateId) {
+        el.classList.remove('hidden');
+        el.classList.add('flex');
+      } else {
+        el.classList.add('hidden');
+        el.classList.remove('flex');
+      }
+    });
+  }
+
+  function onIdentifyClick() {
+    showBarState('bar-loading');
+    const checkedCount = rowCheckboxes().filter((b) => b.checked).length;
+    setTimeout(() => {
+      // Sample outcome mix (Req 8, 9): most selected rows get newly queued,
+      // one is reported already-active (the in-progress row(s) among the
+      // current selection), matching the plan's "Queued 12, already in
+      // progress 3" example summary text.
+      const alreadyActive = Math.min(1, checkedCount);
+      const queued = Math.max(0, checkedCount - alreadyActive);
+      document.getElementById('summary-text').textContent =
+        'Queued ' + queued + ', already in progress ' + alreadyActive + '.';
+      showBarState('bar-summary');
+    }, 900);
+  }
+
+  function onDismissSummary() {
+    rowCheckboxes().forEach((b) => { b.checked = false; });
+    showBarState('bar-selection');
+    updateSelection();
+  }
+
+  // Initial paint: rows 2, 3, 6 start checked (see markup above) so the
+  // page loads already showing the indeterminate header state and the
+  // action bar visible — not just reachable by clicking.
+  updateSelection();
+</script>
+</body>
+</html>

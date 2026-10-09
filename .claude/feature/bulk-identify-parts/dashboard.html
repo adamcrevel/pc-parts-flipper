@@ -1,0 +1,287 @@
+<title>Feature</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--radius:8px;
+--autorefresh-bg:rgba(31,95,79,.14);--refresh-bg:rgba(42,95,143,.14);--refresh-ink:#2a5f8f}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74;
+--autorefresh-bg:rgba(79,181,154,.18);--refresh-bg:rgba(111,168,220,.18);--refresh-ink:#8fc1ef}}
+*{box-sizing:border-box;overflow-wrap:break-word}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+/* Grid tracks default to fitting their content's full, unbroken width -- a single
+   long token (a file path, a backtick-quoted identifier) anywhere in a panel would
+   otherwise stretch the whole page past max-width, no matter how long the gap or how
+   small every other panel is. min-width:0 is what lets a grid item shrink below that
+   and actually wrap instead. Confirmed live: this is what was making every real plan
+   (which is full of exactly these long tokens) render many times wider than the
+   viewport, independent of the DOCTYPE/viewport fix. */
+main{max-width:1300px;margin:0 auto;padding:24px;display:grid;gap:20px}
+main>*{min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);
+border-radius:var(--radius);padding:20px 22px}
+h1{margin:0 0 4px;font-size:21px;letter-spacing:-.01em}
+h2{margin:22px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+h2:first-of-type{margin-top:14px}
+.panel>p{line-height:1.65;margin:0 0 4px}
+.totals{display:flex;gap:32px;flex-wrap:wrap;margin:12px 0}
+.total .n{font-size:26px;font-variant-numeric:tabular-nums}
+.total .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+details{margin-top:8px}summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;
+border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--good);border-color:var(--good);color:var(--panel)}
+.scroll{overflow-x:auto}
+/* table-layout:auto (the default) sizes a column from its content's own natural
+   width -- for a nowrap+ellipsis cell, that is the FULL unwrapped text, which is
+   exactly the width ellipsis is meant to avoid ever reaching. It is a well-known
+   gap in the auto algorithm, not a quirk of this page: the standard fix is
+   table-layout:fixed, with every narrow column given an explicit width so the
+   description column (the one left unset) absorbs the rest and actually holds
+   .desc to it. Confirmed live: without this, a single real task description
+   dragged the whole table into a wide horizontal scrollbar regardless of how
+   short every other column's content was. */
+table{width:100%;border-collapse:collapse;font-size:14px;table-layout:fixed}
+/* The status column's own text ("In progress &middot; running long.") is real
+   prose, not a single short token -- 28px forced it to wrap, and the page's own
+   global overflow-wrap:break-word (needed elsewhere, see main>* above) then broke
+   it mid-word instead of at a space. Wide enough for the longest badge on two
+   lines, with normal word-wrapping restored just for this column. */
+th:first-child,td:first-child{width:112px;overflow-wrap:normal}
+th:nth-child(2),td:nth-child(2){width:52px}
+th:nth-child(4),td:nth-child(4){width:160px}
+th:nth-child(5),td:nth-child(5){width:300px}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.good .dot,.dot.good{background:var(--good)}.bad .dot,.dot.bad{background:var(--bad)}
+.neutral .dot,.dot.neutral{background:var(--muted)}
+.sub td{border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);padding-top:0}
+/* .desc is a <span> -- inline by default, and width/overflow/text-overflow are all
+   spec-ignored on a plain inline box, so none of this ever actually truncated
+   anything on its own. display:block (now that its <td> has a real fixed width to
+   fill, from table-layout:fixed above) is what makes the rest of this rule do
+   anything at all. */
+.desc{display:block;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.desc.open{white-space:normal;overflow:visible}
+.more{font:inherit;font-size:11px;border:none;background:none;color:var(--muted);cursor:pointer}
+.tag{display:inline-block;padding:0 6px;margin-right:4px;border:1px solid var(--line);
+border-radius:999px;font-size:11px;font-variant-numeric:tabular-nums}
+.banner{border-left:3px solid var(--bad);padding:10px 14px;background:var(--panel);
+border-radius:var(--radius);margin-bottom:14px}
+.fail{background:rgba(163,49,42,.09);padding:6px 9px;border-radius:6px;margin-top:6px}
+ul,ol{margin:8px 0;padding-left:24px}
+li{margin:8px 0;line-height:1.6}
+/* Requirements and Assumptions are both "one short id, one longer text" --
+   the same shape a table row has, so they get the same row-grid treatment
+   the task table already uses (a border between rows, an aligned label
+   column), instead of reading as a looser bulleted paragraph. Plain bullet
+   lists (Findings, UAT checks) keep the plainer rule above. The id badge
+   reuses .tag -- the exact same pill the task table's own id column uses now
+   -- so a reader learns one visual language for "this is an id" instead of
+   three different ones. */
+.items{list-style:none;margin:8px 0;padding:0;display:grid;gap:0}
+.items li{margin:0;display:grid;grid-template-columns:34px 1fr;gap:10px;
+padding:10px 2px;border-bottom:1px solid var(--line);line-height:1.6}
+.items li:last-child{border-bottom:none}
+/* A grid item's own display:inline-block is not enough to stop it stretching
+   to fill its whole cell -- CSS Grid stretches an item's box to its area by
+   default regardless, so the pill's border was being drawn around the full
+   34px-by-row-height cell instead of snugly around "A1". justify/align-self
+   opt back out of that stretch. */
+.items li>:first-child{justify-self:start;align-self:start}
+.note{font-size:12px;color:var(--muted)}
+.btn{display:inline-block;padding:8px 16px;margin:2px 0;border-radius:8px;
+background:var(--good);color:var(--panel);text-decoration:none;font-size:13px;font-weight:600}
+.btn:hover{opacity:.85}
+/* Same shape for both so they read as a pair of related controls; a different
+   background on each is the only thing telling them apart at a glance -- a toggle
+   and an immediate action should not look identical. */
+.ghost-btn{font:inherit;font-size:12px;padding:4px 12px;border-radius:999px;
+border:none;cursor:pointer}
+.ghost-btn.autorefresh{background:var(--autorefresh-bg);color:var(--good)}
+.ghost-btn.refresh-now{background:var(--refresh-bg);color:var(--refresh-ink)}
+.ghost-btn:hover{opacity:.8}
+.refresh-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+pre{font-family:inherit;white-space:pre-wrap;word-break:break-word;margin:0;line-height:1.65}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9em;
+background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+/* A retrospective's own markdown headings nest two levels below this section's own
+   h2, so "What happened" reads as a sub-heading of "Retrospective", never a peer of
+   it or of another panel's h2 entirely. */
+.prose h3{margin:18px 0 8px;font-size:15px}
+.prose h4,.prose h5,.prose h6{margin:14px 0 6px;font-size:14px;color:var(--muted)}
+.prose p{margin:8px 0;line-height:1.65}
+/* A bullet whose own text opens with a bold phrase is using it as the item's own
+   title, not as mid-sentence emphasis -- block-level + its own line is what actually
+   separates the two instead of letting the body run on immediately after it. */
+.prose .bullet-title{display:block;margin-bottom:2px}
+.prose .bullet-body{display:block}
+</style>
+<main>
+<section class="panel">
+<h1>Feature</h1>
+<p class="note">Status planning &middot; cycle 0 of 3</p>
+<p class="note refresh-controls"><button type="button" id="autorefresh" class="ghost-btn autorefresh" aria-pressed="false">Auto refresh off</button> <button type="button" id="refresh-now" class="ghost-btn refresh-now">Refresh now</button> &middot; <span data-refresh-in>5m 0s</span><span data-refresh-off-note hidden>Auto-refresh is off.</span></p>
+<h2>Goal</h2><p>The Listings Queue screen (apps/web/src/routes/listings-queue-page.tsx +
+listings-queue-table.tsx) gains bulk identify-parts triggering. Each row gets its own checkbox;
+a header control selects or deselects every Listing matching the currently-applied filters
+across every page of results, not just the current page, and is tri-state (unchecked / checked /
+indeterminate) to reflect partial selection. The selection persists across page navigation and
+filter changes within the same visit — paging through results or changing the status/Source
+filter never silently drops what was already selected.
+
+Whenever one or more Listings are selected, a fixed action bar appears (bottom of the viewport)
+showing the selected count and an &quot;Identify Parts&quot; button. Clicking it sends one request that
+enqueues an identify-parts job for every selected Listing, reusing the exact same per-listing
+concurrency rule the existing single-listing Identify Parts button already relies on (a Listing
+with a job already in flight is skipped, never given a second one) and reports back a summary —
+how many were newly queued, how many were already in progress, how many ids no longer existed.
+
+Separately, every row in the queue table shows its own identify-parts job status at a glance —
+no job yet, waiting/in progress, complete, or failed, with the failure reason visible on hover for
+a failed row — without the user opening that Listing&#x27;s detail view. While any row visible on the
+current page is in a non-terminal state, the table refreshes automatically so progress is visible
+without a manual reload, stopping once nothing visible is still in flight.</p>
+<h2>Requirements</h2><ul class="items"><li><span class="tag">1</span><span>Each row in the Listings Queue table (listings-queue-table.tsx) has its own checkbox; checking
+   it adds that Listing to the current selection, unchecking it removes that Listing from the
+   selection.</span></li><li><span class="tag">2</span><span>A header checkbox control reflects and toggles selection of every Listing matching the
+   currently-applied status/Source filters, across every page of results — not only the rows on
+   the current page.</span></li><li><span class="tag">3</span><span>The header control is tri-state: unchecked when none of the filtered Listings are selected,
+   checked when all of them are, indeterminate when some but not all are selected.</span></li><li><span class="tag">4</span><span>The selection set — however it was built, by individual checkboxes or by the header control —
+   persists across page navigation and filter changes within the same visit to the screen; it is
+   never silently cleared by paging or changing filters.</span></li><li><span class="tag">5</span><span>Whenever the selection is non-empty, a fixed action bar is shown (bottom of the viewport)
+   displaying the exact count of currently selected Listings and an &quot;Identify Parts&quot; button.</span></li><li><span class="tag">6</span><span>Clicking the bulk &quot;Identify Parts&quot; button sends one request that enqueues an identify-parts
+   job for every currently selected Listing.</span></li><li><span class="tag">7</span><span>The bulk request reuses the exact same per-listing concurrency rule the existing
+   single-listing Identify Parts button (identify-parts-button.tsx) already relies on: a Listing
+   that already has a non-terminal identify-parts job is left alone, never given a second,
+   duplicate job.</span></li><li><span class="tag">8</span><span>After a bulk request completes, the user is shown a summary of its outcome: how many Listings
+   were newly queued, and how many were skipped because a job was already active for them.</span></li><li><span class="tag">9</span><span>A selected id that no longer corresponds to any Listing (e.g. since deleted) is reported
+   distinctly in the summary rather than silently dropped or causing the whole request to fail.</span></li><li><span class="tag">10</span><span>Each row in the Listings Queue table shows its own identify-parts job status without the user
+    opening that Listing&#x27;s detail view: visually distinguishable states for &quot;no job yet&quot;,
+    &quot;waiting/in progress&quot; (any non-terminal stage), &quot;complete&quot;, and &quot;failed&quot;.</span></li><li><span class="tag">11</span><span>A row whose latest identify-parts job failed lets the user see the recorded failure reason
+    (e.g. on hover) directly from the queue table, without opening the Listing.</span></li><li><span class="tag">12</span><span>While any row visible on the current page has a non-terminal identify-parts job, the table&#x27;s
+    statuses refresh automatically on an interval, so progress (waiting -&gt; in progress -&gt;
+    complete/failed) is visible without a manual page reload; refreshing stops once nothing
+    visible on the current page is still non-terminal.</span></li><li><span class="tag">13</span><span>Triggering identify-parts in bulk never bypasses or weakens the existing single-listing
+    trigger&#x27;s own behavior — the Identify Parts button on a Listing&#x27;s own detail view, and its
+    polling/result-handling (identify-parts-button.tsx), are unchanged.</span></li></ul>
+<p><a class="btn" href="https://gist.githack.com/adamcrevel/42e4dc85f3d3b9b84aff4adad8bff741/raw/prototype.html" target="_blank" rel="noopener noreferrer">Prototype</a></p>
+<div class="totals">
+<div class="total"><div class="n" data-since="2026-10-08T22:34:48Z">&mdash;</div><div class="l">total time</div></div>
+<div class="total"><div class="n">0</div><div class="l">total tokens</div></div>
+</div>
+<details><summary>Where that token figure comes from</summary><p class="note">not recorded</p><p class="note">Most of a long conversation's token count is cache-read: the accumulated context is resent on every turn and billed at a fraction of the normal rate. A high total reflects the turn count over time, not necessarily a large bill.</p></details>
+</section>
+<nav class="tabs">
+<button data-cycle-tab="0" aria-selected="true" onclick="showCycle(0)">Cycle 0</button>
+</nav>
+<section class="panel" data-cycle-panel="0">
+<h2>Cycle 0</h2>
+<p><strong>Trigger.</strong> initial</p>
+<p><span class="neutral"><span class="dot"></span>UAT not run.</span></p>
+<p class="note">8 task(s). Estimated 160 min. Actual tokens 0, estimated 17,300. This never includes the driving conversation's own tokens, which cannot honestly be split by cycle.
+<div class="scroll"><table><thead><tr><th></th><th>Id</th><th>Description</th><th>Duration (Estimate)</th><th>Started At (Estimate)</th></tr></thead><tbody><tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">P0</span></td><td><span class="desc">Clickable prototype covering T5/T6&#x27;s UI: (1) a checkbox column in the Listings Queue table — a per-row checkbox plus a header checkbox that visually supports three states (unchecked/checked/indeterminate); (2) a new identify-parts-status column/badge per row with four distinct visual states (&quot;—&quot; for no job yet, an in-progress style for waiting/running, a success style for complete, an error style for failed with a hover tooltip showing a sample failure reason) styled distinctly from the existing EbayScanBadge (emerald) and NonWorkingBadge (amber) pills; (3) a fixed bottom action bar that appears once 1+ rows are selected, showing &quot;<code>N selected</code>&quot; and an &quot;Identify Parts&quot; button, with a loading state and a post-click result summary (&quot;Queued 12, already in progress 3&quot;).</span></td><td><span data-since="2026-10-08T22:45:00Z" data-until="2026-10-08T22:58:14Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-08T22:45:00Z">&mdash;</span> (<span data-at="2026-10-08T22:45:00Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">prototype &middot; <span class="tag">UI</span> &middot; Est tokens 17300 &middot; Actual tokens null</td></tr>
+<tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td><span class="tag">T1</span></td><td><span class="desc">Shared types for the new fields/endpoints. <code>packages/shared/src/identifyPartsJob.ts</code>: add <code>IdentifyPartsBulkOutcome = &#x27;queued&#x27; | &#x27;already_active&#x27; | &#x27;not_found&#x27;</code>, <code>IdentifyPartsBulkResult { listingId: string; outcome: IdentifyPartsBulkOutcome }</code>, <code>IdentifyPartsBulkResponse { results: IdentifyPartsBulkResult[] }</code> (Req 6, 8, 9). <code>packages/shared/src/listings.ts</code>: <code>ListingSummary</code> gains <code>identifyPartsStatus: { stage: IdentifyPartsJobStage; errorMessage: string | null } | null</code> (Req 10, 11 — null means no job has ever run for that Listing; import <code>IdentifyPartsJobStage</code> from <code>./identifyPartsJob.js</code>), and a new <code>ListListingIdsResponse { ids: string[] }</code> (backs T2&#x27;s new endpoint, Req 2). Export every new type from <code>packages/shared/src/index.ts</code>&#x27;s barrel.</span></td><td>&mdash; (10 min)</td><td>&mdash; (&mdash;)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td><span class="tag">T2</span></td><td><span class="desc">Server: <code>GET /api/listings/ids</code> endpoint (Req 2) + embed <code>identifyPartsStatus</code> into every Listing summary (Req 10, 11). <code>apps/server/src/db/queries/listings.ts</code>: new <code>listListingIds(options?: Pick&lt;ListListingsOptions, &#x27;status&#x27; | &#x27;sourceId&#x27;&gt;): Promise&lt;string[]&gt;</code>, reusing the existing (private) <code>buildListingsWhere</code> the same way <code>listListings</code>/<code>countListings</code> already do, running <code>SELECT id FROM listings ${whereSql} ORDER BY listing_date DESC, id ASC</code> with no LIMIT/OFFSET — every matching id, not one page. <code>apps/server/src/routes/listings.ts</code>: new <code>server.get(&#x27;/api/listings/ids&#x27;, ...)</code> handler reading the same <code>status</code>/<code>sourceId</code> query params the existing <code>GET /api/listings</code> handler already reads, returning <code>{ ids: await listListingIds({ status, sourceId }) }</code>; registered as a plain static route (Fastify/find-my-way matches static segments before the existing <code>/api/listings/:id</code> parametric route regardless of registration order, so no route-ordering workaround is needed — confirm this with a real request in review, not by assertion alone). Also: <code>toSummary()</code> in the same file gains a call to the already-imported-elsewhere <code>getLatestJobForListing(listing.id)</code> (from <code>../db/index.js</code>, same function <code>routes/identifyParts.ts</code>&#x27;s poll endpoint already uses), mapping a found job to <code>{ stage: job.stage, errorMessage: job.errorMessage }</code> and no job to <code>null</code>, attached as the summary&#x27;s <code>identifyPartsStatus</code> field.</span></td><td>&mdash; (20 min)</td><td>&mdash; (&mdash;)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td><span class="tag">T3</span></td><td><span class="desc">Server: <code>POST /api/listings/identify-parts/bulk</code> endpoint (Req 6-9). New handler in <code>apps/server/src/routes/identifyParts.ts</code>, alongside the existing single-listing <code>POST /api/listings/:id/identify-parts</code> route, accepting <code>{ listingIds: string[] }</code> in the request body. For each id (via <code>Promise.all</code>, since each call touches a distinct Listing row with no intra-request shared state): look up the Listing with the already-imported <code>getListingById</code>; if not found, outcome <code>&#x27;not_found&#x27;</code>; otherwise call the already-imported <code>insertQueuedJobIfNoneActive(id)</code> (the exact same atomic check-and-insert the single-listing route already uses) — a returned job means outcome <code>&#x27;queued&#x27;</code>, a null return (already-active job) means outcome <code>&#x27;already_active&#x27;</code>. Returns <code>200</code> with <code>{ results: [{ listingId, outcome }, ...] }</code> (shared <code>IdentifyPartsBulkResponse</code> from T1), one entry per input id, in input order. An empty <code>listingIds</code> array returns <code>{ results: [] }</code> rather than erroring.</span></td><td>&mdash; (20 min)</td><td>&mdash; (&mdash;)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td><span class="tag">T4</span></td><td><span class="desc">Client API wrappers (Req 2, 6). <code>apps/web/src/features/listings/listings-api.ts</code>: new <code>fetchListingIds(options?: Pick&lt;FetchListingsOptions, &#x27;status&#x27; | &#x27;sourceId&#x27;&gt;): Promise&lt;string[]&gt;</code> calling <code>GET /api/listings/ids</code> with the same query-param construction <code>fetchListings</code> already uses (status/sourceId only, no limit/offset), unwrapping <code>.ids</code>; new <code>enqueueBulkIdentifyParts(listingIds: string[]): Promise&lt;IdentifyPartsBulkResult[]&gt;</code> calling <code>POST /api/listings/identify-parts/bulk</code> with <code>{ listingIds }</code>, unwrapping <code>.results</code>.</span></td><td>&mdash; (10 min)</td><td>&mdash; (&mdash;)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td><span class="tag">T5</span></td><td><span class="desc">Client: checkbox column + identify-parts-status column in the queue table (Req 1, 3, 10, 11), matching P0&#x27;s approved prototype. <code>apps/web/src/features/listings-queue/listings-queue-table.tsx</code>&#x27;s props gain <code>allFilteredIds: string[]</code>, <code>selectedIds: Set&lt;string&gt;</code>, <code>onToggleOne: (id: string) =&gt; void</code>, <code>onToggleAllFiltered: () =&gt; void</code>. New leading <code>&lt;th&gt;</code>/<code>&lt;td&gt;</code> checkbox column: the header checkbox&#x27;s <code>checked</code>/<code>indeterminate</code> DOM properties (set via a ref, same pattern any existing tri-state checkbox in the React ecosystem needs — <code>indeterminate</code> has no JSX prop) are computed from whether every/some/none of <code>allFilteredIds</code> is in <code>selectedIds</code>, <code>onChange</code> calls <code>onToggleAllFiltered</code>; each row&#x27;s own checkbox reflects <code>selectedIds.has(listing.id)</code>, <code>onChange</code> calls <code>onToggleOne(listing.id)</code>. New trailing-before-actions <code>&lt;th&gt;</code>/<code>&lt;td&gt;</code> rendering a new <code>apps/web/src/features/listings/identify-parts-status-badge.tsx</code> component (<code>IdentifyPartsStatusBadge</code>, mirroring <code>non-working-badge.tsx</code>&#x27;s structure/doc-comment convention) fed <code>listing.identifyPartsStatus</code>: <code>null</code> renders an em-dash/muted &quot;—&quot;; <code>stage</code> one of queued/identifying/sourcing_references/comparing renders an in-progress-styled pill (reusing <code>getStageMessage</code>-equivalent short labels, e.g. &quot;In progress&quot;); <code>&#x27;completed&#x27;</code> renders a success-styled pill (&quot;Complete&quot;); <code>&#x27;failed&#x27;</code> renders an error-styled pill (&quot;Failed&quot;) with a native <code>title</code> attribute set to <code>errorMessage</code> so it&#x27;s visible on hover (Req 11) without any new tooltip component.</span></td><td>&mdash; (25 min)</td><td>&mdash; (&mdash;)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; <span class="tag">UI</span> &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td><span class="tag">T6</span></td><td><span class="desc">Client: selection state, the bulk action bar, auto-refresh polling, and the bulk-result summary (Req 2, 4-9, 12, matching P0&#x27;s approved prototype). <code>apps/web/src/routes/listings-queue-page.tsx</code>: new <code>selectedIds</code> state (<code>Set&lt;string&gt;</code>), declared at the component&#x27;s top level so it is untouched by <code>loadListings</code>&#x27;s own page/filter-triggered effect (Req 4); new <code>allFilteredIds</code> state (<code>string[]</code>), refetched via T4&#x27;s <code>fetchListingIds</code> in its own effect keyed on <code>filters</code> only (not <code>page</code> — Req 2 is page-independent); <code>onToggleOne</code>/<code>onToggleAllFiltered</code> handlers mutate <code>selectedIds</code> via functional <code>setSelectedIds</code> updates (toggling all-filtered adds every id in <code>allFilteredIds</code> when not already fully selected, else removes exactly those ids — preserving any selection made under a different filter, per Req 4). New <code>apps/web/src/features/listings-queue/bulk-identify-parts-bar.tsx</code> (<code>BulkIdentifyPartsBar</code>), a fixed-position bottom bar rendered when <code>selectedIds.size &gt; 0</code>, showing the count and an &quot;Identify Parts&quot; button; on click, calls T4&#x27;s <code>enqueueBulkIdentifyParts([...selectedIds])</code>, shows a disabled/loading state meanwhile, then an <code>InfoBanner</code> summarizing counts by outcome (Req 8, 9) and clears <code>selectedIds</code> on success. New polling: a 2000ms <code>setInterval</code> (matching <code>identify-parts-button.tsx</code>&#x27;s own interval/cleanup convention exactly — started/cleared in a <code>useEffect</code>) that re-calls <code>loadListings</code> whenever any row in the current <code>listings</code> page has <code>identifyPartsStatus !== null &amp;&amp; stage !== &#x27;completed&#x27; &amp;&amp; stage !== &#x27;failed&#x27;</code>, and clears itself once none do (Req 12).</span></td><td>&mdash; (30 min)</td><td>&mdash; (&mdash;)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; <span class="tag">UI</span> &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td><span class="tag">U1</span></td><td><span class="desc">UAT pass over the whole feature: select several Listings individually across more than one page, confirm the header checkbox shows indeterminate/checked correctly and the selection survives paging and changing the status/Source filter; use the header control to select every filtered Listing across all pages; fire the bulk Identify Parts button and confirm a real job is enqueued per selected Listing (skipping any already active) with a correct result summary; confirm the queue table shows each row&#x27;s job status without opening it, refreshes automatically while jobs are in flight, stops refreshing once settled, and a failed row&#x27;s hover text shows its real error message; confirm the existing single-listing Identify Parts button on a Listing&#x27;s own detail view still behaves exactly as before.</span></td><td>&mdash; (25 min)</td><td>&mdash; (&mdash;)</td></tr>
+<tr class="sub"><td colspan="5">uat &middot; Est tokens — &middot; Actual tokens —</td></tr></tbody></table></div>
+<h2>Assumptions</h2><ul class="items"><li><span class="tag">A1</span><span><code>BaselineTests</code> is 738 (546 server + 187 web + 5 shared), <code>BaselineSuite: pass</code>,</span></li><li><span class="tag">A2</span><span>&quot;Select all&quot; (Req 2) scopes to every Listing matching the queue&#x27;s existing</span></li><li><span class="tag">A3</span><span>Selection persists across both page changes and filter changes for the remainder</span></li><li><span class="tag">A4</span><span>No artificial cap on how many Listings can be bulk-selected or bulk-triggered at</span></li><li><span class="tag">A5</span><span>The bulk endpoint does not re-validate or special-case a Listing that is not</span></li><li><span class="tag">A6</span><span>The per-row identify-parts status badge (Req 10) reflects only the *latest* job for</span></li><li><span class="tag">A7</span><span>The auto-refresh polling (Req 12) re-fetches the current page of listings (the same</span></li></ul>
+</section>
+</main><script>
+// REFRESH_MS and LOADED_AT drive the scheduled reload, the on-page countdown, and
+// the auto-refresh toggle below, so none of them can ever disagree with each other.
+var REFRESH_MS=300000, LOADED_AT=Date.now();
+var AUTOREFRESH_KEY='feature-dashboard-autorefresh';
+var reloadTimer=null;
+
+function armReload(){
+  if(reloadTimer) clearTimeout(reloadTimer);
+  reloadTimer=setTimeout(function(){location.reload();}, REFRESH_MS-(Date.now()-LOADED_AT));
+}
+function disarmReload(){
+  if(reloadTimer){clearTimeout(reloadTimer);reloadTimer=null;}
+}
+function storedAutorefreshPref(){
+  try{return localStorage.getItem(AUTOREFRESH_KEY);}catch(e){return null;}
+}
+function setAutorefreshUI(button,on){
+  button.textContent='Auto refresh '+(on?'on':'off');
+  button.setAttribute('aria-pressed',String(on));
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){el.hidden=!on;});
+  document.querySelectorAll('[data-refresh-off-note]').forEach(function(el){el.hidden=on;});
+}
+
+// Durations count up client-side, so an in-progress row does not freeze between
+// publishes, and every timestamp reads in the viewer's own zone rather than one
+// chosen when the page was written.
+function fmt(ms){var s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),
+m=Math.floor(s%3600/60);return h?h+'h '+m+'m':m+'m';}
+function fmtCountdown(ms){var s=Math.max(0,Math.round(ms/1000)),
+m=Math.floor(s/60);return m+'m '+(s%60)+'s';}
+var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtAt(d){
+  var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'pm':'am';
+  h=h%12;if(h===0)h=12;
+  var mm=m<10?'0'+m:m;
+  return MONTHS[d.getMonth()]+' '+d.getDate()+', '+h+':'+mm+ap;
+}
+function tick(){
+  var now=Date.now();
+  document.querySelectorAll('[data-since]').forEach(function(el){
+    var until=el.dataset.until?Date.parse(el.dataset.until):now;
+    el.textContent=fmt(until-Date.parse(el.dataset.since));});
+  document.querySelectorAll('[data-at]').forEach(function(el){
+    el.textContent=fmtAt(new Date(el.dataset.at));});
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){
+    el.textContent=fmtCountdown(REFRESH_MS-(now-LOADED_AT));});
+}
+tick(); setInterval(tick,1000);
+
+// Auto-refresh defaults off once the feature is done (data-feature-done, set by the
+// page itself) and on otherwise, unless this browser already recorded its own choice.
+(function(){
+  var button=document.getElementById('autorefresh');
+  if(!button) return;
+  var stored=storedAutorefreshPref();
+  var defaultOn=!document.querySelector('[data-feature-done]');
+  var isOn=stored===null?defaultOn:stored==='on';
+  setAutorefreshUI(button,isOn);
+  if(isOn) armReload();
+  button.addEventListener('click',function(){
+    var on=button.getAttribute('aria-pressed')!=='true';
+    try{localStorage.setItem(AUTOREFRESH_KEY,on?'on':'off');}catch(e){}
+    setAutorefreshUI(button,on);
+    if(on){LOADED_AT=Date.now();armReload();}else{disarmReload();}
+  });
+  var refreshNow=document.getElementById('refresh-now');
+  if(refreshNow) refreshNow.addEventListener('click',function(){location.reload();});
+})();
+
+// A description gets an expand control only when it truly does not fit.
+document.querySelectorAll('.desc').forEach(function(el){
+  if(el.scrollWidth<=el.clientWidth) return;
+  var b=document.createElement('button');b.className='more';b.textContent='more';
+  b.onclick=function(){el.classList.toggle('open');
+    b.textContent=el.classList.contains('open')?'less':'more';};
+  el.parentNode.appendChild(b);});
+
+function showCycle(n){
+  document.querySelectorAll('[data-cycle-panel]').forEach(function(p){
+    p.hidden=(p.dataset.cyclePanel!==String(n));});
+  document.querySelectorAll('[data-cycle-tab]').forEach(function(t){
+    t.setAttribute('aria-selected',t.dataset.cycleTab===String(n));});
+}
+</script>
