@@ -1,6 +1,6 @@
 # Feature: sourcing-resilience
 
-Status: planning
+Status: done
 Cycle: 0 / 3
 FeatureStarted: 2026-10-09T18:50:00Z
 BaselineTests: 787
@@ -244,5 +244,21 @@ the orchestrator's own mistake of launching two full-suite `vitest run` invocati
 concurrently against the same ports/DB — both re-ran clean in isolation immediately after,
 confirmed environmental, not a regression (same established pattern as every other feature this
 session).
-UAT: pending
+UAT: passed. Direct-call verification script (no UI on any task, same convention as
+harden-ai-json-parsing's U1) against a real temp DuckDB and the REAL, non-mocked
+orchestrator/query/limiter functions, reproducing the exact two live-observed failures: (1) a
+thrown error shaped like the real crucial.com HTTP 429 -> recorded blocked=true,
+succeeded=false, next_retry_at set ~5 minutes out (confirmed via the orchestrator's own log
+line: computed instant exactly 300s after the attempt, matching BASE_RETRY_DELAY_MS) — not a
+permanent block. (2) A clean `blocked:true` response shaped like the real zotac.com
+bot-detection block -> classified identically to a thrown error. (3) A genuine clean not-found
+-> blocked=false, next_retry_at stays NULL, permanently blocked, unchanged pre-existing
+behavior. (4) Backdating an infra-blocked row's next_retry_at into the past flips
+hasSourcingBeenAttempted from true to false — the backoff-gated skip-check genuinely reopens.
+(5) runWithBrandLimit genuinely serializes two concurrent same-brand calls, and — directly
+re-proving MF-2's fix — a third, later, fully uncontended call does not deadlock. All 8
+behavioral checks passed (one unrelated scripting artifact in the throwaway verification
+script's own naive UTC-vs-local date parsing was investigated and explained by the production
+log's own correctly-computed instant, not a product defect; not counted against the result).
+Script deleted after the run per the project's no-scaffold-left-behind convention.
 

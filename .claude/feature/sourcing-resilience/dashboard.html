@@ -1,0 +1,364 @@
+<title>Feature</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--radius:8px;
+--autorefresh-bg:rgba(31,95,79,.14);--refresh-bg:rgba(42,95,143,.14);--refresh-ink:#2a5f8f}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74;
+--autorefresh-bg:rgba(79,181,154,.18);--refresh-bg:rgba(111,168,220,.18);--refresh-ink:#8fc1ef}}
+*{box-sizing:border-box;overflow-wrap:break-word}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+/* Grid tracks default to fitting their content's full, unbroken width -- a single
+   long token (a file path, a backtick-quoted identifier) anywhere in a panel would
+   otherwise stretch the whole page past max-width, no matter how long the gap or how
+   small every other panel is. min-width:0 is what lets a grid item shrink below that
+   and actually wrap instead. Confirmed live: this is what was making every real plan
+   (which is full of exactly these long tokens) render many times wider than the
+   viewport, independent of the DOCTYPE/viewport fix. */
+main{max-width:1300px;margin:0 auto;padding:24px;display:grid;gap:20px}
+main>*{min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);
+border-radius:var(--radius);padding:20px 22px}
+h1{margin:0 0 4px;font-size:21px;letter-spacing:-.01em}
+h2{margin:22px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+h2:first-of-type{margin-top:14px}
+.panel>p{line-height:1.65;margin:0 0 4px}
+.totals{display:flex;gap:32px;flex-wrap:wrap;margin:12px 0}
+.total .n{font-size:26px;font-variant-numeric:tabular-nums}
+.total .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+details{margin-top:8px}summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;
+border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--good);border-color:var(--good);color:var(--panel)}
+.scroll{overflow-x:auto}
+/* table-layout:auto (the default) sizes a column from its content's own natural
+   width -- for a nowrap+ellipsis cell, that is the FULL unwrapped text, which is
+   exactly the width ellipsis is meant to avoid ever reaching. It is a well-known
+   gap in the auto algorithm, not a quirk of this page: the standard fix is
+   table-layout:fixed, with every narrow column given an explicit width so the
+   description column (the one left unset) absorbs the rest and actually holds
+   .desc to it. Confirmed live: without this, a single real task description
+   dragged the whole table into a wide horizontal scrollbar regardless of how
+   short every other column's content was. */
+table{width:100%;border-collapse:collapse;font-size:14px;table-layout:fixed}
+/* The status column's own text ("In progress &middot; running long.") is real
+   prose, not a single short token -- 28px forced it to wrap, and the page's own
+   global overflow-wrap:break-word (needed elsewhere, see main>* above) then broke
+   it mid-word instead of at a space. Wide enough for the longest badge on two
+   lines, with normal word-wrapping restored just for this column. */
+th:first-child,td:first-child{width:112px;overflow-wrap:normal}
+th:nth-child(2),td:nth-child(2){width:52px}
+th:nth-child(4),td:nth-child(4){width:160px}
+th:nth-child(5),td:nth-child(5){width:300px}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.good .dot,.dot.good{background:var(--good)}.bad .dot,.dot.bad{background:var(--bad)}
+.neutral .dot,.dot.neutral{background:var(--muted)}
+.sub td{border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);padding-top:0}
+/* .desc is a <span> -- inline by default, and width/overflow/text-overflow are all
+   spec-ignored on a plain inline box, so none of this ever actually truncated
+   anything on its own. display:block (now that its <td> has a real fixed width to
+   fill, from table-layout:fixed above) is what makes the rest of this rule do
+   anything at all. */
+.desc{display:block;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.desc.open{white-space:normal;overflow:visible}
+.more{font:inherit;font-size:11px;border:none;background:none;color:var(--muted);cursor:pointer}
+.tag{display:inline-block;padding:0 6px;margin-right:4px;border:1px solid var(--line);
+border-radius:999px;font-size:11px;font-variant-numeric:tabular-nums}
+.banner{border-left:3px solid var(--bad);padding:10px 14px;background:var(--panel);
+border-radius:var(--radius);margin-bottom:14px}
+.fail{background:rgba(163,49,42,.09);padding:6px 9px;border-radius:6px;margin-top:6px}
+ul,ol{margin:8px 0;padding-left:24px}
+li{margin:8px 0;line-height:1.6}
+/* Requirements and Assumptions are both "one short id, one longer text" --
+   the same shape a table row has, so they get the same row-grid treatment
+   the task table already uses (a border between rows, an aligned label
+   column), instead of reading as a looser bulleted paragraph. Plain bullet
+   lists (Findings, UAT checks) keep the plainer rule above. The id badge
+   reuses .tag -- the exact same pill the task table's own id column uses now
+   -- so a reader learns one visual language for "this is an id" instead of
+   three different ones. */
+.items{list-style:none;margin:8px 0;padding:0;display:grid;gap:0}
+.items li{margin:0;display:grid;grid-template-columns:34px 1fr;gap:10px;
+padding:10px 2px;border-bottom:1px solid var(--line);line-height:1.6}
+.items li:last-child{border-bottom:none}
+/* A grid item's own display:inline-block is not enough to stop it stretching
+   to fill its whole cell -- CSS Grid stretches an item's box to its area by
+   default regardless, so the pill's border was being drawn around the full
+   34px-by-row-height cell instead of snugly around "A1". justify/align-self
+   opt back out of that stretch. */
+.items li>:first-child{justify-self:start;align-self:start}
+.note{font-size:12px;color:var(--muted)}
+.btn{display:inline-block;padding:8px 16px;margin:2px 0;border-radius:8px;
+background:var(--good);color:var(--panel);text-decoration:none;font-size:13px;font-weight:600}
+.btn:hover{opacity:.85}
+/* Same shape for both so they read as a pair of related controls; a different
+   background on each is the only thing telling them apart at a glance -- a toggle
+   and an immediate action should not look identical. */
+.ghost-btn{font:inherit;font-size:12px;padding:4px 12px;border-radius:999px;
+border:none;cursor:pointer}
+.ghost-btn.autorefresh{background:var(--autorefresh-bg);color:var(--good)}
+.ghost-btn.refresh-now{background:var(--refresh-bg);color:var(--refresh-ink)}
+.ghost-btn:hover{opacity:.8}
+.refresh-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+pre{font-family:inherit;white-space:pre-wrap;word-break:break-word;margin:0;line-height:1.65}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9em;
+background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+/* A retrospective's own markdown headings nest two levels below this section's own
+   h2, so "What happened" reads as a sub-heading of "Retrospective", never a peer of
+   it or of another panel's h2 entirely. */
+.prose h3{margin:18px 0 8px;font-size:15px}
+.prose h4,.prose h5,.prose h6{margin:14px 0 6px;font-size:14px;color:var(--muted)}
+.prose p{margin:8px 0;line-height:1.65}
+/* A bullet whose own text opens with a bold phrase is using it as the item's own
+   title, not as mid-sentence emphasis -- block-level + its own line is what actually
+   separates the two instead of letting the body run on immediately after it. */
+.prose .bullet-title{display:block;margin-bottom:2px}
+.prose .bullet-body{display:block}
+</style>
+<main>
+<section class="panel">
+<h1>Feature</h1>
+<p class="note">Status validated &middot; cycle 0 of 3</p>
+<p class="note refresh-controls"><button type="button" id="autorefresh" class="ghost-btn autorefresh" aria-pressed="false">Auto refresh off</button> <button type="button" id="refresh-now" class="ghost-btn refresh-now">Refresh now</button> &middot; <span data-refresh-in>5m 0s</span><span data-refresh-off-note hidden>Auto-refresh is off.</span></p>
+<h2>Goal</h2><p>Two real, live-observed failure modes are currently treated as permanent, un-retryable dead
+ends, discarding real information the AI model never actually got a chance to produce:
+
+1. <strong>Sourcing-attempt level</strong>: reference-photo sourcing (<code>referenceSourcingOrchestrator.ts</code>) and
+   catalog-mode sourcing (<code>catalogSourcingOrchestrator.ts</code>) each record one attempt per
+   <code>(category, brand[, partNumber])</code> combo, *ever* — a unique DB index blocks any future retry.
+   Observed live (user&#x27;s own screen, via <code>omp</code>&#x27;s internal headed Chrome-for-Testing window) at
+   <code>IDENTIFY_PARTS_POOL_SIZE=8</code>: HTTP 429 rate-limiting on crucial.com and a bot-detection
+   &quot;confirm you&#x27;re human&quot; block on zotac.com. Both get recorded as a normal, permanent
+   <code>succeeded:false</code> attempt today — that combo&#x27;s reference photo is now permanently
+   un-sourceable, even though the model never got a genuine chance to search.
+2. <strong>Job level</strong>: identify-parts and price-research jobs (<code>identifyPartsWorkerPool.ts</code>,
+   <code>pricePartsWorkerPool.ts</code>) mark a job permanently <code>failed</code> on ANY thrown error from the
+   <code>omp</code> call or its parser, with zero automatic retry. Observed live: during a ~2 hour window
+   when the operator&#x27;s own Claude account hit its usage limit, 13 of 185 queued identify-parts
+   jobs failed with <code>&#x27;omp&#x27; exited with code 1 ... (is it installed and logged in?)</code> and are now
+   stuck <code>failed</code> forever, solely because of a transient, unrelated outage.
+
+Both cases share one principle (confirmed explicitly with the user): an **infrastructure
+failure** (a thrown error at any level, a timeout, a non-zero exit, or — newly — a clean model
+response that explicitly reports it was blocked) is not a genuine &quot;searched and found nothing&quot;
+signal, and must not permanently foreclose a retry. Only a clean, structurally-valid &quot;not found&quot;
+response continues to permanently block future attempts for sourcing; job-level failures have no
+such genuine-failure case at all (confirmed by reading both worker pools in full — see
+Assumption A3), so every job-level failure besides &quot;the Listing was deleted&quot; is retry-eligible.
+
+This feature adds, together:
+- <strong>Per-brand sourcing concurrency cap</strong>: no more than <code>SOURCING_PER_BRAND_CONCURRENCY</code>
+  (default 1, env-configurable) <code>omp</code> sourcing calls for the same brand run at once — brand is
+  used as a practical proxy for &quot;which manufacturer site is about to get hit&quot; (see Assumption
+  A1). Overall identify-parts pool concurrency (<code>IDENTIFY_PARTS_POOL_SIZE=8</code>) is explicitly
+  <strong>unchanged</strong> — this is a narrow per-brand cap inside sourcing, not a global throttle.
+- <strong>Exponential-backoff retry on infrastructure failure</strong>, at both the sourcing-attempt level
+  (reference-photo and catalog paths) and the job level (identify-parts and price-research),
+  with no cap on retry count (see Assumption A2) — the same growing, self-limiting backoff
+  schedule throughout, reusing one shared helper.
+- <strong>A <code>blocked</code> signal in the two sourcing AI responses</strong>, so the model itself can report &quot;I was
+  rate-limited / shown a CAPTCHA / otherwise denied access&quot; distinctly from &quot;I searched and
+  found nothing&quot; — the only way to tell these apart when the omp call itself still exits 0 with
+  a structurally-valid response.
+- <strong>Extending the harden-ai-json-parsing fix to three more parsers.</strong> While investigating this
+  feature, live logs from the still-running 185-listing batch showed the identical
+  prose-wrapped-JSON failure the prior feature fixed in <code>identificationParser.ts</code>/
+  <code>visualComparisonParser.ts</code> is also occurring, unfixed, in <code>catalogSourcingParser.ts</code> and
+  <code>imageSourcingParser.ts</code> (both already in scope here for the <code>blocked</code> field), and in
+  <code>priceEstimationParser.ts</code> (a separate pipeline, included per explicit user direction after
+  this was surfaced) — e.g. a real captured catalog-sourcing response, <code>&quot;Confirmed — https
+  resolves fine...\n\n{\&quot;products\&quot;:[{...real valid JSON...}]}&quot;</code>, was discarded as unparseable
+  moments before this plan was drafted.</p>
+<h2>Requirements</h2><ul class="items"><li><span class="tag">1</span><span>A sourcing attempt (reference-photo or catalog) that fails due to an infrastructure problem —
+   a thrown error at any level (spawn failure, non-zero exit, timeout) from the <code>omp</code> call, OR a
+   clean model response that explicitly reports <code>blocked:true</code> — is retried later with
+   exponential backoff, instead of being permanently recorded as &quot;attempted, never retry.&quot;</span></li><li><span class="tag">2</span><span>A sourcing attempt that completes cleanly and reports a genuine not-found (image sourcing:
+   <code>found:false, blocked:false</code>; catalog sourcing: zero products with <code>blocked:false</code>) continues
+   to be permanently recorded and never retried — today&#x27;s dedup behavior for a genuine
+   not-found is unchanged.</span></li><li><span class="tag">3</span><span>The backoff interval grows exponentially with each successive infra failure for the same
+   combo, capped at a maximum interval so it never waits unboundedly long, but with **no cap on
+   the number of retries** — a combo that keeps hitting infra failures is retried forever,
+   increasingly rarely, since an infra failure alone can never prove a combo is &quot;truly
+   unfindable&quot; (explicit user direction).</span></li><li><span class="tag">4</span><span>Concurrent <code>omp</code> sourcing calls are capped per brand: no more than
+   <code>SOURCING_PER_BRAND_CONCURRENCY</code> (default 1, env-configurable, same validation convention as
+   <code>IDENTIFY_PARTS_POOL_SIZE</code>) sourcing calls for the same brand run at once; a call beyond the
+   cap waits its turn rather than failing or being silently dropped. Overall identify-parts
+   concurrency is unaffected — this is scoped to sourcing calls only, keyed per brand, not a
+   global sourcing throttle and not a change to <code>IDENTIFY_PARTS_POOL_SIZE</code>.</span></li><li><span class="tag">5</span><span>An identify-parts job that fails for any reason **other than its Listing having been
+   deleted** (every <code>omp</code>-call failure, every parser failure) is retried later with the same
+   exponential-backoff schedule as Requirement 3, instead of being permanently marked <code>failed</code>.
+   A job whose Listing no longer exists continues to fail permanently and immediately (retrying
+   can never make a deleted Listing reappear).</span></li><li><span class="tag">6</span><span>A price-research job that fails for any reason is retried the same way — price-parts jobs
+   have no genuine-business-failure outcome today (&quot;no confident price&quot; is already a completed,
+   non-failure result; confirmed by reading <code>priceEstimationParser.ts</code>&#x27;s own contract), so every
+   job-level failure here is infra-retry-eligible with no permanent-failure case at all.</span></li><li><span class="tag">7</span><span>A job queued for retry is indistinguishable, from the outside, from a normal fresh <code>queued</code>
+   job — same stage, same polling/UI behavior — until its backoff window reopens and it is
+   claimed again. No new job stage, no UI change (this feature touches <code>apps/server</code> only).</span></li><li><span class="tag">8</span><span>The two sourcing AI prompts/parsers (image sourcing, catalog sourcing) gain a <code>blocked</code>
+   boolean field the model can set alongside its existing found/not-found shape, with explicit
+   prompt instructions distinguishing &quot;I was rate-limited/CAPTCHA&#x27;d/denied access&quot; from &quot;I
+   searched and found nothing&quot; — the only way to classify Requirement 1 vs Requirement 2 for a
+   call that completes without throwing.</span></li><li><span class="tag">9</span><span>The same prose-wrapped-JSON parsing fallback the harden-ai-json-parsing feature added to
+   <code>identificationParser.ts</code>/<code>visualComparisonParser.ts</code> (<code>extractBracketedJson</code>, tried only
+   after a direct parse fails) is also applied, unchanged in mechanism, to
+   <code>catalogSourcingParser.ts</code>, <code>imageSourcingParser.ts</code>, and <code>priceEstimationParser.ts</code>. A
+   genuinely malformed/no-JSON-at-all response still fails (sourcing parsers) or still resolves
+   to &quot;no confident price&quot;/&quot;not found&quot; (price estimation) exactly as it does today — this only
+   recovers a response that already contains a complete, valid JSON payload somewhere in its
+   text.</span></li><li><span class="tag">10</span><span>No existing DDL pattern is violated: every new column is added via plain <code>ALTER TABLE ...
+    ADD COLUMN IF NOT EXISTS</code> (never <code>ALTER COLUMN</code>/<code>DROP COLUMN</code>/<code>ADD CONSTRAINT</code>, which DuckDB
+    rejects on any FK-referenced table), and no code relies on <code>current_timestamp</code> inside an
+    <code>ON CONFLICT ... DO UPDATE SET</code> clause (a known DuckDB defect — see Assumption A5);
+    timestamps involved in any multi-step record/retry write are computed once in application
+    code and bound as parameters.</span></li></ul>
+<div class="totals">
+<div class="total"><div class="n" data-since="2026-10-09T18:50:00Z">&mdash;</div><div class="l">total time</div></div>
+<div class="total"><div class="n">0</div><div class="l">total tokens</div></div>
+</div>
+<details><summary>Where that token figure comes from</summary><p class="note">not recorded</p><p class="note">Most of a long conversation's token count is cache-read: the accumulated context is resent on every turn and billed at a fraction of the normal rate. A high total reflects the turn count over time, not necessarily a large bill.</p></details>
+</section>
+<nav class="tabs">
+<button data-cycle-tab="0" aria-selected="true" onclick="showCycle(0)">Cycle 0</button>
+</nav>
+<section class="panel" data-cycle-panel="0">
+<h2>Cycle 0</h2>
+<p><strong>Trigger.</strong> initial</p>
+<p><strong>Findings.</strong></p><ul><li>apps/server/src/db/queries/identifyPartsJobs.ts:179-183 (retryOrFailJob) and apps/server/src/db/queries/pricePartsJobs.ts:169-173 (retryOrFailPriceJob) bind <code>next_retry_at</code> from a bare <code>nextRetryAt.toISOString()</code> with no <code>CAST(CAST($x AS TIMESTAMPTZ) AS TIMESTAMP)</code>, unlike sourcingAttempts.ts/catalogSourcingAttempts.ts&#x27;s identical-column pattern — on a non-UTC host this skews the stored retry instant by the local UTC offset (measured ~25500s instead of ~300s on a UTC-7 host). Traces to T3.</li><li>apps/server/src/ai/sourcingConcurrencyLimiter.ts:75-86 (releaseSlot) hands a freed slot to the next FIFO waiter without decrementing <code>active</code> for the departing holder, so <code>active</code> drifts +1 per contested handoff and never returns to 0 — under the default SOURCING_PER_BRAND_CONCURRENCY=1, any brand that experiences contention permanently deadlocks every later call for that brand. Traces to T5.</li><li>apps/server/src/db/schema.ts:287-290&#x27;s Phase-3 header comment still documents the sourcing skip-check with the inverted, pre-A8 <code>&lt;=</code> operator, contradicting the real shipped <code>&gt;</code> and risking a future &quot;fix&quot; that reintroduces the A8 bug. Traces to T1.</li></ul>
+<p><span class="neutral"><span class="dot"></span>UAT not run.</span></p>
+<p class="note">21 task(s). Estimated 435 min. Actual tokens 0, estimated 251,400. This never includes the driving conversation's own tokens, which cannot honestly be split by cycle.
+<div class="scroll"><table><thead><tr><th></th><th>Id</th><th>Description</th><th>Duration (Estimate)</th><th>Started At (Estimate)</th></tr></thead><tbody><tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td><span class="tag">T1</span></td><td><span class="desc">Shared exponential-backoff helper + DB schema for all four affected tables (Req 3, 10). New <code>apps/server/src/retryBackoff.ts</code>: exports <code>BASE_RETRY_DELAY_MS = 300_000</code> (5 min), <code>MAX_RETRY_DELAY_MS = 86_400_000</code> (24h), and <code>computeNextRetryAt(attemptCount: number, now: Date = new Date()): Date</code> — a pure function returning <code>now + min(BASE_RETRY_DELAY_MS * 2^(attemptCount-1), MAX_RETRY_DELAY_MS)</code> ms, where <code>attemptCount</code> is the 1-indexed count of this failure (first infra failure for a combo/job passes 1, second passes 2, etc. — never 0). <code>apps/server/src/db/schema.ts</code>&#x27;s <code>ALTER_STATEMENTS</code> array: add <code>ALTER TABLE part_reference_sourcing_attempts ADD COLUMN IF NOT EXISTS blocked BOOLEAN NOT NULL DEFAULT false</code>, <code>... ADD COLUMN IF NOT EXISTS attempt_count INTEGER NOT NULL DEFAULT 1</code>, <code>... ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMP</code>; identical three columns on <code>part_catalog_sourcing_attempts</code>; <code>ALTER TABLE identify_parts_jobs ADD COLUMN IF NOT EXISTS retry_count INTEGER NOT NULL DEFAULT 0</code>, <code>... ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMP</code>; identical two columns on <code>price_parts_jobs</code>. Never touch <code>TABLE_STATEMENTS</code> (the original <code>CREATE TABLE</code> bodies) — additive <code>ALTER_STATEMENTS</code> only, matching this file&#x27;s own existing convention.</span></td><td>&mdash; (20 min)</td><td>&mdash; (&mdash;)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T2</span></td><td><span class="desc">Sourcing-attempt query layer: outcome-aware recording + backoff-gated skip-check (Req 1, 2, 3, 10). <code>apps/server/src/db/queries/sourcingAttempts.ts</code> and <code>apps/server/src/db/queries/catalogSourcingAttempts.ts</code>: change <code>hasSourcingBeenAttempted</code>/<code>hasCatalogSourcingBeenAttempted</code>&#x27;s query to also require <code>(next_retry_at IS NULL OR next_retry_at &gt; current_timestamp)</code> — an infra-blocked combo whose backoff window has reopened is no longer reported as &quot;already attempted,&quot; while a genuinely succeeded/not-found combo (<code>next_retry_at</code> stays null forever for those, per T6) keeps reporting true exactly as today. Change <code>recordSourcingAttempt</code>/<code>recordCatalogSourcingAttempt</code>&#x27;s signature from a <code>succeeded: boolean</code> parameter to <code>outcome: &#x27;succeeded&#x27; | &#x27;not_found&#x27; | &#x27;infrastructure_blocked&#x27;</code>. Implementation: SELECT the existing row&#x27;s <code>attempt_count</code> first (absent = 0); compute <code>newAttemptCount = existing + 1</code>; compute <code>nextRetryAt = outcome === &#x27;infrastructure_blocked&#x27; ? computeNextRetryAt(newAttemptCount) : null</code> (Req 1, 2) using T1&#x27;s helper; then either INSERT a first-ever row or UPDATE the existing one with the new <code>succeeded</code>/<code>blocked</code>/<code>attempt_count</code>/<code>next_retry_at</code>/<code>attempted_at</code> (bind <code>new Date()</code> as a parameter for <code>attempted_at</code> — do NOT use SQL <code>current_timestamp</code> inside any upsert-style write, Req 10/Assumption A5). Keep the existing unique-constraint-violation catch (a concurrent duplicate INSERT race) exactly as today, logged and skipped, not thrown. Update both files&#x27; header comments and function doc comments to describe the new retry-aware semantics; update every call site outside this feature&#x27;s own T6 that referenced the old <code>succeeded: boolean</code> param (grep for all callers first).</span></td><td>&mdash; (&mdash;)</td><td>&mdash; (<span data-at="35">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td><span class="tag">T3</span></td><td><span class="desc">Job-level retry-or-fail query functions + backoff-gated claim queries (Req 5, 6, 7, 10). <code>apps/server/src/db/queries/identifyPartsJobs.ts</code>: new <code>retryOrFailJob(jobId: string, errorMessage: string): Promise&lt;void&gt;</code> — SELECT the job&#x27;s current <code>retry_count</code>, compute <code>newRetryCount = retry_count + 1</code> and <code>nextRetryAt = computeNextRetryAt(newRetryCount)</code> (T1), then <code>UPDATE identify_parts_jobs SET stage = &#x27;queued&#x27;, retry_count = $newRetryCount, next_retry_at = $nextRetryAt, error_message = $errorMessage, updated_at = current_timestamp WHERE id = $id</code> (leave <code>started_at</code>/<code>completed_at</code> untouched — <code>claimNextQueuedJob</code> re-stamps <code>started_at</code> on the next successful claim). <code>claimNextQueuedJob</code>&#x27;s subselect WHERE clause gains <code>AND (next_retry_at IS NULL OR next_retry_at &lt;= current_timestamp)</code> (Req 7 — a retrying job is claimable again only once its window reopens, otherwise behaves exactly like any other queued job). The existing bare <code>failJob</code> function and its one call site (the <code>listing === null</code> branch in <code>identifyPartsWorkerPool.ts</code>, untouched by this task) stay exactly as today — permanent failure, no retry (Req 5). Identical mirrored changes in <code>apps/server/src/db/queries/pricePartsJobs.ts</code>: new <code>retryOrFailPriceJob(jobId: string, errorMessage: string): Promise&lt;void&gt;</code>, same shape; <code>claimNextQueuedPriceJob</code>&#x27;s subselect gains the same backoff guard; <code>failPriceJob</code> itself is unused after T7 rewires its only call site, but is NOT removed (Req 6 — no permanent-failure case exists for price jobs, so nothing calls it anymore once T7 lands, but deleting an exported, tested function the plan doesn&#x27;t require deleting is out of scope — leave it in place for now, a future cleanup can remove true dead code once confirmed unused by every caller including tests).</span></td><td>&mdash; (30 min)</td><td>&mdash; (&mdash;)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td><span class="tag">T4</span></td><td><span class="desc">Prompt + parser changes: <code>blocked</code> signal for both sourcing paths, and the proven JSON-extraction fallback for three parsers (Req 8, 9). <code>apps/server/src/ai/imageSourcingPrompt.ts</code>: add an instruction telling the model to respond <code>{&quot;found&quot;:false,&quot;url&quot;:null,&quot;blocked&quot;:true}</code> specifically when a rate limit, CAPTCHA/&quot;verify you&#x27;re human&quot; challenge, or any other access-denied condition prevented it from completing a real search — distinct from <code>{&quot;found&quot;:false,&quot;url&quot;:null,&quot;blocked&quot;:false}</code> for a genuine, completed, nothing-found search. <code>apps/server/src/ai/imageSourcingParser.ts</code>: <code>ImageSourcingResult</code> gains <code>blocked: boolean</code>; parse the <code>blocked</code> field defensively (non-boolean or absent coerces to <code>false</code>, no warning needed, same style as the existing <code>url</code>-when-not-found normalization); add the <code>extractBracketedJson</code> fallback (imported from <code>identificationParser.ts</code>, exactly the harden-ai-json-parsing pattern: direct parse first, on failure try <code>extractBracketedJson(rawStdout, &#x27;object&#x27;)</code> against the ORIGINAL raw text, re-parse that, only then fall through to the existing &quot;not valid JSON&quot; throw if both attempts fail). <code>apps/server/src/ai/catalogSourcingPrompt.ts</code>: same <code>blocked</code> field addition as a top-level sibling to <code>products</code>, with matching instruction wording; update both example JSON blocks in the prompt. <code>apps/server/src/ai/catalogSourcingParser.ts</code>: change <code>parseCatalogSourcingResponse</code>&#x27;s return type from <code>CatalogSourcingCandidate[]</code> to a new exported <code>interface CatalogSourcingResult { candidates: CatalogSourcingCandidate[]; blocked: boolean }</code> (breaking signature change — T6 updates the one call site in <code>catalogSourcingOrchestrator.ts</code>); parse <code>blocked</code> the same defensive way; add the same <code>extractBracketedJson(&#x27;object&#x27;, ...)</code> fallback. <code>apps/server/src/ai/priceEstimationParser.ts</code>: add ONLY the <code>extractBracketedJson(&#x27;object&#x27;, ...)</code> fallback to <code>parsePriceEstimationResponse</code> (no <code>blocked</code> field — this pipeline has no sourcing-attempt dedup table and no retry concern; this is purely recovering a real confident price the model already gave but wrapped in prose, e.g. the live-observed <code>&quot;...$90 consistently.\n\n{\&quot;confident\&quot;:true,\&quot;priceUsd\&quot;:90.00}&quot;</code> case). New tests per parser: a <code>blocked:true</code> parse case for the two sourcing parsers; a leading-prose-plus-bare-JSON fallback-recovery case for all three touched parsers, mirroring harden-ai-json-parsing&#x27;s own test style (construct the exact failure shape, confirm it fails pre-fix reasoning is unnecessary here since this is new code, just confirm it parses correctly); confirm each parser&#x27;s existing fully-malformed/no-JSON case still fails (sourcing parsers) or still resolves to null/not-found (price estimation) unchanged.</span></td><td>&mdash; (45 min)</td><td>&mdash; (&mdash;)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td><span class="tag">T5</span></td><td><span class="desc">Per-brand sourcing concurrency limiter (Req 4). New <code>apps/server/src/ai/sourcingConcurrencyLimiter.ts</code>: exports <code>runWithBrandLimit&lt;T&gt;(brand: string, fn: () =&gt; Promise&lt;T&gt;): Promise&lt;T&gt;</code>. Internal module-level state: a <code>Map&lt;string, { active: number; waiters: Array&lt;() =&gt; void&gt; }&gt;</code> keyed on a normalized brand (trim + lowercase, so casing/whitespace differences across model responses for the same real brand share one limit). When the keyed entry&#x27;s <code>active</code> count is already at <code>SOURCING_PER_BRAND_CONCURRENCY</code>, the call awaits a promise that resolves when a slot frees up (FIFO — resolved in the order calls arrived); otherwise it proceeds immediately. <code>active</code> is decremented and the next waiter (if any) is woken in a <code>finally</code> block around <code>fn()</code>, so a thrown error from <code>fn</code> still releases the slot. <code>SOURCING_PER_BRAND_CONCURRENCY</code> parsed from <code>process.env.SOURCING_PER_BRAND_CONCURRENCY</code> with the exact same defensive-parsing rule <code>identifyPartsWorkerPool.ts</code>&#x27;s <code>parsePoolSize</code> already uses (missing/empty/negative/non-finite falls back to a default of 1; 0 is a valid, intentional disable-like value — though unlike pool size, 0 concurrent calls for any brand would deadlock every sourcing attempt forever, so document this edge case explicitly in a comment even though parsePoolSize&#x27;s own convention keeps 0 valid; do not special-case it away, just document the hazard). This module has no DB/network dependency of its own — fully unit-testable with fake async functions and fake timers/manual resolution order, no <code>omp</code>/DB stubbing needed.</span></td><td>&mdash; (30 min)</td><td>&mdash; (&mdash;)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td><span class="tag">T6</span></td><td><span class="desc">Sourcing orchestrator integration: wires T2 (recording), T4 (parser/blocked), T5 (brand limiter) together (Req 1, 2, 4, 8). <code>apps/server/src/ai/referenceSourcingOrchestrator.ts</code>&#x27;s <code>attemptSourcing</code>: wrap the <code>getOmpSourcingRunner()(...)</code> call in <code>runWithBrandLimit(brand, () =&gt; ...)</code>. Replace the current try/catch&#x27;s binary succeeded/failed bookkeeping with three-way classification: a thrown error (from the omp call OR from <code>parseImageSourcingResponse</code>) records <code>&#x27;infrastructure_blocked&#x27;</code>; a clean result with <code>blocked: true</code> also records <code>&#x27;infrastructure_blocked&#x27;</code>; a clean result with <code>found: false, blocked: false</code> records <code>&#x27;not_found&#x27;</code>; a clean result with <code>found: true</code> whose photo download/verification (<code>insertSourcedReferencePhoto</code> or equivalent) actually succeeds records <code>&#x27;succeeded&#x27;</code>; a clean <code>found: true</code> result whose download/verification fails records <code>&#x27;not_found&#x27;</code> (the model&#x27;s claimed URL didn&#x27;t pan out — a model-content problem, not an infra signal; call this out explicitly in a comment since it is a deliberate edge-case choice, not an oversight). <code>apps/server/src/ai/catalogSourcingOrchestrator.ts</code>&#x27;s <code>sourceCatalogIfNeeded</code>: same pattern — wrap the omp call in <code>runWithBrandLimit(brand, () =&gt; ...)</code>; update the call site for T4&#x27;s new <code>{ candidates, blocked }</code> return shape (was a bare array); a thrown error or <code>blocked: true</code> records <code>&#x27;infrastructure_blocked&#x27;</code>; zero <code>insertedCount</code> with <code>blocked: false</code> records <code>&#x27;not_found&#x27;</code>; <code>insertedCount &gt; 0</code> records <code>&#x27;succeeded&#x27;</code>. Both files&#x27; existing &quot;never throws to the caller, always resolves&quot; contract (Requirement 3 from their own prior features) is preserved unchanged — only the internal classification passed to T2&#x27;s <code>recordSourcingAttempt</code>/<code>recordCatalogSourcingAttempt</code> changes.</span></td><td>&mdash; (30 min)</td><td>&mdash; (&mdash;)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="neutral"><span class="dot"></span>Not started.</span></td><td><span class="tag">T7</span></td><td><span class="desc">Job worker pool integration: wires T3&#x27;s retry-or-fail functions into both pools (Req 5, 6, 7). <code>apps/server/src/jobs/identifyPartsWorkerPool.ts</code>&#x27;s <code>processJob</code>: replace the catch block&#x27;s <code>await failJob(job.id, message);</code> with <code>await retryOrFailJob(job.id, message);</code>. The existing, separate <code>if (listing === null) { await failJob(job.id, &#x27;Listing no longer exists&#x27;); return; }</code> branch (above the try/catch, not inside it) is UNCHANGED — stays a permanent, non-retried failure. <code>apps/server/src/jobs/pricePartsWorkerPool.ts</code>&#x27;s <code>processJob</code>: replace the catch block&#x27;s <code>await failPriceJob(job.id, message);</code> with <code>await retryOrFailPriceJob(job.id, message);</code> (no permanent-failure branch exists in this file at all, per Req 6). Update both files&#x27; top-of-file header comments, which currently describe &quot;stage transitions ... then finally to &#x27;completed&#x27; or &#x27;failed&#x27;,&quot; to also describe the new &quot;a retry-eligible failure returns to <code>queued</code> with a growing backoff delay instead&quot; path.</span></td><td>&mdash; (20 min)</td><td>&mdash; (&mdash;)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="bad"><span class="dot"></span>Complete &middot; found a FAIL.</span></td><td><span class="tag">R1</span></td><td><span class="desc">FAIL: schema.ts&#x27;s Phase-3 comment (lines ~287-290) documents the sourcing skip-check as <code>next_retry_at &lt;= current_timestamp</code>, the inverted, pre-A8-correction operator — contradicts the real shipped <code>&gt;</code> and could mislead a future maintainer into &quot;fixing&quot; the comparison back to the bug A8 already caught. Review T1 (apps/server/src/retryBackoff.ts, apps/server/src/db/schema.ts) against Req 3, 10.</span></td><td><span data-since="2026-10-09T22:30:20Z" data-until="2026-10-09T22:45:00Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-09T22:30:20Z">&mdash;</span> (<span data-at="2026-10-09T22:30:20Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 19000 &middot; Actual tokens null</td></tr>
+<tr><td colspan="5"><p class="fail">schema.ts&#x27;s Phase-3 comment (lines ~287-290) documents the sourcing skip-check as <code>next_retry_at &lt;= current_timestamp</code>, the inverted, pre-A8-correction operator — contradicts the real shipped <code>&gt;</code> and could mislead a future maintainer into &quot;fixing&quot; the comparison back to the bug A8 already caught. Review T1 (apps/server/src/retryBackoff.ts, apps/server/src/db/schema.ts) against Req 3, 10.</p></td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE1</span></td><td><span class="desc">Test T1 (apps/server/src/retryBackoff.ts, apps/server/src/db/schema.ts) against Req 3, 10. computeNextRetryAt&#x27;s exact schedule proven correct across attemptCount 1-10 plus large-value edge cases; 7/7 targeted mutations killed.</span></td><td><span data-since="2026-10-09T22:30:20Z" data-until="2026-10-09T22:45:00Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-09T22:30:20Z">&mdash;</span> (<span data-at="2026-10-09T22:30:20Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 12100 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R2</span></td><td><span class="desc">Review T2 (apps/server/src/db/queries/sourcingAttempts.ts, apps/server/src/db/queries/catalogSourcingAttempts.ts) against Req 1, 2, 3, 10. PASS: correct <code>&gt;</code> operator (empirically re-proven via mutation), 3-way outcome recording, SELECT-then-INSERT-or-UPDATE (no ON CONFLICT), parameter-bound timestamps, unique-constraint skip-not-throw preserved, all call sites updated.</span></td><td><span data-since="2026-10-09T22:30:20Z" data-until="2026-10-09T22:45:00Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-09T22:30:20Z">&mdash;</span> (<span data-at="2026-10-09T22:30:20Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 27500 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE2</span></td><td><span class="desc">Test T2 (apps/server/src/db/queries/sourcingAttempts.ts, apps/server/src/db/queries/catalogSourcingAttempts.ts) against Req 1, 2, 3, 10. A8 comparison-direction fix and infra-blocked-only backoff both re-proven via mutation against the current committed code.</span></td><td><span data-since="2026-10-09T22:30:20Z" data-until="2026-10-09T22:45:00Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-09T22:30:20Z">&mdash;</span> (<span data-at="2026-10-09T22:30:20Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 15000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="bad"><span class="dot"></span>Complete &middot; found a FAIL.</span></td><td><span class="tag">R3</span></td><td><span class="desc">FAIL: retryOrFailJob (identifyPartsJobs.ts:179-183) and retryOrFailPriceJob (pricePartsJobs.ts:169-173) bind <code>next_retry_at = $next_retry_at</code> from a bare <code>nextRetryAt.toISOString()</code>, never applying the <code>CAST(CAST($x AS TIMESTAMPTZ) AS TIMESTAMP)</code> pattern sourcingAttempts.ts/catalogSourcingAttempts.ts use and document for the identical column type — on a non-UTC host this skews the stored retry instant by the local UTC offset. Review T3 (apps/server/src/db/queries/identifyPartsJobs.ts, apps/server/src/db/queries/pricePartsJobs.ts) against Req 5, 6, 7, 10.</span></td><td><span data-since="2026-10-09T22:30:20Z" data-until="2026-10-09T22:45:00Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-09T22:30:20Z">&mdash;</span> (<span data-at="2026-10-09T22:30:20Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 21000 &middot; Actual tokens null</td></tr>
+<tr><td colspan="5"><p class="fail">retryOrFailJob (identifyPartsJobs.ts:179-183) and retryOrFailPriceJob (pricePartsJobs.ts:169-173) bind <code>next_retry_at = $next_retry_at</code> from a bare <code>nextRetryAt.toISOString()</code>, never applying the <code>CAST(CAST($x AS TIMESTAMPTZ) AS TIMESTAMP)</code> pattern sourcingAttempts.ts/catalogSourcingAttempts.ts use and document for the identical column type — on a non-UTC host this skews the stored retry instant by the local UTC offset. Review T3 (apps/server/src/db/queries/identifyPartsJobs.ts, apps/server/src/db/queries/pricePartsJobs.ts) against Req 5, 6, 7, 10.</p></td></tr>
+<tr><td><span class="bad"><span class="dot"></span>Complete &middot; found a FAIL.</span></td><td><span class="tag">TE3</span></td><td><span class="desc">FAIL: DB-measured (date_diff against current_timestamp, same technique sourcingAttempts.test.ts uses) the real stored interval for retryOrFailJob/retryOrFailPriceJob&#x27;s first failure is ~25500s (~7h05m) on this TZ=America/Los_Angeles host, not the ~300s BASE_RETRY_DELAY_MS specifies — 25500 = 25200 (host&#x27;s 7h UTC offset) + 300 (intended delay), exactly matching the hazard sourcingAttempts.ts&#x27;s own header comment warns about. Applying T2&#x27;s CAST pattern to both functions made the measured interval land at 295-305s, confirming the fix. Test T3 (apps/server/src/db/queries/identifyPartsJobs.ts, apps/server/src/db/queries/pricePartsJobs.ts) against Req 5, 6, 7, 10.</span></td><td><span data-since="2026-10-09T22:30:20Z" data-until="2026-10-09T22:45:00Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-09T22:30:20Z">&mdash;</span> (<span data-at="2026-10-09T22:30:20Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 24000 &middot; Actual tokens null</td></tr>
+<tr><td colspan="5"><p class="fail">DB-measured (date_diff against current_timestamp, same technique sourcingAttempts.test.ts uses) the real stored interval for retryOrFailJob/retryOrFailPriceJob&#x27;s first failure is ~25500s (~7h05m) on this TZ=America/Los_Angeles host, not the ~300s BASE_RETRY_DELAY_MS specifies — 25500 = 25200 (host&#x27;s 7h UTC offset) + 300 (intended delay), exactly matching the hazard sourcingAttempts.ts&#x27;s own header comment warns about. Applying T2&#x27;s CAST pattern to both functions made the measured interval land at 295-305s, confirming the fix. Test T3 (apps/server/src/db/queries/identifyPartsJobs.ts, apps/server/src/db/queries/pricePartsJobs.ts) against Req 5, 6, 7, 10.</p></td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R4</span></td><td><span class="desc">Review T4 (apps/server/src/ai/imageSourcingPrompt.ts, imageSourcingParser.ts, catalogSourcingPrompt.ts, catalogSourcingParser.ts, priceEstimationParser.ts) against Req 8, 9. PASS: blocked boolean correctly added to both sourcing prompts/parsers with defensive coercion; extractBracketedJson fallback correctly added to all three parsers; catalogSourcingParser&#x27;s breaking {candidates,blocked} return-type change correctly reflected at its one call site.</span></td><td><span data-since="2026-10-09T22:30:20Z" data-until="2026-10-09T22:45:00Z">&mdash;</span> (25 min)</td><td><span data-at="2026-10-09T22:30:20Z">&mdash;</span> (<span data-at="2026-10-09T22:30:20Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 18000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE4</span></td><td><span class="desc">Test T4 (apps/server/src/ai/imageSourcingPrompt.ts, imageSourcingParser.ts, catalogSourcingPrompt.ts, catalogSourcingParser.ts, priceEstimationParser.ts) against Req 8, 9. 84/84 existing tests pass; 6/6 targeted mutations (blocked-field, fallback-disable x3, structural-guard-disable) killed.</span></td><td><span data-since="2026-10-09T22:30:20Z" data-until="2026-10-09T22:45:00Z">&mdash;</span> (25 min)</td><td><span data-at="2026-10-09T22:30:20Z">&mdash;</span> (<span data-at="2026-10-09T22:30:20Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 17000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="bad"><span class="dot"></span>Complete &middot; found a FAIL.</span></td><td><span class="tag">R5</span></td><td><span class="desc">FAIL: sourcingConcurrencyLimiter.ts&#x27;s releaseSlot (lines 75-86) hands a freed slot to the next FIFO waiter without ever decrementing <code>active</code> for the departing holder — only the waiter&#x27;s own <code>active += 1</code> runs — so <code>active</code> drifts +1 on every contested handoff and never returns to 0; under the default SOURCING_PER_BRAND_CONCURRENCY=1, any brand that experiences even one moment of contention (the feature&#x27;s own stated normal case) permanently deadlocks every future call for that brand. Independently re-traced and confirmed by validate-lead. Review T5 (apps/server/src/ai/sourcingConcurrencyLimiter.ts) against Req 4.</span></td><td><span data-since="2026-10-09T22:30:20Z" data-until="2026-10-09T22:45:00Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-09T22:30:20Z">&mdash;</span> (<span data-at="2026-10-09T22:30:20Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 14000 &middot; Actual tokens null</td></tr>
+<tr><td colspan="5"><p class="fail">sourcingConcurrencyLimiter.ts&#x27;s releaseSlot (lines 75-86) hands a freed slot to the next FIFO waiter without ever decrementing <code>active</code> for the departing holder — only the waiter&#x27;s own <code>active += 1</code> runs — so <code>active</code> drifts +1 on every contested handoff and never returns to 0; under the default SOURCING_PER_BRAND_CONCURRENCY=1, any brand that experiences even one moment of contention (the feature&#x27;s own stated normal case) permanently deadlocks every future call for that brand. Independently re-traced and confirmed by validate-lead. Review T5 (apps/server/src/ai/sourcingConcurrencyLimiter.ts) against Req 4.</p></td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE5</span></td><td><span class="desc">Test T5 (apps/server/src/ai/sourcingConcurrencyLimiter.ts) against Req 4. Existing 9-test suite passes and 3 targeted mutations (FIFO order, brand independence, throw-releases-slot) are killed; suite does not probe a second idle-then-fresh-call round after a handoff, which is why it did not catch R5&#x27;s active-count-drift finding.</span></td><td><span data-since="2026-10-09T22:30:20Z" data-until="2026-10-09T22:45:00Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-09T22:30:20Z">&mdash;</span> (<span data-at="2026-10-09T22:30:20Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 10900 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R6</span></td><td><span class="desc">Review T6 (apps/server/src/ai/referenceSourcingOrchestrator.ts, catalogSourcingOrchestrator.ts) against Req 1, 2, 4, 8. PASS: both orchestrators wrap their omp call in runWithBrandLimit; three-way classification (including the deliberate found:true-but-download-fails edge case) correct in both files; catalogSourcingOrchestrator&#x27;s call site correctly updated for T4&#x27;s {candidates,blocked} shape; never-throws contract holds.</span></td><td><span data-since="2026-10-09T23:05:00Z" data-until="2026-10-09T23:12:00Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-09T23:05:00Z">&mdash;</span> (<span data-at="2026-10-09T23:05:00Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 19000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE6</span></td><td><span class="desc">Test T6 (apps/server/src/ai/referenceSourcingOrchestrator.ts, catalogSourcingOrchestrator.ts) against Req 1, 2, 4, 8. 85/85 existing tests pass; 6/6 targeted mutations killed, including the blocked-wins-over-insertedCount priority and both runWithBrandLimit wrapper removals.</span></td><td><span data-since="2026-10-09T23:05:00Z" data-until="2026-10-09T23:12:00Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-09T23:05:00Z">&mdash;</span> (<span data-at="2026-10-09T23:05:00Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 22000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R7</span></td><td><span class="desc">Review T7 (apps/server/src/jobs/identifyPartsWorkerPool.ts, pricePartsWorkerPool.ts) against Req 5, 6, 7. PASS: both catch blocks correctly call retryOrFailJob/retryOrFailPriceJob; Listing-deleted branch unchanged and still permanent; pricePartsWorkerPool has no permanent-failure branch; header comments updated. Separately re-confirmed commit 0394457&#x27;s fix to identifyPartsPriceTrigger.test.ts&#x27;s db/index.js mock (added retryOrFailJob) is complete and correct, test passes.</span></td><td><span data-since="2026-10-09T22:30:20Z" data-until="2026-10-09T22:45:00Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-09T22:30:20Z">&mdash;</span> (<span data-at="2026-10-09T22:30:20Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 16900 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE7</span></td><td><span class="desc">Test T7 (apps/server/src/jobs/identifyPartsWorkerPool.ts, pricePartsWorkerPool.ts) against Req 5, 6, 7. 21/21 existing tests pass across 4 files including the real-DuckDB retry/backoff/reclaim end-to-end test; 3/3 targeted mutations killed.</span></td><td><span data-since="2026-10-09T22:30:20Z" data-until="2026-10-09T22:45:00Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-09T22:30:20Z">&mdash;</span> (<span data-at="2026-10-09T22:30:20Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 15000 &middot; Actual tokens null</td></tr></tbody></table></div>
+<h2>Assumptions</h2><ul class="items"><li><span class="tag">A1</span><span>Per-brand concurrency is keyed on <strong>brand</strong>, not the literal network domain —</span></li><li><span class="tag">A2</span><span>No cap on retry attempt count, at either the sourcing-attempt or job level — per</span></li><li><span class="tag">A3</span><span>Confirmed by reading both worker pools&#x27; <code>processJob</code> in full: neither</span></li><li><span class="tag">A4</span><span><code>SOURCING_PER_BRAND_CONCURRENCY</code> defaults to 1 (full serialization per brand) —</span></li><li><span class="tag">A5</span><span>DuckDB&#x27;s <code>INSERT ... ON CONFLICT DO UPDATE</code> upsert syntax is supported</span></li><li><span class="tag">A6</span><span><code>priceEstimationParser.ts</code>&#x27;s fix (Req 9) is independent of every other task here</span></li><li><span class="tag">A7</span><span>This feature does not change <code>IDENTIFY_PARTS_POOL_SIZE</code> (stays 8) or add any new</span></li><li><span class="tag">A8</span><span>T2&#x27;s row above originally specified the skip-check gain as `next_retry_at &lt;=</span></li></ul>
+</section>
+</main><script>
+// REFRESH_MS and LOADED_AT drive the scheduled reload, the on-page countdown, and
+// the auto-refresh toggle below, so none of them can ever disagree with each other.
+var REFRESH_MS=300000, LOADED_AT=Date.now();
+var AUTOREFRESH_KEY='feature-dashboard-autorefresh';
+var reloadTimer=null;
+
+function armReload(){
+  if(reloadTimer) clearTimeout(reloadTimer);
+  reloadTimer=setTimeout(function(){location.reload();}, REFRESH_MS-(Date.now()-LOADED_AT));
+}
+function disarmReload(){
+  if(reloadTimer){clearTimeout(reloadTimer);reloadTimer=null;}
+}
+function storedAutorefreshPref(){
+  try{return localStorage.getItem(AUTOREFRESH_KEY);}catch(e){return null;}
+}
+function setAutorefreshUI(button,on){
+  button.textContent='Auto refresh '+(on?'on':'off');
+  button.setAttribute('aria-pressed',String(on));
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){el.hidden=!on;});
+  document.querySelectorAll('[data-refresh-off-note]').forEach(function(el){el.hidden=on;});
+}
+
+// Durations count up client-side, so an in-progress row does not freeze between
+// publishes, and every timestamp reads in the viewer's own zone rather than one
+// chosen when the page was written.
+function fmt(ms){var s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),
+m=Math.floor(s%3600/60);return h?h+'h '+m+'m':m+'m';}
+function fmtCountdown(ms){var s=Math.max(0,Math.round(ms/1000)),
+m=Math.floor(s/60);return m+'m '+(s%60)+'s';}
+var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtAt(d){
+  var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'pm':'am';
+  h=h%12;if(h===0)h=12;
+  var mm=m<10?'0'+m:m;
+  return MONTHS[d.getMonth()]+' '+d.getDate()+', '+h+':'+mm+ap;
+}
+function tick(){
+  var now=Date.now();
+  document.querySelectorAll('[data-since]').forEach(function(el){
+    var until=el.dataset.until?Date.parse(el.dataset.until):now;
+    el.textContent=fmt(until-Date.parse(el.dataset.since));});
+  document.querySelectorAll('[data-at]').forEach(function(el){
+    el.textContent=fmtAt(new Date(el.dataset.at));});
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){
+    el.textContent=fmtCountdown(REFRESH_MS-(now-LOADED_AT));});
+}
+tick(); setInterval(tick,1000);
+
+// Auto-refresh defaults off once the feature is done (data-feature-done, set by the
+// page itself) and on otherwise, unless this browser already recorded its own choice.
+(function(){
+  var button=document.getElementById('autorefresh');
+  if(!button) return;
+  var stored=storedAutorefreshPref();
+  var defaultOn=!document.querySelector('[data-feature-done]');
+  var isOn=stored===null?defaultOn:stored==='on';
+  setAutorefreshUI(button,isOn);
+  if(isOn) armReload();
+  button.addEventListener('click',function(){
+    var on=button.getAttribute('aria-pressed')!=='true';
+    try{localStorage.setItem(AUTOREFRESH_KEY,on?'on':'off');}catch(e){}
+    setAutorefreshUI(button,on);
+    if(on){LOADED_AT=Date.now();armReload();}else{disarmReload();}
+  });
+  var refreshNow=document.getElementById('refresh-now');
+  if(refreshNow) refreshNow.addEventListener('click',function(){location.reload();});
+})();
+
+// A description gets an expand control only when it truly does not fit.
+document.querySelectorAll('.desc').forEach(function(el){
+  if(el.scrollWidth<=el.clientWidth) return;
+  var b=document.createElement('button');b.className='more';b.textContent='more';
+  b.onclick=function(){el.classList.toggle('open');
+    b.textContent=el.classList.contains('open')?'less':'more';};
+  el.parentNode.appendChild(b);});
+
+function showCycle(n){
+  document.querySelectorAll('[data-cycle-panel]').forEach(function(p){
+    p.hidden=(p.dataset.cyclePanel!==String(n));});
+  document.querySelectorAll('[data-cycle-tab]').forEach(function(t){
+    t.setAttribute('aria-selected',t.dataset.cycleTab===String(n));});
+}
+</script>
