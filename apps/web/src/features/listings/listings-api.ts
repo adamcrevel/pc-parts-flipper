@@ -2,9 +2,12 @@ import type {
   AcceptListingResponse,
   CreateListingInput,
   IdentifyPartsJob,
+  IdentifyPartsBulkResponse,
+  IdentifyPartsBulkResult,
   ListingDetail,
   ListingStatus,
   ListListingsResponse,
+  ListListingIdsResponse,
   UpdateListingInput,
 } from '@pc-parts-flipper/shared';
 import { ApiError, apiClient } from '@/lib/api-client';
@@ -31,6 +34,16 @@ export function fetchListings(options: FetchListingsOptions = {}): Promise<ListL
   if (options.offset !== undefined) params.set('offset', String(options.offset));
   const query = params.toString();
   return apiClient.get<ListListingsResponse>(`/api/listings${query.length > 0 ? `?${query}` : ''}`);
+}
+
+/** Fetches all Listing IDs matching the given filters, without pagination. */
+export async function fetchListingIds(options: Pick<FetchListingsOptions, 'status' | 'sourceId'> = {}): Promise<string[]> {
+  const params = new URLSearchParams();
+  if (options.status) params.set('status', options.status);
+  if (options.sourceId) params.set('sourceId', options.sourceId);
+  const query = params.toString();
+  const response = await apiClient.get<ListListingIdsResponse>(`/api/listings/ids${query.length > 0 ? `?${query}` : ''}`);
+  return response.ids;
 }
 
 /** Fetches one Listing with its full Expected Parts set and comparison. */
@@ -92,4 +105,10 @@ export async function fetchLatestIdentifyPartsJob(listingId: string): Promise<Id
 /** Marks an Identify-Parts job as delivered so its result is not repeated to the caller. */
 export async function ackIdentifyPartsJob(jobId: string): Promise<void> {
   await apiClient.post<void>(`/api/identify-parts-jobs/${jobId}/ack`);
+}
+
+/** Enqueues a bulk Identify-Parts job for the given Listing IDs, returning the outcome for each. */
+export async function enqueueBulkIdentifyParts(listingIds: string[]): Promise<IdentifyPartsBulkResult[]> {
+  const response = await apiClient.post<IdentifyPartsBulkResponse>('/api/listings/identify-parts/bulk', { listingIds });
+  return response.results;
 }

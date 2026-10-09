@@ -34,6 +34,7 @@ function makeListing(overrides: Partial<ListingSummary> = {}): ListingSummary {
     createdAt: '2024-01-01',
     updatedAt: '2024-01-01',
     comparison: { totalExpectedResaleValue: 150, totalCost: 100, difference: 50 },
+    identifyPartsStatus: null,
     ...overrides,
   };
 }
@@ -81,7 +82,17 @@ describe('ListingsQueueTable eBay scan badge', () => {
   it('(a) renders the "Found via eBay scan" badge on a row whose externalItemId is set', async () => {
     const listing = makeListing({ externalItemId: 'ebay-123', externalSource: 'ebay' });
     const el = await mount(
-      <ListingsQueueTable listings={[listing]} sourcesById={sourcesById} onAccept={() => {}} onReject={() => {}} pendingListingId={null} />,
+      <ListingsQueueTable
+        listings={[listing]}
+        sourcesById={sourcesById}
+        onAccept={() => {}}
+        onReject={() => {}}
+        pendingListingId={null}
+        allFilteredIds={[]}
+        selectedIds={new Set()}
+        onToggleOne={() => {}}
+        onToggleAllFiltered={() => {}}
+      />,
     );
 
     expect(el.textContent).toContain(BADGE_TEXT);
@@ -90,7 +101,17 @@ describe('ListingsQueueTable eBay scan badge', () => {
   it('(b) does NOT render the badge on a row whose externalItemId is null', async () => {
     const listing = makeListing({ externalItemId: null });
     const el = await mount(
-      <ListingsQueueTable listings={[listing]} sourcesById={sourcesById} onAccept={() => {}} onReject={() => {}} pendingListingId={null} />,
+      <ListingsQueueTable
+        listings={[listing]}
+        sourcesById={sourcesById}
+        onAccept={() => {}}
+        onReject={() => {}}
+        pendingListingId={null}
+        allFilteredIds={[]}
+        selectedIds={new Set()}
+        onToggleOne={() => {}}
+        onToggleAllFiltered={() => {}}
+      />,
     );
 
     expect(el.textContent).not.toContain(BADGE_TEXT);
@@ -241,6 +262,10 @@ describe('ListingsQueueTable regression: non-badge columns and Accept/Reject sti
         onAccept={(l) => accepted.push(l)}
         onReject={(l) => rejected.push(l)}
         pendingListingId={null}
+        allFilteredIds={[]}
+        selectedIds={new Set()}
+        onToggleOne={() => {}}
+        onToggleAllFiltered={() => {}}
       />,
     );
 
@@ -267,6 +292,103 @@ describe('ListingsQueueTable regression: non-badge columns and Accept/Reject sti
       rejectButton!.click();
     });
     expect(rejected).toEqual([listing]);
+  });
+});
+
+describe('ListingsQueueTable identify-parts status badge (Req 10/11)', () => {
+  it('renders a muted em dash in the Identify Parts column when identifyPartsStatus is null (no job yet)', async () => {
+    const listing = makeListing({ identifyPartsStatus: null });
+    const el = await mount(
+      <ListingsQueueTable
+        listings={[listing]}
+        sourcesById={sourcesById}
+        onAccept={() => {}}
+        onReject={() => {}}
+        pendingListingId={null}
+        allFilteredIds={[]}
+        selectedIds={new Set()}
+        onToggleOne={() => {}}
+        onToggleAllFiltered={() => {}}
+      />,
+    );
+    const cell = el.querySelector('tbody tr td:nth-child(8)') as HTMLElement;
+    expect(cell.textContent).toBe('—');
+  });
+
+  it('renders the per-stage in-progress pill text for each non-terminal stage', async () => {
+    const queued = makeListing({ id: 'listing-queued', identifyPartsStatus: { stage: 'queued', errorMessage: null } });
+    const identifying = makeListing({ id: 'listing-identifying', identifyPartsStatus: { stage: 'identifying', errorMessage: null } });
+    const el = await mount(
+      <ListingsQueueTable
+        listings={[queued, identifying]}
+        sourcesById={sourcesById}
+        onAccept={() => {}}
+        onReject={() => {}}
+        pendingListingId={null}
+        allFilteredIds={[]}
+        selectedIds={new Set()}
+        onToggleOne={() => {}}
+        onToggleAllFiltered={() => {}}
+      />,
+    );
+    const rows = Array.from(el.querySelectorAll('tbody tr'));
+    expect(rows).toHaveLength(2);
+    const queuedCell = rows[0]!.querySelector('td:nth-child(8)') as HTMLElement;
+    const identifyingCell = rows[1]!.querySelector('td:nth-child(8)') as HTMLElement;
+    const queuedBadge = queuedCell.querySelector('span');
+    const identifyingBadge = identifyingCell.querySelector('span');
+    expect(queuedCell.textContent?.trim()).toBe('Waiting to run…');
+    expect(identifyingCell.textContent?.trim()).toBe('In progress');
+    expect(queuedBadge?.className).toContain('text-sky-700');
+    expect(queuedBadge?.className).not.toContain('text-emerald-700');
+    expect(identifyingBadge?.className).toContain('text-sky-700');
+    expect(identifyingBadge?.className).not.toContain('text-emerald-700');
+  });
+
+  it('renders the Complete pill for stage "completed"', async () => {
+    const listing = makeListing({ identifyPartsStatus: { stage: 'completed', errorMessage: null } });
+    const el = await mount(
+      <ListingsQueueTable
+        listings={[listing]}
+        sourcesById={sourcesById}
+        onAccept={() => {}}
+        onReject={() => {}}
+        pendingListingId={null}
+        allFilteredIds={[]}
+        selectedIds={new Set()}
+        onToggleOne={() => {}}
+        onToggleAllFiltered={() => {}}
+      />,
+    );
+    const cell = el.querySelector('tbody tr td:nth-child(8)') as HTMLElement;
+    const badge = cell.querySelector('span');
+    expect(badge?.textContent).toBe('Complete');
+    expect(badge?.className).toContain('text-teal-700');
+    expect(badge?.hasAttribute('title')).toBe(false);
+  });
+
+  it('renders the Failed pill with a title attribute equal to the real errorMessage for stage "failed"', async () => {
+    const listing = makeListing({
+      identifyPartsStatus: { stage: 'failed', errorMessage: 'OpenAI request timed out after 30s' },
+    });
+    const el = await mount(
+      <ListingsQueueTable
+        listings={[listing]}
+        sourcesById={sourcesById}
+        onAccept={() => {}}
+        onReject={() => {}}
+        pendingListingId={null}
+        allFilteredIds={[]}
+        selectedIds={new Set()}
+        onToggleOne={() => {}}
+        onToggleAllFiltered={() => {}}
+      />,
+    );
+    const cell = el.querySelector('tbody tr td:nth-child(8)') as HTMLElement;
+    const badge = cell.querySelector('span');
+    expect(badge?.textContent).toBe('Failed');
+    expect(badge?.getAttribute('title')).toBe('OpenAI request timed out after 30s');
+    expect(badge?.className).toContain('text-destructive');
   });
 });
 

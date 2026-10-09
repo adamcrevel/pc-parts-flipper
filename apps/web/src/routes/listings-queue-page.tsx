@@ -7,9 +7,10 @@ import { ErrorBanner } from '@/components/error-banner';
 import { PaginationControls } from '@/components/pagination-controls';
 import { ApiError } from '@/lib/api-client';
 import { fetchSources } from '@/features/sources/sources-api';
-import { acceptListing, fetchListings, rejectListing } from '@/features/listings/listings-api';
+import { acceptListing, fetchListingIds, fetchListings, rejectListing } from '@/features/listings/listings-api';
 import { ListingsQueueFilters, type ListingsQueueFilterValue } from '@/features/listings-queue/listings-queue-filters';
 import { ListingsQueueTable } from '@/features/listings-queue/listings-queue-table';
+import { BulkIdentifyPartsBar } from '@/features/listings-queue/bulk-identify-parts-bar';
 
 // One page of rows (Req 15); the Listings queue paginates past this rather
 // than rendering an unbounded list.
@@ -37,6 +38,16 @@ export function ListingsQueuePage() {
   // second accept/reject for the same row before the first one's reload
   // replaces the row.
   const [pendingListingId, setPendingListingId] = useState<string | null>(null);
+  // Req 1/4: the Listing ids ticked for a bulk Identify-Parts run. Held at
+  // the page's top level, outside the page/filter-driven reload effect, so
+  // a selection made on page 1 (or under one filter) survives paging and
+  // filter changes for the rest of the visit — nothing but an explicit
+  // toggle or a completed bulk request clears it.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Req 2: every Listing id matching the current filters across *all*
+  // pages, which is what "select all" has to resolve to — the current
+  // page's rows are only a window onto it.
+  const [allFilteredIds, setAllFilteredIds] = useState<string[]>([]);
 
   const loadListings = useCallback(async () => {
     setLoadError(null);
@@ -77,6 +88,71 @@ export function ListingsQueuePage() {
       .then(setSources)
       .catch((err: unknown) => setLoadError(err instanceof ApiError ? err.message : 'Failed to load sources.'));
   }, []);
+
+  useEffect(() => {
+    // Req 2: keyed on `filters` alone, never `page` — the filtered id set
+    // is page-independent, so paging must not refetch it (and must not
+    // narrow it to the visible rows).
+    void fetchListingIds({ status: filters.status || undefined, sourceId: filters.sourceId || undefined })
+      .then(setAllFilteredIds)
+      .catch((err: unknown) => setLoadError(err instanceof ApiError ? err.message : 'Failed to load listing ids.'));
+  }, [filters]);
+
+  useEffect(() => {
+    // Req 12: while any *visible* row still has a non-terminal
+    // identify-parts job, re-poll the page every 2000ms — the same
+    // interval identify-parts-button.tsx polls a single job at — so the
+    // status badges advance on their own. Re-evaluated every time
+    // `listings` changes, so the interval is torn down by this effect's
+    // own cleanup as soon as no visible row is still running.
+    const hasPendingStatus = (listings ?? []).some(
+      (listing) =>
+        listing.identifyPartsStatus !== null &&
+        listing.identifyPartsStatus.stage !== 'completed' &&
+        listing.identifyPartsStatus.stage !== 'failed',
+    );
+    if (!hasPendingStatus) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void loadListings();
+    }, 2000);
+    return () => clearInterval(intervalId);
+  }, [listings, loadListings]);
+
+  // Req 1: add the id if it isn't selected, drop it if it is.
+  function handleToggleOne(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  // Req 3/4: the header checkbox acts on the filtered id set only. When
+  // every filtered id is already selected it deselects exactly those ids,
+  // leaving any selection made under a different filter untouched;
+  // otherwise it adds them all to whatever is already selected.
+  function handleToggleAllFiltered() {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (allFilteredIds.every((id) => current.has(id))) {
+        for (const id of allFilteredIds) {
+          next.delete(id);
+        }
+        return next;
+      }
+      for (const id of allFilteredIds) {
+        next.add(id);
+      }
+      return next;
+    });
+  }
 
   const sourcesById = useMemo(() => new Map((sources ?? []).map((source) => [source.id, source])), [sources]);
 
@@ -148,12 +224,18 @@ export function ListingsQueuePage() {
                 onAccept={handleAccept}
                 onReject={handleReject}
                 pendingListingId={pendingListingId}
+                allFilteredIds={allFilteredIds}
+                selectedIds={selectedIds}
+                onToggleOne={handleToggleOne}
+                onToggleAllFiltered={handleToggleAllFiltered}
               />
               <PaginationControls page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
             </>
           )}
         </CardContent>
       </Card>
+
+      <BulkIdentifyPartsBar selectedIds={selectedIds} onCleared={() => { setSelectedIds(new Set()); void loadListings(); }} />
     </div>
   );
 }

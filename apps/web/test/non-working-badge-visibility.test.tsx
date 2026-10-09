@@ -81,6 +81,7 @@ function mockListingSummary(overrides: Partial<ListingSummary> = {}): ListingSum
       totalCost: 1550,
       difference: 450,
     } as ListingSummary['comparison'],
+    identifyPartsStatus: null,
     ...overrides,
   };
 }
@@ -93,7 +94,17 @@ describe('ListingsQueueTable non-working badge (Req 4)', () => {
   it('renders the badge for a listing flagged nonWorking: true', async () => {
     const listing = mockListingSummary({ nonWorking: true });
     const el = await mount(
-      <ListingsQueueTable listings={[listing]} sourcesById={new Map([[mockSource().id, mockSource()]])} onAccept={vi.fn()} onReject={vi.fn()} pendingListingId={null} />,
+      <ListingsQueueTable
+        listings={[listing]}
+        sourcesById={new Map([[mockSource().id, mockSource()]])}
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+        pendingListingId={null}
+        allFilteredIds={[]}
+        selectedIds={new Set()}
+        onToggleOne={() => {}}
+        onToggleAllFiltered={() => {}}
+      />,
     );
     expect(nonWorkingBadgePresent(el)).toBe(true);
   });
@@ -101,7 +112,17 @@ describe('ListingsQueueTable non-working badge (Req 4)', () => {
   it('omits the badge for a listing with nonWorking: false', async () => {
     const listing = mockListingSummary({ nonWorking: false });
     const el = await mount(
-      <ListingsQueueTable listings={[listing]} sourcesById={new Map([[mockSource().id, mockSource()]])} onAccept={vi.fn()} onReject={vi.fn()} pendingListingId={null} />,
+      <ListingsQueueTable
+        listings={[listing]}
+        sourcesById={new Map([[mockSource().id, mockSource()]])}
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+        pendingListingId={null}
+        allFilteredIds={[]}
+        selectedIds={new Set()}
+        onToggleOne={() => {}}
+        onToggleAllFiltered={() => {}}
+      />,
     );
     expect(nonWorkingBadgePresent(el)).toBe(false);
   });
@@ -116,12 +137,106 @@ describe('ListingsQueueTable non-working badge (Req 4)', () => {
         onAccept={vi.fn()}
         onReject={vi.fn()}
         pendingListingId={null}
+        allFilteredIds={[]}
+        selectedIds={new Set()}
+        onToggleOne={() => {}}
+        onToggleAllFiltered={() => {}}
       />,
     );
     const rows = Array.from(el.querySelectorAll('tbody tr'));
     expect(rows).toHaveLength(2);
     expect(nonWorkingBadgePresent(rows[0] as HTMLElement)).toBe(true);
     expect(nonWorkingBadgePresent(rows[1] as HTMLElement)).toBe(false);
+  });
+});
+
+describe('ListingsQueueTable selection header/row checkboxes (Req 1/2/3)', () => {
+  it('renders the header checkbox unchecked and not indeterminate when none of the filtered listings are selected', async () => {
+    const listingA = mockListingSummary({ id: 'listing-a' });
+    const listingB = mockListingSummary({ id: 'listing-b' });
+    const el = await mount(
+      <ListingsQueueTable
+        listings={[listingA, listingB]}
+        sourcesById={new Map([[mockSource().id, mockSource()]])}
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+        pendingListingId={null}
+        allFilteredIds={['listing-a', 'listing-b']}
+        selectedIds={new Set()}
+        onToggleOne={() => {}}
+        onToggleAllFiltered={() => {}}
+      />,
+    );
+    const header = el.querySelector('input[aria-label="Select all filtered listings"]') as HTMLInputElement;
+    expect(header.checked).toBe(false);
+    expect(header.indeterminate).toBe(false);
+  });
+
+  it('renders the header checkbox checked and not indeterminate when every filtered listing is selected', async () => {
+    const listingA = mockListingSummary({ id: 'listing-a' });
+    const listingB = mockListingSummary({ id: 'listing-b' });
+    const el = await mount(
+      <ListingsQueueTable
+        listings={[listingA, listingB]}
+        sourcesById={new Map([[mockSource().id, mockSource()]])}
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+        pendingListingId={null}
+        allFilteredIds={['listing-a', 'listing-b']}
+        selectedIds={new Set(['listing-a', 'listing-b'])}
+        onToggleOne={() => {}}
+        onToggleAllFiltered={() => {}}
+      />,
+    );
+    const header = el.querySelector('input[aria-label="Select all filtered listings"]') as HTMLInputElement;
+    expect(header.checked).toBe(true);
+    expect(header.indeterminate).toBe(false);
+  });
+
+  it('renders the header checkbox indeterminate (and not checked) when some but not all filtered listings are selected', async () => {
+    const listingA = mockListingSummary({ id: 'listing-a' });
+    const listingB = mockListingSummary({ id: 'listing-b' });
+    const el = await mount(
+      <ListingsQueueTable
+        listings={[listingA, listingB]}
+        sourcesById={new Map([[mockSource().id, mockSource()]])}
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+        pendingListingId={null}
+        allFilteredIds={['listing-a', 'listing-b']}
+        selectedIds={new Set(['listing-a'])}
+        onToggleOne={() => {}}
+        onToggleAllFiltered={() => {}}
+      />,
+    );
+    const header = el.querySelector('input[aria-label="Select all filtered listings"]') as HTMLInputElement;
+    expect(header.checked).toBe(false);
+    expect(header.indeterminate).toBe(true);
+  });
+
+  it("clicking a row's own checkbox calls onToggleOne with that row's id", async () => {
+    const toggled: string[] = [];
+    const listing = mockListingSummary({ id: 'listing-xyz', title: 'Click Target Listing' });
+    const el = await mount(
+      <ListingsQueueTable
+        listings={[listing]}
+        sourcesById={new Map([[mockSource().id, mockSource()]])}
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+        pendingListingId={null}
+        allFilteredIds={['listing-xyz']}
+        selectedIds={new Set()}
+        onToggleOne={(id) => toggled.push(id)}
+        onToggleAllFiltered={() => {}}
+      />,
+    );
+    const rowCheckbox = el.querySelector('input[aria-label="Select Click Target Listing"]') as HTMLInputElement;
+    expect(rowCheckbox).not.toBeNull();
+    await act(async () => {
+      rowCheckbox.click();
+    });
+    expect(toggled).toEqual(['listing-xyz']);
+    expect(toggled).toHaveLength(1);
   });
 });
 

@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import type { CreateListingInput, ListingDetail, ListListingsResponse } from '@pc-parts-flipper/shared';
+import type { CreateListingInput, ListingDetail, ListingSummary, ListListingIdsResponse, ListListingsResponse } from '@pc-parts-flipper/shared';
 import type * as DbModule from '../src/db/index.js';
 import type * as ClientModule from '../src/db/client.js';
 import type * as ReferencePhotosModule from '../src/db/queries/referencePhotos.js';
@@ -451,4 +451,98 @@ describe('Reference photo promotion hook — DB-verified (T2)', () => {
       'Failed to promote reference photos for Expected Part',
     );
   });
+
+  // T2 proof (bulk-identify-parts feature, a separate requirement from the
+  // promotion-hook tests above but sharing this describe block's
+  // in-process server/DB rather than booting a fourth one: a THIRD
+  // dynamic `await import('../src/db/index.js')` elsewhere in this file
+  // would return Node's already-cached module from this block's own
+  // beforeAll above — pointed at THIS block's data dir, not a fresh one,
+  // since re-importing an already-imported specifier never re-runs the
+  // module body (confirmed: a standalone fourth describe block here failed
+  // with "Cannot open file .../pc-parts-flipper-listings-hook-test-*" —
+  // the previous run's now-deleted data dir). GET /api/listings/ids, which
+  // the bulk "select all matching the filter" flow (Req 6) resolves
+  // against before enqueueing, and toSummary's new identifyPartsStatus
+  // field, which the Listings queue table (Req 10) reads to show each
+  // row's job status without opening the Listing.
+  it('GET /api/listings/ids returns every id matching status/sourceId filters, across more rows than a single /api/listings page would hold', async () => {
+    const sourceA = await hookDb.createSource({ name: 'IDs Test Source A', platformType: 'ebay', url: null, notes: null, connectorConfig: null });
+    const sourceB = await hookDb.createSource({ name: 'IDs Test Source B', platformType: 'ebay', url: null, notes: null, connectorConfig: null });
+
+    // 22 Listings under Source A — more than GET /api/listings' own
+    // default page size of 20 — plus 3 unrelated Listings under Source B,
+    // so a sourceId filter that silently returned everything (instead of
+    // actually filtering) would be caught by the length/set assertions
+    // below.
+    const sourceAIds: string[] = [];
+    for (let i = 0; i < 22; i += 1) {
+      const created = await postJson<ListingDetail>(`${HOOK_BASE_URL}/api/listings`, listingBody(sourceA.id, { expectedParts: [], title: `IDs Source A Listing ${i}` }));
+      expect(created.status, `seed failed: ${JSON.stringify(created.body)}`).toBe(201);
+      sourceAIds.push(created.body.id);
+    }
+    for (let i = 0; i < 3; i += 1) {
+      const created = await postJson<ListingDetail>(`${HOOK_BASE_URL}/api/listings`, listingBody(sourceB.id, { expectedParts: [], title: `IDs Source B Listing ${i}` }));
+      expect(created.status, `seed failed: ${JSON.stringify(created.body)}`).toBe(201);
+    }
+
+    // Flip one of Source A's Listings to 'accepted' so the status filter
+    // below has a real non-matching row of its own to exclude, not just
+    // Source B's rows.
+    const acceptedId = sourceAIds[0];
+    const acceptRes = await fetch(`${HOOK_BASE_URL}/api/listings/${acceptedId}/accept`, { method: 'POST' });
+    expect(acceptRes.status).toBe(201);
+    const expectedOpenIds = sourceAIds.slice(1);
+
+    const res = await getJson<ListListingIdsResponse>(`${HOOK_BASE_URL}/api/listings/ids?sourceId=${sourceA.id}&status=open`);
+    expect(res.status).toBe(200);
+    // 21 ids — past the 20-row page /api/listings itself defaults to —
+    // proves this endpoint never truncates to one page.
+    expect(res.body.ids).toHaveLength(21);
+    expect([...res.body.ids].sort()).toEqual([...expectedOpenIds].sort());
+  }, 30_000);
+
+  it("GET /api/listings summary identifyPartsStatus is null absent a job, then reflects the LATEST job's stage/errorMessage, not an earlier one", async () => {
+    const source = await hookDb.createSource({ name: 'IDs Status Test Source', platformType: 'ebay', url: null, notes: null, connectorConfig: null });
+    const created = await postJson<ListingDetail>(`${HOOK_BASE_URL}/api/listings`, listingBody(source.id, { expectedParts: [], title: 'Status Listing' }));
+    expect(created.status, `seed failed: ${JSON.stringify(created.body)}`).toBe(201);
+    const listingId = created.body.id;
+
+    async function fetchSummary(): Promise<ListingSummary | undefined> {
+      const list = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${source.id}&limit=50`);
+      expect(list.status).toBe(200);
+      return list.body.listings.find((l) => l.id === listingId);
+    }
+
+    const before = await fetchSummary();
+    expect(before?.identifyPartsStatus, 'no job yet must surface as null, not an empty/placeholder object').toBeNull();
+
+    // Seed the first job directly via the same query functions
+    // identifyPartsJobs.test.ts exercises — this describe block already
+    // runs in-process against a real DuckDB file (see the module-level
+    // comment above), so it can call them directly rather than faking an
+    // HTTP route for the worker pool.
+    const firstJob = await hookDb.insertQueuedJobIfNoneActive(listingId);
+    expect(firstJob).not.toBeNull();
+    const afterQueued = await fetchSummary();
+    expect(afterQueued?.identifyPartsStatus).toEqual({ stage: 'queued', errorMessage: null });
+
+    await hookDb.updateJobStage(firstJob!.id, 'sourcing_references');
+    const afterAdvanced = await fetchSummary();
+    expect(afterAdvanced?.identifyPartsStatus).toEqual({ stage: 'sourcing_references', errorMessage: null });
+
+    await hookDb.failJob(firstJob!.id, 'Simulated vision-model failure');
+    const afterFailed = await fetchSummary();
+    expect(afterFailed?.identifyPartsStatus).toEqual({ stage: 'failed', errorMessage: 'Simulated vision-model failure' });
+
+    // A second job for the same Listing is only possible once the first
+    // reached a terminal stage (insertQueuedJobIfNoneActive's own guard) —
+    // confirms identifyPartsStatus tracks the newest row, not the first
+    // one ever created for this Listing.
+    const secondJob = await hookDb.insertQueuedJobIfNoneActive(listingId);
+    expect(secondJob).not.toBeNull();
+    expect(secondJob!.id).not.toBe(firstJob!.id);
+    const afterSecond = await fetchSummary();
+    expect(afterSecond?.identifyPartsStatus).toEqual({ stage: 'queued', errorMessage: null });
+  }, 30_000);
 });
