@@ -175,7 +175,9 @@ export function createReferenceSourcer(): ReferenceSourcer {
     try {
       // Recorded regardless of outcome — the attempt record is what makes
       // Requirement 6's "never re-attempt the same combo" true for failures too.
-      await recordSourcingAttempt(category, brand, partNumber, inserted);
+      // Binary for now: T6 replaces this with the full three-way
+      // succeeded/not_found/infrastructure_blocked classification.
+      await recordSourcingAttempt(category, brand, partNumber, inserted ? 'succeeded' : 'not_found');
     } catch (err) {
       // A failure to write the bookkeeping row must not fail identify-parts
       // either; the worst case is one wasted re-attempt on a later request.

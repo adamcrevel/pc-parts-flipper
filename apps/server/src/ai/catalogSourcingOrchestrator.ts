@@ -83,7 +83,9 @@ export async function sourceCatalogIfNeeded(category: ComponentCategory, brand: 
   try {
     // Recorded regardless of outcome — the attempt record is what makes
     // Requirement 5's "never re-attempt the same combo" true for failures too.
-    await recordCatalogSourcingAttempt(category, brand, succeeded, insertedCount);
+    // Binary for now: T6 replaces this with the full three-way
+    // succeeded/not_found/infrastructure_blocked classification.
+    await recordCatalogSourcingAttempt(category, brand, succeeded ? 'succeeded' : 'not_found', insertedCount);
   } catch (err) {
     // A failure to write the bookkeeping row must not fail identify-parts
     // either; the worst case is one wasted re-attempt on a later request.

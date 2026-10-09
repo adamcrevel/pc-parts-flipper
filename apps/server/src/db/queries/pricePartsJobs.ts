@@ -9,6 +9,7 @@
 // and one researched value serves every row sharing the combo.
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
+import { computeNextRetryAt } from '../../retryBackoff.js';
 import type { ComponentCategory, PricePartsJob, PricePartsJobStage } from '../types.js';
 
 // Converts one raw JSON row into the camelCase PricePartsJob shape.
@@ -94,7 +95,9 @@ export async function claimNextQueuedPriceJob(): Promise<PricePartsJob | null> {
     `UPDATE price_parts_jobs
      SET stage = 'pricing', started_at = current_timestamp, updated_at = current_timestamp
      WHERE id = (
-       SELECT id FROM price_parts_jobs WHERE stage = 'queued' ORDER BY created_at LIMIT 1
+       SELECT id FROM price_parts_jobs
+       WHERE stage = 'queued' AND (next_retry_at IS NULL OR next_retry_at <= current_timestamp)
+       ORDER BY created_at LIMIT 1
      )
      RETURNING *`,
   );
@@ -130,6 +133,44 @@ export async function failPriceJob(jobId: string, errorMessage: string): Promise
      SET stage = 'failed', error_message = $error_message, completed_at = current_timestamp, updated_at = current_timestamp
      WHERE id = $id`,
     { id: jobId, error_message: errorMessage },
+  );
+}
+
+/**
+ * Re-queues a job after an infrastructure failure instead of permanently
+ * failing it (Req 6, 7): price-research jobs have no genuine-business-
+ * failure outcome at all (A3) — every caught exception at the call site is
+ * retry-eligible by construction, so every failure here goes through this
+ * function, never `failPriceJob` (left in place, per the plan, but no
+ * longer called once T7 lands). Reads the job's current `retry_count`,
+ * increments it, and computes the next retry window via
+ * `computeNextRetryAt` (T1) — the same growing, uncapped-count backoff
+ * schedule used everywhere else this feature retries. Returns the job to
+ * `queued` with the new `retry_count`/`next_retry_at`/`error_message` in
+ * one statement; `started_at`/`completed_at` are deliberately left
+ * untouched, since `claimNextQueuedPriceJob` re-stamps `started_at` itself
+ * on the next successful claim, and the job hasn't actually completed.
+ * `claimNextQueuedPriceJob`'s backoff guard (`next_retry_at IS NULL OR
+ * next_retry_at <= current_timestamp`) keeps this job un-claimable from the
+ * outside — indistinguishable from a normal `queued` job once its window
+ * reopens — until the computed instant passes.
+ */
+export async function retryOrFailPriceJob(jobId: string, errorMessage: string): Promise<void> {
+  const connection = await getConnection();
+  const reader = await connection.runAndReadAll(
+    `SELECT retry_count FROM price_parts_jobs WHERE id = $id`,
+    { id: jobId },
+  );
+  const rows = reader.getRowObjectsJson();
+  const currentRetryCount = rows.length > 0 ? Number(rows[0].retry_count ?? 0) : 0;
+  const newRetryCount = currentRetryCount + 1;
+  const nextRetryAt = computeNextRetryAt(newRetryCount);
+  await connection.run(
+    `UPDATE price_parts_jobs
+     SET stage = 'queued', retry_count = $retry_count, next_retry_at = $next_retry_at,
+         error_message = $error_message, updated_at = current_timestamp
+     WHERE id = $id`,
+    { id: jobId, retry_count: newRetryCount, next_retry_at: nextRetryAt.toISOString(), error_message: errorMessage },
   );
 }
 

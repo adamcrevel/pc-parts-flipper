@@ -5,6 +5,7 @@
 // endpoint) use the functions below to move it through its stages.
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
+import { computeNextRetryAt } from '../../retryBackoff.js';
 import type { IdentifyPartsJob, IdentifyPartsJobStage, IdentifyPartsResponse } from '@pc-parts-flipper/shared';
 
 // Converts one raw JSON row into the camelCase IdentifyPartsJob shape,
@@ -102,7 +103,9 @@ export async function claimNextQueuedJob(): Promise<IdentifyPartsJob | null> {
     `UPDATE identify_parts_jobs
      SET stage = 'identifying', started_at = current_timestamp
      WHERE id = (
-       SELECT id FROM identify_parts_jobs WHERE stage = 'queued' ORDER BY created_at LIMIT 1
+       SELECT id FROM identify_parts_jobs
+       WHERE stage = 'queued' AND (next_retry_at IS NULL OR next_retry_at <= current_timestamp)
+       ORDER BY created_at LIMIT 1
      )
      RETURNING *`,
   );
@@ -141,6 +144,43 @@ export async function failJob(jobId: string, errorMessage: string): Promise<void
      SET stage = 'failed', error_message = $error_message, completed_at = current_timestamp, updated_at = current_timestamp
      WHERE id = $id`,
     { id: jobId, error_message: errorMessage },
+  );
+}
+
+/**
+ * Re-queues a job after an infrastructure failure instead of permanently
+ * failing it (Req 5, 7): every identify-parts job failure besides the
+ * Listing having been deleted (handled by the untouched `failJob` above,
+ * called directly by the one permanent-failure branch outside this
+ * function) is retry-eligible. Reads the job's current `retry_count`,
+ * increments it, and computes the next retry window via
+ * `computeNextRetryAt` (T1) — the same growing, uncapped-count backoff
+ * schedule used everywhere else this feature retries. Returns the job to
+ * `queued` with the new `retry_count`/`next_retry_at`/`error_message` in
+ * one statement; `started_at`/`completed_at` are deliberately left
+ * untouched, since `claimNextQueuedJob` re-stamps `started_at` itself on
+ * the next successful claim, and the job hasn't actually completed.
+ * `claimNextQueuedJob`'s backoff guard (`next_retry_at IS NULL OR
+ * next_retry_at <= current_timestamp`) keeps this job un-claimable from the
+ * outside — indistinguishable from a normal `queued` job once its window
+ * reopens — until the computed instant passes.
+ */
+export async function retryOrFailJob(jobId: string, errorMessage: string): Promise<void> {
+  const connection = await getConnection();
+  const reader = await connection.runAndReadAll(
+    `SELECT retry_count FROM identify_parts_jobs WHERE id = $id`,
+    { id: jobId },
+  );
+  const rows = reader.getRowObjectsJson();
+  const currentRetryCount = rows.length > 0 ? Number(rows[0].retry_count ?? 0) : 0;
+  const newRetryCount = currentRetryCount + 1;
+  const nextRetryAt = computeNextRetryAt(newRetryCount);
+  await connection.run(
+    `UPDATE identify_parts_jobs
+     SET stage = 'queued', retry_count = $retry_count, next_retry_at = $next_retry_at,
+         error_message = $error_message, updated_at = current_timestamp
+     WHERE id = $id`,
+    { id: jobId, retry_count: newRetryCount, next_retry_at: nextRetryAt.toISOString(), error_message: errorMessage },
   );
 }
 
