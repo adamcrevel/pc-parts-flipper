@@ -173,6 +173,11 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'part_number',
     'attempted_at',
     'succeeded',
+    // sourcing-resilience feature (T1): backoff bookkeeping for infra-
+    // failure retries, appended by ALTER_STATEMENTS in this array order.
+    'blocked',
+    'attempt_count',
+    'next_retry_at',
   ],
   // (ai-catalog-sourcing feature T1): one row per (category, brand) combo
   // ever catalog-sourced, so a repeat identify-parts pass skips a brand
@@ -184,6 +189,11 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'attempted_at',
     'succeeded',
     'products_found',
+    // sourcing-resilience feature (T1): same backoff bookkeeping as
+    // part_reference_sourcing_attempts above.
+    'blocked',
+    'attempt_count',
+    'next_retry_at',
   ],
   // (async identify-parts-queue feature T1): one row per enqueued
   // identify-parts job, columns in the CREATE TABLE's DDL order above.
@@ -198,6 +208,10 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'started_at',
     'completed_at',
     'updated_at',
+    // sourcing-resilience feature (T1): job-level retry bookkeeping,
+    // appended by ALTER_STATEMENTS in this array order.
+    'retry_count',
+    'next_retry_at',
   ],
   // Cache of AI-researched resale-value estimates for a given
   // (component_category, brand, part_number) combo (part-price-estimation
@@ -229,6 +243,10 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'started_at',
     'completed_at',
     'updated_at',
+    // sourcing-resilience feature (T1): same job-level retry bookkeeping
+    // as identify_parts_jobs above.
+    'retry_count',
+    'next_retry_at',
   ],
 };
 

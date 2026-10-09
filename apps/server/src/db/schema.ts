@@ -278,6 +278,37 @@ export const ALTER_STATEMENTS: readonly string[] = [
   `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS price_source VARCHAR`,
   `ALTER TABLE listings ADD COLUMN IF NOT EXISTS non_working BOOLEAN DEFAULT false`,
   `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS working_status VARCHAR DEFAULT 'working'`,
+  // sourcing-resilience feature (Req 1, 3, 5, 6, 10): backoff bookkeeping
+  // for infrastructure-failure retries. `blocked`/`attempt_count`/
+  // `next_retry_at` on the two sourcing-attempt tables let a combo whose
+  // only failure was infra (rate limit, CAPTCHA, thrown error) be retried
+  // once its backoff window reopens, instead of the unique-index dedup
+  // treating that one infra failure as a permanent "already attempted."
+  // `next_retry_at` stays NULL forever for a genuinely succeeded/not-found
+  // row (T2), so the skip-check's `next_retry_at IS NULL OR next_retry_at
+  // <= current_timestamp` keeps reporting those as attempted exactly as
+  // today. `retry_count`/`next_retry_at` on the two job tables do the same
+  // for job-level retry (Req 5, 6): a job re-queued after an infra failure
+  // waits out its own backoff window before `claimNextQueuedJob` picks it
+  // up again (T3). None of these carry NOT NULL — confirmed against a real
+  // DuckDB connection that `ADD COLUMN ... NOT NULL DEFAULT x` fails with
+  // "Adding columns with constraints not yet supported" (same ADD-
+  // CONSTRAINT restriction Req 10 already calls out for ALTER COLUMN/DROP
+  // COLUMN), matching every other entry in this array, none of which is
+  // NOT NULL either. `DEFAULT` alone still backfills every existing row
+  // (verified directly), so application code (T2/T3) can rely on these
+  // never being NULL for a row written after this ALTER runs, the same way
+  // every other defaulted column here already works.
+  `ALTER TABLE part_reference_sourcing_attempts ADD COLUMN IF NOT EXISTS blocked BOOLEAN DEFAULT false`,
+  `ALTER TABLE part_reference_sourcing_attempts ADD COLUMN IF NOT EXISTS attempt_count INTEGER DEFAULT 1`,
+  `ALTER TABLE part_reference_sourcing_attempts ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMP`,
+  `ALTER TABLE part_catalog_sourcing_attempts ADD COLUMN IF NOT EXISTS blocked BOOLEAN DEFAULT false`,
+  `ALTER TABLE part_catalog_sourcing_attempts ADD COLUMN IF NOT EXISTS attempt_count INTEGER DEFAULT 1`,
+  `ALTER TABLE part_catalog_sourcing_attempts ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMP`,
+  `ALTER TABLE identify_parts_jobs ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0`,
+  `ALTER TABLE identify_parts_jobs ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMP`,
+  `ALTER TABLE price_parts_jobs ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0`,
+  `ALTER TABLE price_parts_jobs ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMP`,
 ];
 
 // -- Phase 4: indexes ------------------------------------------------------

@@ -196,3 +196,45 @@ describe('parsePriceEstimationResponse', () => {
     }
   });
 });
+
+describe('parsePriceEstimationResponse — prose-wrapped JSON recovery (sourcing-resilience Req 9)', () => {
+  it('recovers the live-observed "...$90 consistently." response instead of discarding a real price', () => {
+    // The exact failure shape captured from a real run: a sentence of
+    // commentary, then a bare (unfenced) valid payload. stripCodeFence leaves
+    // the prose in place and the direct JSON.parse fails, so this can only
+    // pass via extractBracketedJson.
+    const raw = 'Original full-tower case; these sell around $90 consistently.\n\n{"confident":true,"priceUsd":90.00}';
+
+    expect(parser.parsePriceEstimationResponse(raw)).toBe(90);
+  });
+
+  it('recovers a payload wrapped in prose on both sides', () => {
+    const raw = 'Based on recent sold listings:\n{"confident":true,"priceUsd":42.5}\nPrices vary by condition.';
+
+    expect(parser.parsePriceEstimationResponse(raw)).toBe(42.5);
+  });
+
+  it('recovers an honest confident:false buried in prose, still as null and without warning', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    const raw = 'I could not find reliable sold data for this.\n{"confident":false,"priceUsd":null}';
+
+    expect(parser.parsePriceEstimationResponse(raw)).toBeNull();
+    // Recovered and understood as a real "I don't know" — not logged as an
+    // unparseable response, which is what the pre-fallback path would do.
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('still returns null for prose carrying no JSON object at all', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+
+    expect(parser.parsePriceEstimationResponse('I was rate limited and gave up [no payload].')).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it('still returns null for a payload truncated before its closing brace', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+
+    expect(parser.parsePriceEstimationResponse('Here you go:\n{"confident":true,"priceUsd":90')).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+  });
+});

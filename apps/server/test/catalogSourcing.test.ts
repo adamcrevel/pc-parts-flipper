@@ -70,6 +70,21 @@ describe('buildCatalogSourcingPrompt', () => {
     expect(text.toLowerCase()).not.toContain('up to');
   });
 
+  it('tells the model to report blocked:true for a rate limit or CAPTCHA, distinctly from a completed nothing-found search (sourcing-resilience Req 8)', () => {
+    const text = prompt.buildCatalogSourcingPrompt('GPU', 'Zotac');
+
+    // The access-denied conditions the live failures actually looked like.
+    expect(text.toLowerCase()).toContain('rate limit');
+    expect(text.toLowerCase()).toContain('captcha');
+    // Both JSON shapes must be spelled out, or the model has no way to tell
+    // the two empty-catalog outcomes apart.
+    expect(text).toContain('{"products":[],"blocked":true}');
+    expect(text).toContain('{"products":[],"blocked":false}');
+    // And the blocked:true case must be explicitly fenced off from the
+    // ordinary "searched, found nothing" case.
+    expect(text).toContain('never for a search you were able to run that simply turned up nothing');
+  });
+
   it('works with all component categories', () => {
     const categories = ['CPU', 'GPU', 'Motherboard', 'RAM', 'Storage', 'PSU', 'Case', 'Cooler', 'Other'] as const;
 
@@ -92,10 +107,13 @@ describe('parseCatalogSourcingResponse', () => {
 
     const result = parser.parseCatalogSourcingResponse(raw);
 
-    expect(result).toEqual([
-      { partNumber: 'AIR 903 MAX', url: 'https://montechpc.com/air-903-max.webp' },
-      { partNumber: 'AIR 903 BASE', url: 'https://montechpc.com/air-903-base.webp' },
-    ]);
+    expect(result).toEqual({
+      candidates: [
+        { partNumber: 'AIR 903 MAX', url: 'https://montechpc.com/air-903-max.webp' },
+        { partNumber: 'AIR 903 BASE', url: 'https://montechpc.com/air-903-base.webp' },
+      ],
+      blocked: false,
+    });
   });
 
   it('parses a large catalog response with no truncation (no count cap)', () => {
@@ -108,7 +126,7 @@ describe('parseCatalogSourcingResponse', () => {
 
     const result = parser.parseCatalogSourcingResponse(raw);
 
-    expect(result).toHaveLength(50);
+    expect(result.candidates).toHaveLength(50);
   });
 
   it('parses an empty products array as an empty result, not an error', () => {
@@ -116,7 +134,7 @@ describe('parseCatalogSourcingResponse', () => {
 
     const result = parser.parseCatalogSourcingResponse(raw);
 
-    expect(result).toEqual([]);
+    expect(result).toEqual({ candidates: [], blocked: false });
   });
 
   it('trims whitespace from partNumber and url strings', () => {
@@ -126,7 +144,10 @@ describe('parseCatalogSourcingResponse', () => {
 
     const result = parser.parseCatalogSourcingResponse(raw);
 
-    expect(result).toEqual([{ partNumber: 'AIR 903 MAX', url: 'https://montechpc.com/air-903-max.webp' }]);
+    expect(result).toEqual({
+      candidates: [{ partNumber: 'AIR 903 MAX', url: 'https://montechpc.com/air-903-max.webp' }],
+      blocked: false,
+    });
   });
 
   it('strips a markdown code fence the model added despite being told not to', () => {
@@ -134,7 +155,10 @@ describe('parseCatalogSourcingResponse', () => {
 
     const result = parser.parseCatalogSourcingResponse(raw);
 
-    expect(result).toEqual([{ partNumber: 'AIR 903 MAX', url: 'https://montechpc.com/x.webp' }]);
+    expect(result).toEqual({
+      candidates: [{ partNumber: 'AIR 903 MAX', url: 'https://montechpc.com/x.webp' }],
+      blocked: false,
+    });
   });
 
   it('drops a malformed entry (missing url) and logs at Warn, keeping the rest', () => {
@@ -145,7 +169,10 @@ describe('parseCatalogSourcingResponse', () => {
 
     const result = parser.parseCatalogSourcingResponse(raw);
 
-    expect(result).toEqual([{ partNumber: 'Good One', url: 'https://example.com/good.jpg' }]);
+    expect(result).toEqual({
+      candidates: [{ partNumber: 'Good One', url: 'https://example.com/good.jpg' }],
+      blocked: false,
+    });
     expect(warnSpy).toHaveBeenCalled();
   });
 
@@ -160,7 +187,10 @@ describe('parseCatalogSourcingResponse', () => {
 
     const result = parser.parseCatalogSourcingResponse(raw);
 
-    expect(result).toEqual([{ partNumber: 'Good One', url: 'https://example.com/good.jpg' }]);
+    expect(result).toEqual({
+      candidates: [{ partNumber: 'Good One', url: 'https://example.com/good.jpg' }],
+      blocked: false,
+    });
     expect(warnSpy).toHaveBeenCalled();
   });
 
@@ -172,7 +202,10 @@ describe('parseCatalogSourcingResponse', () => {
 
     const result = parser.parseCatalogSourcingResponse(raw);
 
-    expect(result).toEqual([{ partNumber: 'Good One', url: 'https://example.com/good.jpg' }]);
+    expect(result).toEqual({
+      candidates: [{ partNumber: 'Good One', url: 'https://example.com/good.jpg' }],
+      blocked: false,
+    });
     expect(warnSpy).toHaveBeenCalled();
   });
 
@@ -186,7 +219,10 @@ describe('parseCatalogSourcingResponse', () => {
 
     const result = parser.parseCatalogSourcingResponse(raw);
 
-    expect(result).toEqual([{ partNumber: 'AIR 903 MAX', url: 'https://example.com/first.jpg' }]);
+    expect(result).toEqual({
+      candidates: [{ partNumber: 'AIR 903 MAX', url: 'https://example.com/first.jpg' }],
+      blocked: false,
+    });
   });
 
   it('throws AppError(502) for non-JSON output', () => {
@@ -242,7 +278,10 @@ describe('parseCatalogSourcingResponse — markdown fence handling', () => {
 
     const result = parser.parseCatalogSourcingResponse(raw);
 
-    expect(result).toEqual([{ partNumber: 'X', url: 'https://test.com/img.png' }]);
+    expect(result).toEqual({
+      candidates: [{ partNumber: 'X', url: 'https://test.com/img.png' }],
+      blocked: false,
+    });
   });
 
   it('handles triple-backtick fence without language specifier', () => {
@@ -250,6 +289,88 @@ describe('parseCatalogSourcingResponse — markdown fence handling', () => {
 
     const result = parser.parseCatalogSourcingResponse(raw);
 
-    expect(result).toEqual([]);
+    expect(result).toEqual({ candidates: [], blocked: false });
+  });
+});
+
+describe('parseCatalogSourcingResponse — blocked field (sourcing-resilience Req 8)', () => {
+  it('reports blocked:true for the live-observed rate-limit/CAPTCHA shape', () => {
+    const raw = JSON.stringify({ products: [], blocked: true });
+
+    expect(parser.parseCatalogSourcingResponse(raw)).toEqual({ candidates: [], blocked: true });
+  });
+
+  it('reports a partial catalog alongside blocked:true rather than discarding either signal', () => {
+    const raw = JSON.stringify({
+      products: [{ partNumber: 'AIR 903 MAX', url: 'https://montechpc.com/a.webp' }],
+      blocked: true,
+    });
+
+    expect(parser.parseCatalogSourcingResponse(raw)).toEqual({
+      candidates: [{ partNumber: 'AIR 903 MAX', url: 'https://montechpc.com/a.webp' }],
+      blocked: true,
+    });
+  });
+
+  it('coerces an absent blocked field to false without warning (older/terser response)', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    const raw = JSON.stringify({ products: [] });
+
+    expect(parser.parseCatalogSourcingResponse(raw).blocked).toBe(false);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('coerces a non-boolean blocked field to false without warning', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+
+    for (const blockedValue of ['true', 1, {}, [], null]) {
+      const raw = JSON.stringify({ products: [], blocked: blockedValue });
+      expect(parser.parseCatalogSourcingResponse(raw).blocked).toBe(false);
+    }
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('parseCatalogSourcingResponse — prose-wrapped JSON recovery (sourcing-resilience Req 9)', () => {
+  it('recovers the live-observed "Confirmed — https resolves fine..." response', () => {
+    // The exact failure shape captured from a real run: a sentence of
+    // commentary, then a bare (unfenced) valid payload. stripCodeFence leaves
+    // the prose in place and the direct JSON.parse fails, so this can only
+    // pass via extractBracketedJson.
+    const raw =
+      'Confirmed — https resolves fine on their CDN.\n\n{"products":[{"partNumber":"AIR 903 MAX","url":"https://montechpc.com/a.webp"}]}';
+
+    expect(parser.parseCatalogSourcingResponse(raw)).toEqual({
+      candidates: [{ partNumber: 'AIR 903 MAX', url: 'https://montechpc.com/a.webp' }],
+      blocked: false,
+    });
+  });
+
+  it('recovers a blocked:true payload wrapped in prose on both sides', () => {
+    const raw = 'Their site showed me a CAPTCHA.\n{"products":[],"blocked":true}\nHope that helps.';
+
+    expect(parser.parseCatalogSourcingResponse(raw)).toEqual({ candidates: [], blocked: true });
+  });
+
+  it('still throws AppError(502) for prose carrying no JSON object at all', () => {
+    vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+
+    expect(() => parser.parseCatalogSourcingResponse('I was rate limited and gave up [no payload].')).toThrow(
+      expect.objectContaining({
+        statusCode: 502,
+        message: expect.stringContaining('did not return valid JSON'),
+      }),
+    );
+  });
+
+  it('still throws AppError(502) for a payload truncated before its closing brace', () => {
+    vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+
+    expect(() => parser.parseCatalogSourcingResponse('Here you go:\n{"products":[{"partNumber":"X"')).toThrow(
+      expect.objectContaining({
+        statusCode: 502,
+        message: expect.stringContaining('did not return valid JSON'),
+      }),
+    );
   });
 });
