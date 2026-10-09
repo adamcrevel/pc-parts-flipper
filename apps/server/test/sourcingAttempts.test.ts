@@ -1,5 +1,6 @@
 // Tests for apps/server/src/db/queries/sourcingAttempts.ts
-// (ai-reference-autosourcing feature T1).
+// (ai-reference-autosourcing feature T1, extended by sourcing-resilience T2:
+// three-way outcome recording and the backoff-gated skip-check).
 import type * as DbModule from '../src/db/index.js';
 import type * as ClientModule from '../src/db/client.js';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -48,107 +49,207 @@ async function countAttemptRows(
   return Number(reader.getRowObjectsJson()[0].cnt);
 }
 
+// The stored attempt row, read directly rather than through the module under
+// test. `succeeded`/`blocked` come back as JSON booleans, `attempt_count` as
+// a number.
+async function readAttemptRow(
+  category: string,
+  brand: string,
+  partNumber: string,
+): Promise<{ succeeded: boolean; blocked: boolean; attemptCount: number }> {
+  const connection = await getConnection();
+  const reader = await connection.runAndReadAll(
+    `SELECT succeeded, blocked, attempt_count FROM part_reference_sourcing_attempts
+     WHERE category = $category AND brand = $brand AND part_number = $part_number`,
+    { category, brand, part_number: partNumber },
+  );
+  const rows = reader.getRowObjectsJson();
+  expect(rows).toHaveLength(1);
+  return {
+    succeeded: rows[0].succeeded as boolean,
+    blocked: rows[0].blocked as boolean,
+    attemptCount: Number(rows[0].attempt_count),
+  };
+}
+
+// How far in the future the combo's backoff window sits, in seconds, as
+// measured by DuckDB itself against the same `current_timestamp` the
+// skip-check compares to; null when `next_retry_at` is NULL (a permanently
+// settled combo). Measuring the real stored interval — rather than merely
+// asserting non-null — is what makes the exponential growth of the schedule
+// observable from a test.
+async function secondsUntilRetry(
+  category: string,
+  brand: string,
+  partNumber: string,
+): Promise<number | null> {
+  const connection = await getConnection();
+  const reader = await connection.runAndReadAll(
+    `SELECT date_diff('second', CAST(current_timestamp AS TIMESTAMP), next_retry_at) AS secs
+       FROM part_reference_sourcing_attempts
+      WHERE category = $category AND brand = $brand AND part_number = $part_number`,
+    { category, brand, part_number: partNumber },
+  );
+  const rows = reader.getRowObjectsJson();
+  expect(rows).toHaveLength(1);
+  return rows[0].secs === null ? null : Number(rows[0].secs);
+}
+
+// Simulates the passage of real time: moves an already-recorded combo's
+// backoff window into the past without touching any other column, so the
+// reopening behaviour can be tested without waiting five real minutes.
+async function expireBackoffWindow(
+  category: string,
+  brand: string,
+  partNumber: string,
+): Promise<void> {
+  const connection = await getConnection();
+  await connection.runAndReadAll(
+    `UPDATE part_reference_sourcing_attempts
+        SET next_retry_at = CAST(current_timestamp AS TIMESTAMP) - INTERVAL 1 MINUTE
+      WHERE category = $category AND brand = $brand AND part_number = $part_number`,
+    { category, brand, part_number: partNumber },
+  );
+}
+
 describe('Sourcing Attempts — hasSourcingBeenAttempted', () => {
   it('returns false before any recordSourcingAttempt and true after', async () => {
     const before = await db.hasSourcingBeenAttempted('GPU', 'NVIDIA', 'RTX 4060');
     expect(before).toBe(false);
 
-    await db.recordSourcingAttempt('GPU', 'NVIDIA', 'RTX 4060', true);
+    await db.recordSourcingAttempt('GPU', 'NVIDIA', 'RTX 4060', 'succeeded');
 
     const after = await db.hasSourcingBeenAttempted('GPU', 'NVIDIA', 'RTX 4060');
     expect(after).toBe(true);
   });
+
+  // Requirement 2: a clean, completed search that genuinely found nothing is
+  // permanent. The proof is that it stores NO backoff window at all, so there
+  // is no instant — now or ever — at which the skip-check could reopen it.
+  it('keeps reporting true forever for a genuine not_found combo (no backoff window is ever stored)', async () => {
+    await db.recordSourcingAttempt('CPU', 'AMD', 'Ryzen 5 5600X', 'not_found');
+
+    expect(await secondsUntilRetry('CPU', 'AMD', 'Ryzen 5 5600X')).toBeNull();
+    expect(await db.hasSourcingBeenAttempted('CPU', 'AMD', 'Ryzen 5 5600X')).toBe(true);
+  });
+
+  // Requirement 1: an infra-blocked combo is skipped only while its window is
+  // still closed, and becomes attemptable again the moment it reopens.
+  it('reports true inside an infrastructure_blocked combo\'s backoff window and false once it reopens', async () => {
+    await db.recordSourcingAttempt('GPU', 'Zotac', 'RTX 4070 Twin Edge', 'infrastructure_blocked');
+
+    expect(await db.hasSourcingBeenAttempted('GPU', 'Zotac', 'RTX 4070 Twin Edge')).toBe(true);
+
+    await expireBackoffWindow('GPU', 'Zotac', 'RTX 4070 Twin Edge');
+
+    expect(await db.hasSourcingBeenAttempted('GPU', 'Zotac', 'RTX 4070 Twin Edge')).toBe(false);
+  });
 });
 
 describe('Sourcing Attempts — recordSourcingAttempt', () => {
-  it('inserts a row with succeeded=true', async () => {
-    await db.recordSourcingAttempt('CPU', 'Intel', 'Core i9-13900K', true);
+  it('records a succeeded outcome as succeeded=true, blocked=false and no backoff window', async () => {
+    await db.recordSourcingAttempt('CPU', 'Intel', 'Core i9-13900K', 'succeeded');
 
-    const connection = await getConnection();
-    const reader = await connection.runAndReadAll(
-      `SELECT succeeded FROM part_reference_sourcing_attempts
-       WHERE category = 'CPU' AND brand = 'Intel' AND part_number = 'Core i9-13900K'`,
-    );
-    const rows = reader.getRowObjectsJson();
-    expect(rows).toHaveLength(1);
-    expect(rows[0].succeeded).toBe(true);
+    const row = await readAttemptRow('CPU', 'Intel', 'Core i9-13900K');
+    expect(row.succeeded).toBe(true);
+    expect(row.blocked).toBe(false);
+    expect(row.attemptCount).toBe(1);
+    expect(await secondsUntilRetry('CPU', 'Intel', 'Core i9-13900K')).toBeNull();
   });
 
-  it('inserts a row with succeeded=false', async () => {
-    await db.recordSourcingAttempt('Motherboard', 'ASUS', 'ROG STRIX Z790-E', false);
+  it('records a not_found outcome as succeeded=false, blocked=false and no backoff window', async () => {
+    await db.recordSourcingAttempt('Motherboard', 'ASUS', 'ROG STRIX Z790-E', 'not_found');
 
-    const connection = await getConnection();
-    const reader = await connection.runAndReadAll(
-      `SELECT succeeded FROM part_reference_sourcing_attempts
-       WHERE category = 'Motherboard' AND brand = 'ASUS' AND part_number = 'ROG STRIX Z790-E'`,
-    );
-    const rows = reader.getRowObjectsJson();
-    expect(rows).toHaveLength(1);
-    expect(rows[0].succeeded).toBe(false);
+    const row = await readAttemptRow('Motherboard', 'ASUS', 'ROG STRIX Z790-E');
+    expect(row.succeeded).toBe(false);
+    expect(row.blocked).toBe(false);
+    expect(row.attemptCount).toBe(1);
+    expect(await secondsUntilRetry('Motherboard', 'ASUS', 'ROG STRIX Z790-E')).toBeNull();
   });
 
-  // Requirement 6 dedup proof: a second attempt for the identical
-  // (category, brand, part_number) combo must be silently skipped (no
-  // throw), and the unique index on (category, brand, part_number) must be
-  // the thing actually preventing the second row — not just the query
-  // module choosing not to insert. If the unique index were dropped from
-  // schema.ts's INDEX_STATEMENTS, this test would fail: both inserts would
-  // succeed and the row count would be 2, not 1.
-  it('silently skips a second recordSourcingAttempt for the identical combo (Requirement 6, unique index dedup)', async () => {
-    await db.recordSourcingAttempt('RAM', 'Corsair', 'Vengeance LPX 32GB', true);
+  // Requirement 1/3: the first infra failure stores blocked=true and a window
+  // one BASE_RETRY_DELAY_MS (5 minutes) out — asserted as a real measured
+  // interval, so a window of the wrong size fails just as loudly as a missing
+  // one.
+  it('records an infrastructure_blocked outcome as blocked=true with a ~5 minute backoff window', async () => {
+    await db.recordSourcingAttempt('Storage', 'Crucial', 'P3 Plus 1TB', 'infrastructure_blocked');
 
-    await expect(
-      db.recordSourcingAttempt('RAM', 'Corsair', 'Vengeance LPX 32GB', false),
-    ).resolves.not.toThrow();
+    const row = await readAttemptRow('Storage', 'Crucial', 'P3 Plus 1TB');
+    expect(row.succeeded).toBe(false);
+    expect(row.blocked).toBe(true);
+    expect(row.attemptCount).toBe(1);
 
-    const count = await countAttemptRows('RAM', 'Corsair', 'Vengeance LPX 32GB');
-    expect(count).toBe(1);
-
-    // The first attempt's succeeded value must survive untouched — the
-    // skipped second call never updates the existing row.
-    const connection = await getConnection();
-    const reader = await connection.runAndReadAll(
-      `SELECT succeeded FROM part_reference_sourcing_attempts
-       WHERE category = 'RAM' AND brand = 'Corsair' AND part_number = 'Vengeance LPX 32GB'`,
-    );
-    expect(reader.getRowObjectsJson()[0].succeeded).toBe(true);
-
-    // hasSourcingBeenAttempted still reports true after the skipped retry.
-    expect(await db.hasSourcingBeenAttempted('RAM', 'Corsair', 'Vengeance LPX 32GB')).toBe(true);
+    const secs = await secondsUntilRetry('Storage', 'Crucial', 'P3 Plus 1TB');
+    expect(secs).not.toBeNull();
+    expect(secs as number).toBeGreaterThan(280);
+    expect(secs as number).toBeLessThanOrEqual(300);
   });
 
-  // Requirement 6 / Standing Checks concurrency proof: two GENUINELY
-  // concurrent recordSourcingAttempt calls for the identical combo (fired
-  // together via Promise.all, not sequential awaits) must never produce two
-  // rows or an unhandled rejection — the same proof style referencePhotos.
-  // test.ts's "dedups a concurrent double-promotion" test uses for
-  // part_reference_photos. Unlike the sequential-await test above, this is
-  // the only test in this file that can actually catch a real race between
-  // two overlapping INSERTs landing before either one's unique-index check
-  // resolves.
-  it('dedups two genuinely concurrent recordSourcingAttempt calls for the identical combo (Requirement 6, real race)', async () => {
+  // Requirement 3 / Assumption A2: a retry updates the one existing row in
+  // place (never a second row), raises attempt_count, and doubles the wait —
+  // the ~10 minute bound here is what proves the schedule is exponential in
+  // the accumulated count rather than a flat 5 minutes every time.
+  it('updates the existing row in place on a retry, growing attempt_count and doubling the backoff', async () => {
+    await db.recordSourcingAttempt('Storage', 'Samsung', '990 PRO 2TB', 'infrastructure_blocked');
+    await expireBackoffWindow('Storage', 'Samsung', '990 PRO 2TB');
+
+    await db.recordSourcingAttempt('Storage', 'Samsung', '990 PRO 2TB', 'infrastructure_blocked');
+
+    expect(await countAttemptRows('Storage', 'Samsung', '990 PRO 2TB')).toBe(1);
+    expect((await readAttemptRow('Storage', 'Samsung', '990 PRO 2TB')).attemptCount).toBe(2);
+
+    const secs = await secondsUntilRetry('Storage', 'Samsung', '990 PRO 2TB');
+    expect(secs).not.toBeNull();
+    expect(secs as number).toBeGreaterThan(580);
+    expect(secs as number).toBeLessThanOrEqual(600);
+
+    // Still skipped again, now for twice as long.
+    expect(await db.hasSourcingBeenAttempted('Storage', 'Samsung', '990 PRO 2TB')).toBe(true);
+  });
+
+  // Requirement 2 after Requirement 1: once a retried combo finally completes
+  // a real search and finds nothing, it must become permanent — the backoff
+  // window is cleared, not merely pushed further out.
+  it('clears the backoff window permanently when a retried combo finally settles as not_found', async () => {
+    await db.recordSourcingAttempt('PSU', 'Corsair', 'RM850x', 'infrastructure_blocked');
+    await expireBackoffWindow('PSU', 'Corsair', 'RM850x');
+    expect(await db.hasSourcingBeenAttempted('PSU', 'Corsair', 'RM850x')).toBe(false);
+
+    await db.recordSourcingAttempt('PSU', 'Corsair', 'RM850x', 'not_found');
+
+    const row = await readAttemptRow('PSU', 'Corsair', 'RM850x');
+    expect(row.blocked).toBe(false);
+    expect(row.attemptCount).toBe(2);
+    expect(await secondsUntilRetry('PSU', 'Corsair', 'RM850x')).toBeNull();
+    expect(await db.hasSourcingBeenAttempted('PSU', 'Corsair', 'RM850x')).toBe(true);
+  });
+
+  // Requirement 6 (ai-reference-autosourcing) / Assumption A5 concurrency
+  // proof: two GENUINELY concurrent recordSourcingAttempt calls for the
+  // identical combo (fired together via Promise.all, not sequential awaits)
+  // both see no existing row and both attempt an INSERT; the unique index on
+  // (category, brand, part_number) must turn the loser into the caught,
+  // skipped no-op rather than a second row or an unhandled rejection. This is
+  // the only test in this file that can catch that race, and the only one
+  // that would fail if the unique index were dropped from schema.ts.
+  it('dedups two genuinely concurrent recordSourcingAttempt calls for the identical combo (real race)', async () => {
     // Both calls fired together via Promise.all against the SAME combo, not
     // one awaited before the other starts.
     await Promise.all([
-      db.recordSourcingAttempt('GPU', 'AMD', 'RX 7900 XTX', true),
-      db.recordSourcingAttempt('GPU', 'AMD', 'RX 7900 XTX', false),
+      db.recordSourcingAttempt('GPU', 'AMD', 'RX 7900 XTX', 'succeeded'),
+      db.recordSourcingAttempt('GPU', 'AMD', 'RX 7900 XTX', 'not_found'),
     ]);
 
     // Exactly one row must exist — the unique index must have made the
     // loser of the race hit the caught-constraint-violation skip path
     // instead of inserting a second row.
-    const count = await countAttemptRows('GPU', 'AMD', 'RX 7900 XTX');
-    expect(count).toBe(1);
+    expect(await countAttemptRows('GPU', 'AMD', 'RX 7900 XTX')).toBe(1);
 
     // The winner of the race is whichever call's INSERT landed first; its
     // succeeded value is whatever that was. What matters for this test is
     // that it is one of the two values actually passed in, proving a row
     // from one of the two concurrent calls survived rather than neither.
-    const connection = await getConnection();
-    const reader = await connection.runAndReadAll(
-      `SELECT succeeded FROM part_reference_sourcing_attempts
-       WHERE category = 'GPU' AND brand = 'AMD' AND part_number = 'RX 7900 XTX'`,
-    );
-    expect([true, false]).toContain(reader.getRowObjectsJson()[0].succeeded);
+    const row = await readAttemptRow('GPU', 'AMD', 'RX 7900 XTX');
+    expect([true, false]).toContain(row.succeeded);
   });
 });

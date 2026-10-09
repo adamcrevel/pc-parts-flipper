@@ -162,6 +162,89 @@ describe('pricePartsJobs — stage transitions', () => {
   });
 });
 
+describe('pricePartsJobs — retryOrFailPriceJob', () => {
+  it('returns the job to queued, increments retry_count, sets a future next_retry_at, and records the error, leaving started_at/completed_at untouched', async () => {
+    const partNumber = uniquePartNumber();
+    const job = await db.createQueuedPriceJob('GPU', 'EVGA', partNumber);
+    await db.claimNextQueuedPriceJob(); // -> pricing, stamps started_at
+    const claimedRows = await readJobRows('EVGA', partNumber);
+    expect(claimedRows[0].started_at).not.toBeNull();
+
+    const before = Date.now();
+    await db.retryOrFailPriceJob(job.id, "'omp' exited with code 1");
+
+    const rows = await readJobRows('EVGA', partNumber);
+    expect(rows[0].stage).toBe('queued');
+    expect(Number(rows[0].retry_count)).toBe(1);
+    expect(rows[0].error_message).toBe("'omp' exited with code 1");
+    expect(rows[0].completed_at).toBeNull();
+    expect(rows[0].started_at).not.toBeNull(); // untouched from the earlier claim
+    expect(new Date(rows[0].next_retry_at as string).getTime()).toBeGreaterThan(before);
+  });
+
+  it('increments retry_count across repeated failures, growing the backoff window each time', async () => {
+    const partNumber = uniquePartNumber();
+    const job = await db.createQueuedPriceJob('RAM', 'Corsair', partNumber);
+
+    await db.retryOrFailPriceJob(job.id, 'first failure');
+    const firstRows = await readJobRows('Corsair', partNumber);
+    expect(Number(firstRows[0].retry_count)).toBe(1);
+
+    await db.retryOrFailPriceJob(job.id, 'second failure');
+    const secondRows = await readJobRows('Corsair', partNumber);
+    expect(Number(secondRows[0].retry_count)).toBe(2);
+    expect(secondRows[0].error_message).toBe('second failure');
+
+    // Second failure's backoff window must be strictly further out than the
+    // first's — exponential growth (10m vs 5m from "now"), not a flat
+    // retry interval repeating the same delay.
+    const firstDelay = new Date(firstRows[0].next_retry_at as string).getTime() - Date.now();
+    const secondDelay = new Date(secondRows[0].next_retry_at as string).getTime() - Date.now();
+    expect(secondDelay).toBeGreaterThan(firstDelay);
+  });
+
+  it('a retried job is not claimable before its backoff window passes, but is claimable once it does', async () => {
+    const partNumber = uniquePartNumber();
+    const job = await db.createQueuedPriceJob('PSU', 'Seasonic', partNumber);
+    await db.retryOrFailPriceJob(job.id, 'transient infra failure');
+
+    // next_retry_at defaults to ~5 minutes out (BASE_RETRY_DELAY_MS) -- still
+    // in the future, so the job must not be claimable yet, even though its
+    // stage is 'queued' exactly like a fresh job.
+    expect(await db.claimNextQueuedPriceJob()).toBeNull();
+
+    // Backdate next_retry_at directly (bypassing the module under test) to
+    // simulate the backoff window having reopened.
+    const connection = await getConnection();
+    await connection.run(
+      `UPDATE price_parts_jobs SET next_retry_at = current_timestamp - INTERVAL 1 SECOND WHERE id = $id`,
+      { id: job.id },
+    );
+
+    const claimed = await db.claimNextQueuedPriceJob();
+    expect(claimed?.id).toBe(job.id);
+    expect(claimed?.stage).toBe('pricing');
+  });
+
+  it('does not disturb failPriceJob\'s existing behavior: a failPriceJob-ed job keeps retry_count/next_retry_at at their defaults and is never reclaimed', async () => {
+    const partNumber = uniquePartNumber();
+    const job = await db.createQueuedPriceJob('PSU', 'Seasonic', partNumber);
+
+    await db.failPriceJob(job.id, 'omp exited non-zero');
+
+    const rows = await readJobRows('Seasonic', partNumber);
+    expect(rows[0].stage).toBe('failed');
+    expect(rows[0].error_message).toBe('omp exited non-zero');
+    expect(rows[0].completed_at).not.toBeNull();
+    expect(Number(rows[0].retry_count)).toBe(0);
+    expect(rows[0].next_retry_at).toBeNull();
+
+    // A permanently-failed job must never be picked back up by the claim
+    // query, backoff guard or not.
+    expect(await db.claimNextQueuedPriceJob()).toBeNull();
+  });
+});
+
 describe('pricePartsJobs — hasNonTerminalPriceJob', () => {
   it('is false for a combo that has never had a job', async () => {
     expect(await db.hasNonTerminalPriceJob('GPU', 'AMD', uniquePartNumber())).toBe(false);

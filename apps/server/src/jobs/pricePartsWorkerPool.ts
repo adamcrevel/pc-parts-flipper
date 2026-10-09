@@ -1,15 +1,25 @@
 // Manages an async worker pool that claims queued price-research jobs and
-// processes them to completion (or failure). Jobs transition through
-// stages as they run: 'queued' → 'pricing' (via claim), then to a terminal
-// stage. Unlike identify-parts jobs, a price job has only one terminal
-// *success* shape to distinguish from failure, not several intermediate
-// stages (see types.ts's PricePartsJobStage doc) — "no confident price" is
-// itself a successful, completed outcome (Req 11), not a failure, so
-// completed vs failed here tracks "did the AI call itself run" rather than
-// "did it find a price". The pool size is configurable via
-// PRICE_PARTS_POOL_SIZE (default 1) so the number of concurrent AI pricing
-// passes can be tuned for available resources, same convention as
-// identifyPartsWorkerPool.ts's own IDENTIFY_PARTS_POOL_SIZE.
+// processes them to completion, or back to 'queued' for an automatic
+// retry. Jobs transition through stages as they run: 'queued' → 'pricing'
+// (via claim), then to a terminal stage. Unlike identify-parts jobs, a
+// price job has only one terminal *success* shape to distinguish from
+// retry, not several intermediate stages (see types.ts's
+// PricePartsJobStage doc) — "no confident price" is itself a successful,
+// completed outcome (Req 11), not a failure, so completed vs retried here
+// tracks "did the AI call itself run" rather than "did it find a price".
+// If the pipeline itself throws (any error caught in processJob's
+// try/catch — a runner crash, timeout, or parse failure), the job is NOT
+// permanently marked 'failed' — it is returned to 'queued' via
+// retryOrFailPriceJob (T3/sourcing-resilience), with its retry_count
+// incremented and a future next_retry_at computed by computeNextRetryAt's
+// growing backoff, so claimNextQueuedPriceJob won't reclaim it again until
+// that window passes. Unlike identifyPartsWorkerPool.ts, this file has no
+// permanent-failure branch at all (A3) — every caught exception here is
+// retry-eligible by construction, so `failPriceJob` is never called from
+// this pool. The pool size is configurable via PRICE_PARTS_POOL_SIZE
+// (default 1) so the number of concurrent AI pricing passes can be tuned
+// for available resources, same convention as identifyPartsWorkerPool.ts's
+// own IDENTIFY_PARTS_POOL_SIZE.
 // On startup, any jobs left in the 'pricing' stage (e.g., from a previous
 // server crash) are reset to 'queued' so they re-enter the queue and are
 // re-processed by the new pool instance.
@@ -17,9 +27,9 @@ import { logger } from '../logger.js';
 import {
   claimNextQueuedPriceJob,
   completePriceJob,
-  failPriceJob,
   propagateCachedPriceToExpectedParts,
   resetOrphanedPriceJobsToQueued,
+  retryOrFailPriceJob,
   updatePriceCacheEntryValue,
 } from '../db/index.js';
 import type { PricePartsJob } from '../db/index.js';
@@ -80,11 +90,13 @@ async function pump(): Promise<void> {
  * completed exactly like a found price. The cache is updated first in
  * either case; propagation onto matching auto-managed Expected Parts only
  * happens for a non-null value, since null has nothing to push.
- * `failPriceJob` is reserved for a genuine runner failure — a spawn error,
- * a timeout, or any other rejection from getOmpSourcingRunner() itself —
- * mirroring identifyPartsWorkerPool.ts's own completed-vs-failed split
- * between "the pipeline ran and returned a result" and "the pipeline
- * itself threw".
+ * `retryOrFailPriceJob` is reserved for a genuine runner failure — a spawn
+ * error, a timeout, or any other rejection from getOmpSourcingRunner()
+ * itself, or from parsing its output — returning the job to 'queued' with
+ * an incremented retry_count and a future next_retry_at (T3) rather than
+ * permanently failing it, mirroring identifyPartsWorkerPool.ts's own
+ * completed-vs-retried split between "the pipeline ran and returned a
+ * result" and "the pipeline itself threw".
  */
 async function processJob(job: PricePartsJob): Promise<void> {
   try {
@@ -101,7 +113,7 @@ async function processJob(job: PricePartsJob): Promise<void> {
     // Derive error message the same way other error paths in this codebase
     // do, so the message is always a string.
     const message = err instanceof Error ? err.message : String(err);
-    await failPriceJob(job.id, message);
+    await retryOrFailPriceJob(job.id, message);
   } finally {
     activeCount -= 1;
     // Fire off pump without awaiting; it continues its background loop.

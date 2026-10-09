@@ -58,6 +58,21 @@ describe('buildImageSourcingPrompt', () => {
     expect(text).toContain('"url"');
   });
 
+  it('tells the model to report blocked:true for a rate limit or CAPTCHA, distinctly from a completed nothing-found search (sourcing-resilience Req 8)', () => {
+    const text = prompt.buildImageSourcingPrompt('GPU', 'Zotac', 'RTX 4070');
+
+    // The access-denied conditions the live failures actually looked like.
+    expect(text.toLowerCase()).toContain('rate limit');
+    expect(text.toLowerCase()).toContain('captcha');
+    // Both JSON shapes must be spelled out, or the model has no way to tell
+    // the two not-found outcomes apart.
+    expect(text).toContain('{"found":false,"url":null,"blocked":true}');
+    expect(text).toContain('{"found":false,"url":null,"blocked":false}');
+    // And the blocked:true case must be explicitly fenced off from the
+    // ordinary "searched, found nothing" case.
+    expect(text).toContain('never for a search you were able to run that simply turned up nothing');
+  });
+
   it('works with all component categories', () => {
     const categories = ['CPU', 'GPU', 'Motherboard', 'RAM', 'Storage', 'PSU', 'Case', 'Cooler', 'Other'] as const;
 
@@ -82,6 +97,7 @@ describe('parseImageSourcingResponse', () => {
     expect(result).toEqual({
       found: true,
       url: 'https://nvidia.com/en-us/geforce/graphics-cards/30-series/rtx-3060/',
+      blocked: false,
     });
   });
 
@@ -96,6 +112,7 @@ describe('parseImageSourcingResponse', () => {
     expect(result).toEqual({
       found: false,
       url: null,
+      blocked: false,
     });
   });
 
@@ -111,6 +128,7 @@ describe('parseImageSourcingResponse', () => {
     expect(result).toEqual({
       found: false,
       url: null,
+      blocked: false,
     });
     // No warning when found=false, regardless of url value
     expect(warnSpy).not.toHaveBeenCalled();
@@ -127,6 +145,7 @@ describe('parseImageSourcingResponse', () => {
     expect(result).toEqual({
       found: false,
       url: null,
+      blocked: false,
     });
     // Accounted for in the log
     expect(warnSpy).toHaveBeenCalledWith(
@@ -147,6 +166,7 @@ describe('parseImageSourcingResponse', () => {
     expect(result).toEqual({
       found: false,
       url: null,
+      blocked: false,
     });
     // Accounted for with the malformed value
     expect(warnSpy).toHaveBeenCalledWith(
@@ -167,6 +187,7 @@ describe('parseImageSourcingResponse', () => {
     expect(result).toEqual({
       found: false,
       url: null,
+      blocked: false,
     });
     expect(warnSpy).toHaveBeenCalledWith(
       expect.objectContaining({ url: '' }),
@@ -186,6 +207,7 @@ describe('parseImageSourcingResponse', () => {
     expect(result).toEqual({
       found: false,
       url: null,
+      blocked: false,
     });
     expect(warnSpy).toHaveBeenCalledWith(
       expect.objectContaining({ url: '   ' }),
@@ -204,6 +226,7 @@ describe('parseImageSourcingResponse', () => {
     expect(result).toEqual({
       found: true,
       url: 'https://example.com/image.jpg',
+      blocked: false,
     });
   });
 
@@ -215,6 +238,7 @@ describe('parseImageSourcingResponse', () => {
     expect(result).toEqual({
       found: true,
       url: 'https://example.com/image.jpg',
+      blocked: false,
     });
   });
 
@@ -314,5 +338,92 @@ describe('parseImageSourcingResponse — markdown fence handling', () => {
 
     expect(result.found).toBe(false);
     expect(result.url).toBeNull();
+  });
+});
+
+describe('parseImageSourcingResponse — blocked field (sourcing-resilience Req 8)', () => {
+  it('reports blocked:true for the live-observed rate-limit/CAPTCHA shape', () => {
+    const raw = JSON.stringify({ found: false, url: null, blocked: true });
+
+    expect(parser.parseImageSourcingResponse(raw)).toEqual({ found: false, url: null, blocked: true });
+  });
+
+  it('coerces an absent blocked field to false without warning (older/terser response)', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    const raw = JSON.stringify({ found: false, url: null });
+
+    expect(parser.parseImageSourcingResponse(raw).blocked).toBe(false);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('coerces a non-boolean blocked field to false without warning', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+
+    for (const blockedValue of ['true', 1, {}, [], null]) {
+      const raw = JSON.stringify({ found: false, url: null, blocked: blockedValue });
+      expect(parser.parseImageSourcingResponse(raw).blocked).toBe(false);
+    }
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('reports blocked as the model sent it alongside a found:true result, rather than inferring it from found', () => {
+    // Contradictory, but the parser's job is to report faithfully and let the
+    // orchestrator classify — not to silently drop the model's own signal.
+    const raw = JSON.stringify({ found: true, url: 'https://example.com/i.jpg', blocked: true });
+
+    expect(parser.parseImageSourcingResponse(raw)).toEqual({
+      found: true,
+      url: 'https://example.com/i.jpg',
+      blocked: true,
+    });
+  });
+
+  it('carries blocked through the found:true-with-malformed-url coercion', () => {
+    vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    const raw = JSON.stringify({ found: true, url: '', blocked: true });
+
+    expect(parser.parseImageSourcingResponse(raw)).toEqual({ found: false, url: null, blocked: true });
+  });
+});
+
+describe('parseImageSourcingResponse — prose-wrapped JSON recovery (sourcing-resilience Req 9)', () => {
+  it('recovers a valid payload the model buried after a sentence of commentary', () => {
+    // Not a fenced response: stripCodeFence leaves the prose in place and the
+    // direct JSON.parse fails, so this can only pass via extractBracketedJson.
+    const raw = 'Confirmed — https resolves fine on their CDN.\n\n{"found":true,"url":"https://zotac.com/img.jpg","blocked":false}';
+
+    expect(parser.parseImageSourcingResponse(raw)).toEqual({
+      found: true,
+      url: 'https://zotac.com/img.jpg',
+      blocked: false,
+    });
+  });
+
+  it('recovers a blocked:true payload wrapped in prose on both sides', () => {
+    const raw = 'I was shown a "verify you are human" page.\n{"found":false,"url":null,"blocked":true}\nHope that helps.';
+
+    expect(parser.parseImageSourcingResponse(raw)).toEqual({ found: false, url: null, blocked: true });
+  });
+
+  it('still throws AppError(502) for prose carrying no JSON object at all', () => {
+    vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+
+    expect(() => parser.parseImageSourcingResponse('I was rate limited and gave up [no payload].')).toThrow(
+      expect.objectContaining({
+        statusCode: 502,
+        message: expect.stringContaining('did not return valid JSON'),
+      }),
+    );
+  });
+
+  it('still throws AppError(502) for a payload truncated before its closing brace', () => {
+    vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+
+    expect(() => parser.parseImageSourcingResponse('Here you go:\n{"found":true,"url":"https://x.com/i.jpg"')).toThrow(
+      expect.objectContaining({
+        statusCode: 502,
+        message: expect.stringContaining('did not return valid JSON'),
+      }),
+    );
   });
 });

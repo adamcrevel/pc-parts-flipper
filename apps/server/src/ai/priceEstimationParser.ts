@@ -11,15 +11,37 @@
 // response; every other case is logged at Warn (never Error — an honest "I
 // don't know" is not a failure) and returns null. Never invents a number.
 import { logger } from '../logger.js';
-import { stripCodeFence } from './identificationParser.js';
+import { extractBracketedJson, stripCodeFence } from './identificationParser.js';
 
-// JSON.parse throws a SyntaxError whose message leaks nothing useful here;
-// caught and treated as "no confident price" rather than rethrown, since
-// non-JSON prose (a plain-English refusal) is an expected, valid shape for
-// this endpoint to receive, not a failure to restate as a 502.
-function parseJson(text: string): unknown {
+// Turns the model's response text into a parsed JSON value, or undefined
+// when it carries no usable JSON at all. JSON.parse's SyntaxError is
+// swallowed rather than rethrown: non-JSON prose (a plain-English refusal)
+// is an expected, valid shape for this endpoint to receive, not a failure
+// to restate as a 502.
+//
+// Two attempts, in order. The fence-stripped `text` is parsed directly,
+// which covers a bare or fully-fenced payload. Only if that fails is the
+// outermost `{...}` payload embedded in the ORIGINAL `rawStdout` extracted
+// and parsed — bracket search is immune to whether a fence wraps the
+// payload, so the original text is the right thing to search. That second
+// attempt is the harden-ai-json-parsing fallback, identical in mechanism to
+// identificationParser.ts's own: it recovers a real price the model already
+// gave but buried inside incidental prose. A truncated payload (no closing
+// brace to find) or a response with no JSON at all still comes back
+// undefined, and still resolves to "no confident price".
+function parseResponseJson(rawStdout: string, text: string): unknown {
   try {
     return JSON.parse(text);
+  } catch {
+    // Fall through to the embedded-payload attempt below.
+  }
+
+  const extracted = extractBracketedJson(rawStdout, 'object');
+  if (extracted === undefined) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(extracted);
   } catch {
     return undefined;
   }
@@ -33,10 +55,20 @@ function parseJson(text: string): unknown {
  * returns an invented/guessed number: anything short of a structurally
  * valid, strictly positive, finite `priceUsd` paired with `confident:true`
  * is treated as "no confident price" and normalized to null.
+ *
+ * A response that embeds a complete, valid JSON object inside incidental
+ * prose (a caveat sentence the model added despite the prompt's "no
+ * commentary" instruction — live-observed as `"Original full-tower... $90
+ * consistently.\n\n{\"confident\":true,\"priceUsd\":90.00}"`) is recovered
+ * rather than thrown away as "no confident price": the direct parse is
+ * tried first, and only on its failure is the outermost `{...}` payload
+ * extracted from the ORIGINAL raw text and re-parsed. A response carrying
+ * no JSON at all still resolves to null exactly as before — this only
+ * recovers a real answer the model already gave.
  */
 export function parsePriceEstimationResponse(rawStdout: string): number | null {
   const text = stripCodeFence(rawStdout);
-  const parsed = parseJson(text);
+  const parsed = parseResponseJson(rawStdout, text);
 
   if (typeof parsed !== 'object' || parsed === null) {
     logger.warn({ outputPreview: text.slice(0, 200) }, 'AI price estimation output was not valid JSON; treating as no confident price');

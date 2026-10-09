@@ -358,6 +358,104 @@ describe('identifyPartsJobs — failJob', () => {
   });
 });
 
+describe('identifyPartsJobs — retryOrFailJob', () => {
+  it('returns the job to queued, increments retry_count, sets a future next_retry_at, and records the error, leaving started_at/completed_at untouched', async () => {
+    const listingId = await createTestListing();
+    const job = await db.insertQueuedJobIfNoneActive(listingId);
+    await db.claimNextQueuedJob(); // -> identifying, stamps started_at
+    const claimedBefore = await db.getJobById(job!.id);
+    expect(claimedBefore?.startedAt).not.toBeNull();
+
+    const before = Date.now();
+    await db.retryOrFailJob(job!.id, "'omp' exited with code 1");
+
+    const connection = await getConnection();
+    const reader = await connection.runAndReadAll(
+      `SELECT * FROM identify_parts_jobs WHERE id = $id`,
+      { id: job!.id },
+    );
+    const row = reader.getRowObjectsJson()[0];
+
+    expect(row.stage).toBe('queued');
+    expect(Number(row.retry_count)).toBe(1);
+    expect(row.error_message).toBe("'omp' exited with code 1");
+    expect(row.completed_at).toBeNull();
+    expect(row.started_at).not.toBeNull(); // untouched from the earlier claim
+    expect(new Date(row.next_retry_at as string).getTime()).toBeGreaterThan(before);
+  });
+
+  it('increments retry_count across repeated failures, growing the backoff window each time', async () => {
+    const listingId = await createTestListing();
+    const job = await db.insertQueuedJobIfNoneActive(listingId);
+    const connection = await getConnection();
+
+    await db.retryOrFailJob(job!.id, 'first failure');
+    const firstRow = (
+      await connection.runAndReadAll(`SELECT * FROM identify_parts_jobs WHERE id = $id`, { id: job!.id })
+    ).getRowObjectsJson()[0];
+    expect(Number(firstRow.retry_count)).toBe(1);
+
+    await db.retryOrFailJob(job!.id, 'second failure');
+    const secondRow = (
+      await connection.runAndReadAll(`SELECT * FROM identify_parts_jobs WHERE id = $id`, { id: job!.id })
+    ).getRowObjectsJson()[0];
+    expect(Number(secondRow.retry_count)).toBe(2);
+    expect(secondRow.error_message).toBe('second failure');
+
+    // Second failure's backoff window must be strictly further out than the
+    // first's — exponential growth (10m vs 5m from "now"), not a flat
+    // retry interval repeating the same delay.
+    const firstDelay = new Date(firstRow.next_retry_at as string).getTime() - Date.now();
+    const secondDelay = new Date(secondRow.next_retry_at as string).getTime() - Date.now();
+    expect(secondDelay).toBeGreaterThan(firstDelay);
+  });
+
+  it('a retried job is not claimable before its backoff window passes, but is claimable once it does', async () => {
+    const listingId = await createTestListing();
+    const job = await db.insertQueuedJobIfNoneActive(listingId);
+    await db.retryOrFailJob(job!.id, 'transient infra failure');
+
+    // next_retry_at defaults to ~5 minutes out (BASE_RETRY_DELAY_MS) -- still
+    // in the future, so the job must not be claimable yet, even though its
+    // stage is 'queued' exactly like a fresh job.
+    expect(await db.claimNextQueuedJob()).toBeNull();
+
+    // Backdate next_retry_at directly (bypassing the module under test, the
+    // same technique claimNextQueuedJob's own FIFO test uses for
+    // created_at) to simulate the backoff window having reopened.
+    const connection = await getConnection();
+    await connection.run(
+      `UPDATE identify_parts_jobs SET next_retry_at = current_timestamp - INTERVAL 1 SECOND WHERE id = $id`,
+      { id: job!.id },
+    );
+
+    const claimed = await db.claimNextQueuedJob();
+    expect(claimed?.id).toBe(job!.id);
+    expect(claimed?.stage).toBe('identifying');
+  });
+
+  it('does not disturb failJob\'s existing permanent-failure behavior: a failJob-ed job keeps retry_count/next_retry_at at their defaults and is never reclaimed', async () => {
+    const listingId = await createTestListing();
+    const job = await db.insertQueuedJobIfNoneActive(listingId);
+
+    await db.failJob(job!.id, 'Listing no longer exists');
+
+    const connection = await getConnection();
+    const row = (
+      await connection.runAndReadAll(`SELECT * FROM identify_parts_jobs WHERE id = $id`, { id: job!.id })
+    ).getRowObjectsJson()[0];
+    expect(row.stage).toBe('failed');
+    expect(row.error_message).toBe('Listing no longer exists');
+    expect(row.completed_at).not.toBeNull();
+    expect(Number(row.retry_count)).toBe(0);
+    expect(row.next_retry_at).toBeNull();
+
+    // A permanently-failed job must never be picked back up by the claim
+    // query, backoff guard or not.
+    expect(await db.claimNextQueuedJob()).toBeNull();
+  });
+});
+
 describe('identifyPartsJobs — markDelivered', () => {
   it('flips delivered from false to true for exactly the targeted job', async () => {
     const listingId = await createTestListing();
