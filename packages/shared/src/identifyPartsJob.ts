@@ -41,3 +41,25 @@ export interface IdentifyPartsJob {
   startedAt: string | null;
   completedAt: string | null;
 }
+
+/**
+ * The per-Listing result of a bulk Identify-Parts enqueue: `queued` means a
+ * new job was started for that Listing, `already_active` means an
+ * unfinished job already existed and the request was a no-op, and
+ * `not_found` means the listing id did not resolve to a Listing at all.
+ * Distinguishing these from a single HTTP status lets the bulk endpoint
+ * report every listing's fate individually instead of failing the whole
+ * batch on the first miss.
+ */
+export type IdentifyPartsBulkOutcome = 'queued' | 'already_active' | 'not_found';
+
+/** One row of a bulk Identify-Parts enqueue response: which Listing, and what happened to it. */
+export interface IdentifyPartsBulkResult {
+  listingId: string;
+  outcome: IdentifyPartsBulkOutcome;
+}
+
+/** `POST /api/listings/identify-parts` response: the per-Listing outcome of enqueueing a bulk Identify-Parts run. */
+export interface IdentifyPartsBulkResponse {
+  results: IdentifyPartsBulkResult[];
+}

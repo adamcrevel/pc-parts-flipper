@@ -15,15 +15,26 @@ import type {
   RawServerBase,
   RawServerDefault,
 } from 'fastify';
-import type { AcceptListingResponse, ExpectedPartInput, ListingComparison, ListingDetail, ListingStatus, ListingSummary, ListListingsResponse } from '@pc-parts-flipper/shared';
+import type {
+  AcceptListingResponse,
+  ExpectedPartInput,
+  ListingComparison,
+  ListingDetail,
+  ListingStatus,
+  ListingSummary,
+  ListListingIdsResponse,
+  ListListingsResponse,
+} from '@pc-parts-flipper/shared';
 import {
   countListings,
   createExpectedPart,
   createListing,
   createPurchase,
   deleteExpectedPart,
+  getLatestJobForListing,
   getListingById,
   listExpectedPartsByListing,
+  listListingIds,
   listListings,
   promoteReferencePhotos,
   transitionOpenListing,
@@ -49,15 +60,24 @@ function computeComparison(listing: Listing, expectedParts: ExpectedPart[]): Lis
 // the full Expected Parts array (kept out of the lighter list payload; the
 // single-listing response below includes it).
 async function toSummary(listing: Listing): Promise<ListingSummary> {
-  const expectedParts = await listExpectedPartsByListing(listing.id);
-  return { ...listing, comparison: computeComparison(listing, expectedParts) };
+  const [expectedParts, job] = await Promise.all([listExpectedPartsByListing(listing.id), getLatestJobForListing(listing.id)]);
+  return {
+    ...listing,
+    comparison: computeComparison(listing, expectedParts),
+    identifyPartsStatus: job ? { stage: job.stage, errorMessage: job.errorMessage } : null,
+  };
 }
 
 // Attaches both the full Expected Parts set and the Req 3 comparison, for
 // the single-listing response.
 async function toDetail(listing: Listing): Promise<ListingDetail> {
-  const expectedParts = await listExpectedPartsByListing(listing.id);
-  return { ...listing, expectedParts, comparison: computeComparison(listing, expectedParts) };
+  const [expectedParts, job] = await Promise.all([listExpectedPartsByListing(listing.id), getLatestJobForListing(listing.id)]);
+  return {
+    ...listing,
+    expectedParts,
+    comparison: computeComparison(listing, expectedParts),
+    identifyPartsStatus: job ? { stage: job.stage, errorMessage: job.errorMessage } : null,
+  };
 }
 
 // Req 4: both accept and reject require the Listing to currently be open —
@@ -189,6 +209,19 @@ export async function registerListingsRoutes<
       countListings({ status: statusFilter, sourceId: sourceIdFilter }),
     ]);
     return { listings: await Promise.all(listings.map(toSummary)), total };
+  });
+
+  // Static route, registered ahead of the /api/listings/:id parametric
+  // route below — find-my-way (Fastify's router) matches static segments
+  // before parametric ones regardless of registration order, but this
+  // ordering keeps the file's own route list matching match-priority order.
+  server.get('/api/listings/ids', async (request): Promise<ListListingIdsResponse> => {
+    const { status, sourceId } = request.query as { status?: string; sourceId?: string };
+    // Same loose query validation as GET /api/listings above.
+    const statusFilter = typeof status === 'string' && VALID_STATUSES.includes(status as ListingStatus) ? (status as ListingStatus) : undefined;
+    const sourceIdFilter = sourceId && sourceId.length > 0 ? sourceId : undefined;
+    logger.info({ route: 'GET /api/listings/ids', status: statusFilter, sourceId: sourceIdFilter }, 'Listing listing ids');
+    return { ids: await listListingIds({ status: statusFilter, sourceId: sourceIdFilter }) };
   });
 
   server.get('/api/listings/:id', async (request) => {

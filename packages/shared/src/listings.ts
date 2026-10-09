@@ -5,6 +5,7 @@
 // lives here (not apps/server) because apps/web may never import apps/server
 // directly (standing check).
 import type { AiPartConfidence, AiPartSource, IdentityCandidate } from './aiIdentification.js';
+import type { IdentifyPartsJobStage } from './identifyPartsJob.js';
 
 /** Fixed component category list (assumption A8), not user-configurable. */
 export type ComponentCategory =
@@ -97,8 +98,16 @@ export interface ListingComparison {
   margin: number;
 }
 
-/** `GET /api/listings` row shape: a Listing plus its comparison (Req 3, 12). */
-export type ListingSummary = Listing & { comparison: ListingComparison };
+/**
+ * `GET /api/listings` row shape: a Listing plus its comparison (Req 3, 12),
+ * plus the status of the most recent Identify-Parts job run against it
+ * (null if no job has ever run for this Listing), so apps/web can render
+ * per-row progress/error state without a second request per Listing.
+ */
+export type ListingSummary = Listing & {
+  comparison: ListingComparison;
+  identifyPartsStatus: { stage: IdentifyPartsJobStage; errorMessage: string | null } | null;
+};
 
 /** `GET /api/listings/:id` shape: a Listing with its full Expected Parts set. */
 export type ListingDetail = ListingSummary & { expectedParts: ExpectedPart[] };
@@ -108,6 +117,11 @@ export type ListingDetail = ListingSummary & { expectedParts: ExpectedPart[] };
 export interface ListListingsResponse {
   listings: ListingSummary[];
   totalCount: number;
+}
+
+/** `GET /api/listings/ids` response: every Listing id matching the current filters, so apps/web can resolve "select all" to a full id set without paginating. */
+export interface ListListingIdsResponse {
+  ids: string[];
 }
 
 /** `POST /api/listings/:id/accept` response: the now-accepted Listing plus the id of the Purchase created from it (Req 4). A full Purchase shape isn't defined here yet — T8 introduces it alongside the Purchases API this id will then resolve against. */

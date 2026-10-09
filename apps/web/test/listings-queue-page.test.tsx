@@ -24,6 +24,11 @@ vi.mock('@/features/listings/listings-api', () => ({
   fetchListings: (...args: unknown[]) => fetchListingsMock(...args),
   acceptListing: (...args: unknown[]) => acceptListingMock(...args),
   rejectListing: (...args: unknown[]) => rejectListingMock(...args),
+  // Req 2: the page resolves "select all" against the full filtered id set.
+  // These cases are about pagination/accept-reject, so an empty set keeps
+  // selection out of the picture entirely.
+  fetchListingIds: () => Promise.resolve<string[]>([]),
+  enqueueBulkIdentifyParts: () => Promise.resolve([]),
 }));
 
 vi.mock('@/features/sources/sources-api', () => ({
@@ -51,6 +56,7 @@ function makeListing(index: number): ListingSummary {
     createdAt: '2024-01-01',
     updatedAt: '2024-01-01',
     comparison: { totalExpectedResaleValue: 150, totalCost: 100, difference: 50 },
+    identifyPartsStatus: null,
   };
 }
 
