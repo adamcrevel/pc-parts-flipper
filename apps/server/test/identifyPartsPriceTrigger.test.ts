@@ -16,6 +16,7 @@ import { logger } from '../src/logger.js';
 const claimNextQueuedJob = vi.fn<[], Promise<IdentifyPartsJob | null>>();
 const completeJob = vi.fn<[string, IdentifyPartsResponse], Promise<void>>();
 const failJob = vi.fn<[string, string], Promise<void>>();
+const retryOrFailJob = vi.fn<[string, string], Promise<void>>();
 const resetOrphanedJobsToQueued = vi.fn<[], Promise<string[]>>();
 const updateJobStage = vi.fn<[string, 'sourcing_references' | 'comparing'], Promise<void>>();
 const getListingById = vi.fn<[string], Promise<Listing | null>>();
@@ -27,6 +28,7 @@ vi.mock('../src/db/index.js', () => ({
   claimNextQueuedJob: (...args: []) => claimNextQueuedJob(...args),
   completeJob: (...args: [string, IdentifyPartsResponse]) => completeJob(...args),
   failJob: (...args: [string, string]) => failJob(...args),
+  retryOrFailJob: (...args: [string, string]) => retryOrFailJob(...args),
   resetOrphanedJobsToQueued: (...args: []) => resetOrphanedJobsToQueued(...args),
   updateJobStage: (...args: [string, 'sourcing_references' | 'comparing']) => updateJobStage(...args),
   getListingById: (...args: [string]) => getListingById(...args),
@@ -179,8 +181,8 @@ describe('persistIdentifiedParts — price pipeline hand-off (Req 1, 3)', () => 
 
     activeHandle = startIdentifyPartsWorkerPool();
 
-    await vi.waitFor(() => expect(failJob).toHaveBeenCalledTimes(1));
-    expect(failJob).toHaveBeenCalledWith('job-Q', 'price trigger exploded');
+    await vi.waitFor(() => expect(retryOrFailJob).toHaveBeenCalledTimes(1));
+    expect(retryOrFailJob).toHaveBeenCalledWith('job-Q', 'price trigger exploded');
     expect(completeJob).not.toHaveBeenCalled();
   });
 });
