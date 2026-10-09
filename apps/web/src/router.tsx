@@ -2,7 +2,6 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { RootLayout } from '@/routes/root-layout';
 import { SourcesPage } from '@/routes/sources-page';
 import { ListingsPage } from '@/routes/listings-page';
-import { ListingsQueuePage } from '@/routes/listings-queue-page';
 import { PurchasesPage } from '@/routes/purchases-page';
 import { PurchaseDetailPage } from '@/routes/purchase-detail-page';
 import { TeardownPage } from '@/routes/teardown-page';
@@ -14,11 +13,10 @@ import { RecordSalePage } from '@/routes/record-sale-page';
 import { ProfitDashboardPage } from '@/routes/profit-dashboard-page';
 
 // Top-level route tree: every screen nests under RootLayout's <Outlet/>. The
-// path list mirrors the full nav contract (Sources, Listings, Listings
-// Queue, Purchases, Parts, Sale Listings, Profit Dashboard) from the feature
-// plan. T5-T13 each swap one placeholder element below for the real screen;
-// the paths themselves should stay stable since the sidebar nav (see
-// root-layout.tsx) links to them by path.
+// path list mirrors the full nav contract (Sources, Listings, Purchases,
+// Parts, Sale Listings, Profit Dashboard) from the feature plan. Each path
+// maps to its real screen; the paths themselves should stay stable since
+// the sidebar nav (see root-layout.tsx) links to them by path.
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -29,7 +27,6 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/sources" replace /> },
       { path: 'sources', element: <SourcesPage /> },
       { path: 'listings', element: <ListingsPage /> },
-      { path: 'listings-queue', element: <ListingsQueuePage /> },
       { path: 'purchases', element: <PurchasesPage /> },
       { path: 'purchases/:id', element: <PurchaseDetailPage /> },
       { path: 'purchases/:id/teardown', element: <TeardownPage /> },

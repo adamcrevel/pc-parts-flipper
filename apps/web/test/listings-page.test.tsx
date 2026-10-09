@@ -28,6 +28,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import type { ListingDetail, ListingSummary, Source } from '@pc-parts-flipper/shared';
 import { ListingsPage } from '../src/routes/listings-page';
 
@@ -37,12 +38,22 @@ const fetchListingsMock = vi.fn();
 const fetchListingMock = vi.fn();
 const createListingMock = vi.fn();
 const updateListingMock = vi.fn();
+const fetchListingIdsMock = vi.fn();
+const acceptListingMock = vi.fn();
+const rejectListingMock = vi.fn();
 
 vi.mock('@/features/listings/listings-api', () => ({
   fetchListings: (...args: unknown[]) => fetchListingsMock(...args),
   fetchListing: (...args: unknown[]) => fetchListingMock(...args),
   createListing: (...args: unknown[]) => createListingMock(...args),
   updateListing: (...args: unknown[]) => updateListingMock(...args),
+  // Req 2/6: ListingsPage (expanded per T3) always fetches the full
+  // filtered id set on mount/filter-change and calls accept/reject from
+  // row actions, so every mock here must cover the full api surface it
+  // imports, not just the fields the inline-edit-race tests exercise.
+  fetchListingIds: (...args: unknown[]) => fetchListingIdsMock(...args),
+  acceptListing: (...args: unknown[]) => acceptListingMock(...args),
+  rejectListing: (...args: unknown[]) => rejectListingMock(...args),
 }));
 
 vi.mock('@/features/sources/sources-api', () => ({
@@ -70,6 +81,7 @@ function makeListing(id: string, title: string, askingPrice: number): ListingSum
     createdAt: '2024-01-01',
     updatedAt: '2024-01-01',
     comparison: { totalExpectedResaleValue: askingPrice + 50, totalCost: askingPrice, difference: 50 },
+    identifyPartsStatus: null,
   };
 }
 
@@ -114,13 +126,20 @@ afterEach(() => {
   fetchListingMock.mockReset();
   createListingMock.mockReset();
   updateListingMock.mockReset();
+  fetchListingIdsMock.mockReset();
+  acceptListingMock.mockReset();
+  rejectListingMock.mockReset();
 });
 
 async function mount(): Promise<HTMLDivElement> {
   container = document.createElement('div');
   await act(async () => {
     root = createRoot(container!);
-    root.render(<ListingsPage />);
+    root.render(
+      <MemoryRouter>
+        <ListingsPage />
+      </MemoryRouter>,
+    );
   });
   return container;
 }
@@ -147,9 +166,18 @@ function findTitleButton(el: HTMLElement, title: string): HTMLButtonElement {
   return button as HTMLButtonElement;
 }
 
+function findButton(el: HTMLElement, text: string): HTMLButtonElement {
+  const button = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === text);
+  if (!button) {
+    throw new Error(`No button found with text "${text}"`);
+  }
+  return button as HTMLButtonElement;
+}
+
 describe('ListingsPage inline edit stale-fetch race (MUST FIX)', () => {
   it('cross-listing: ends up holding the last-clicked listing\'s own data, not an earlier click\'s slower-resolving detail', async () => {
     fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });
+    fetchListingIdsMock.mockResolvedValue([]);
 
     // A's fetch is held open on a controlled promise (simulating the slow
     // network leg); B's resolves immediately, as it would when its request
@@ -228,6 +256,7 @@ describe('ListingsPage inline edit stale-fetch race (MUST FIX)', () => {
 
   it('same-listing reopen: a stale first-click fetch resolving after the row is closed and reopened must not flip the still-loading second attempt over to its own stale detail', async () => {
     fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });
+    fetchListingIdsMock.mockResolvedValue([]);
 
     // Two distinct fetches for the SAME listing id: the first click's
     // (stale — represents, e.g., a price that's since been edited
@@ -326,3 +355,192 @@ describe('ListingsPage inline edit stale-fetch race (MUST FIX)', () => {
     expect(partDescriptionInput.value).not.toBe('Stale GPU from first open');
   }, 10_000);
 });
+
+// T7: ported from listings-queue-page.test.tsx (now deleted — ListingsQueuePage
+// no longer exists, merged into ListingsPage per the consolidate-listings-views
+// feature). Proves Req 6's pagination-clamp-on-empty-page behavior against the
+// merged screen: reproduces the bug where accepting the last Listing on a
+// filtered page left `page` unclamped, stranding the user on an empty page with
+// no way back since PaginationControls renders nothing once pageCount<=1.
+describe('ListingsPage pagination clamp (T7 MUST FIX)', () => {
+  const PAGE_SIZE = 20;
+
+  it('clamps back to the last valid page after an accept empties the current (non-first) page, instead of stranding the user', async () => {
+    // 21 open Listings: page 1 holds 20, page 2 holds exactly 1 — accepting
+    // that one row on page 2 drops the total to 20, which no longer has a
+    // page 2 at all.
+    let listings = Array.from({ length: 21 }, (_, i) => makeListing(`listing-${i}`, `Listing ${i}`, 100));
+
+    fetchListingsMock.mockImplementation(({ limit, offset }: { limit: number; offset: number }) =>
+      Promise.resolve({ listings: listings.slice(offset, offset + limit), total: listings.length }),
+    );
+    fetchListingIdsMock.mockResolvedValue([]);
+    acceptListingMock.mockImplementation((id: string) => {
+      listings = listings.filter((l) => l.id !== id);
+      return Promise.resolve({ listing: { ...makeListing('listing-0', 'Listing 0', 100), id, status: 'accepted' }, purchaseId: 'purchase-1' });
+    });
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === PAGE_SIZE);
+    expect(el.textContent).toContain('Page 1 of 2 (21 total)');
+
+    // Navigate to page 2, which holds exactly the one remaining Listing.
+    await act(async () => {
+      findButton(el, 'Next').click();
+    });
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 1);
+    expect(el.textContent).toContain('Page 2 of 2 (21 total)');
+    expect(el.textContent).toContain('Listing 20');
+
+    // Accept the sole row on page 2: this shrinks the total to 20, so page
+    // 2 (offset 20) no longer exists. Without the clamp fix the table would
+    // render "No listings match the current filters." with no Previous
+    // control, since PaginationControls renders nothing once pageCount<=1.
+    await act(async () => {
+      findButton(el, 'Accept').click();
+    });
+
+    // Must land back on the new last page (page 1 of 1) with its 20 rows
+    // visible, not stuck on an empty page 2.
+    await waitFor(() => el.querySelectorAll('tbody tr').length === PAGE_SIZE);
+    expect(el.textContent).not.toContain('No listings match the current filters.');
+    // Pagination controls render nothing once pageCount<=1 (20 rows / 20 page size).
+    expect(el.textContent).not.toContain('Page 2 of');
+  }, 10_000);
+});
+
+function setInputValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+  if (setter) {
+    setter.call(input, value);
+  } else {
+    input.value = value;
+  }
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+// T3-tester: Req 5 — accepting/rejecting a Listing from its row. Proves the
+// confirmation banner (with its link to the created Purchase), the per-row
+// pending-disable (Req 4), and that both actions refresh the table
+// afterward, against the real ListingsPage (not a reimplementation).
+describe('ListingsPage accept/reject (Req 5)', () => {
+  it("accepting shows a dismissable confirmation naming the created Purchase with a link to it, disables only that row's own Accept/Reject while its request is in flight, and refreshes the table afterward", async () => {
+    fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const deferredAccept = Promise.withResolvers<{ listing: ListingSummary; purchaseId: string }>();
+    acceptListingMock.mockImplementation(() => deferredAccept.promise);
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 2);
+    expect(fetchListingsMock).toHaveBeenCalledTimes(1);
+
+    function rowFor(title: string): HTMLTableRowElement {
+      const row = Array.from(el.querySelectorAll('tbody tr')).find((r) => r.textContent?.includes(title));
+      if (!row) throw new Error(`No row found for "${title}"`);
+      return row as HTMLTableRowElement;
+    }
+    function rowButton(row: HTMLTableRowElement, text: string): HTMLButtonElement {
+      const button = Array.from(row.querySelectorAll('button')).find((b) => b.textContent === text);
+      if (!button) throw new Error(`No "${text}" button found in row`);
+      return button as HTMLButtonElement;
+    }
+
+    expect(rowButton(rowFor(listingA.title), 'Accept').disabled).toBe(false);
+
+    await act(async () => {
+      rowButton(rowFor(listingA.title), 'Accept').click();
+    });
+    expect(acceptListingMock).toHaveBeenCalledWith(listingA.id);
+    // Req 4: only the clicked row's own buttons disable; an unrelated row's
+    // Accept stays clickable while A's request is still in flight. Queried
+    // fresh (not a pre-click cached reference) so the assertion reads the
+    // DOM as it is after this render, not whatever it was before the click.
+    expect(rowButton(rowFor(listingA.title), 'Accept').disabled).toBe(true);
+    expect(rowButton(rowFor(listingA.title), 'Reject').disabled).toBe(true);
+    expect(rowButton(rowFor(listingB.title), 'Accept').disabled).toBe(false);
+
+    await act(async () => {
+      deferredAccept.resolve({ listing: { ...listingA, status: 'accepted' }, purchaseId: 'purchase-99' });
+      await deferredAccept.promise;
+    });
+    await waitFor(() => fetchListingsMock.mock.calls.length === 2);
+
+    expect(el.textContent).toContain(`Accepted "${listingA.title}" — created Purchase purchase-99.`);
+    const purchaseLink = Array.from(el.querySelectorAll('a')).find((a) => a.textContent === 'View Purchase') as HTMLAnchorElement | undefined;
+    expect(purchaseLink).toBeDefined();
+    expect(purchaseLink?.getAttribute('href')).toBe('/purchases/purchase-99');
+  }, 10_000);
+
+  it('rejecting a listing calls rejectListing for that row and refreshes the table, without showing an accept-style confirmation', async () => {
+    fetchListingsMock.mockResolvedValue({ listings: [listingA], total: 1 });
+    fetchListingIdsMock.mockResolvedValue([]);
+    rejectListingMock.mockResolvedValue({ ...listingA, status: 'rejected' });
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 1);
+    expect(fetchListingsMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      findButton(el, 'Reject').click();
+    });
+    await waitFor(() => fetchListingsMock.mock.calls.length === 2);
+
+    expect(rejectListingMock).toHaveBeenCalledWith(listingA.id);
+    expect(el.textContent).not.toContain('created Purchase');
+  }, 10_000);
+});
+
+// T3-tester: Req 12 — the Add Listing button still opens the top-of-page
+// create form (unaffected by the Req 2-10 expansion), and a successful
+// create refreshes the table so the new row shows up in it.
+describe('ListingsPage Add Listing create flow (Req 12)', () => {
+  it('opens the top-of-page create form from the Add Listing button, and a successful create refreshes the table so the new row appears', async () => {
+    fetchListingsMock.mockResolvedValueOnce({ listings: [listingA], total: 1 });
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const newListing = makeListing('listing-new', 'Brand New Listing', 250);
+    const newDetail = makeDetail(newListing, 'New part');
+    createListingMock.mockResolvedValue(newDetail);
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 1);
+    expect(fetchListingsMock).toHaveBeenCalledTimes(1);
+    expect(el.querySelector('#listing-title')).toBeNull();
+
+    await act(async () => {
+      findButton(el, 'Add Listing').click();
+    });
+
+    const titleInput = el.querySelector('#listing-title') as HTMLInputElement | null;
+    const urlInput = el.querySelector('#listing-url') as HTMLInputElement | null;
+    const sourceSelect = el.querySelector('#listing-source') as HTMLSelectElement | null;
+    const priceInput = el.querySelector('#listing-asking-price') as HTMLInputElement | null;
+    const dateInput = el.querySelector('#listing-date') as HTMLInputElement | null;
+    if (!titleInput || !urlInput || !sourceSelect || !priceInput || !dateInput) {
+      throw new Error('Expected the create form fields to be mounted after clicking Add Listing');
+    }
+
+    await act(async () => {
+      setInputValue(titleInput, newListing.title);
+      setInputValue(urlInput, 'https://example.com/listing');
+      sourceSelect.value = 'source-1';
+      sourceSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      setInputValue(priceInput, String(newListing.askingPrice));
+      setInputValue(dateInput, '2024-02-01');
+    });
+
+    fetchListingsMock.mockResolvedValueOnce({ listings: [listingA, newListing], total: 2 });
+
+    await act(async () => {
+      findButton(el, 'Save').closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    await waitFor(() => fetchListingsMock.mock.calls.length === 2);
+
+    expect(createListingMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 2);
+    expect(el.textContent).toContain('Brand New Listing');
+  }, 10_000);
+});
+

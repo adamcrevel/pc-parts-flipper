@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import type { ListingDetail, ListingSummary, Source } from '@pc-parts-flipper/shared';
-import { ListingsQueueTable } from '../src/features/listings-queue/listings-queue-table';
+import { ListingList } from '../src/features/listings/listing-list';
 import { ListingForm } from '../src/features/listings/listing-form';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -94,8 +94,9 @@ describe('ListingsQueueTable non-working badge (Req 4)', () => {
   it('renders the badge for a listing flagged nonWorking: true', async () => {
     const listing = mockListingSummary({ nonWorking: true });
     const el = await mount(
-      <ListingsQueueTable
+      <ListingList
         listings={[listing]}
+        sources={[]}
         sourcesById={new Map([[mockSource().id, mockSource()]])}
         onAccept={vi.fn()}
         onReject={vi.fn()}
@@ -104,6 +105,13 @@ describe('ListingsQueueTable non-working badge (Req 4)', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        editingListingId={null}
+        editingListing={null}
+        editingLoading={false}
+        onToggleEdit={() => {}}
+        onSubmitEdit={async () => { throw new Error('onSubmitEdit not exercised'); }}
+        onCancelEdit={() => {}}
+        onSavedEdit={() => {}}
       />,
     );
     expect(nonWorkingBadgePresent(el)).toBe(true);
@@ -112,8 +120,9 @@ describe('ListingsQueueTable non-working badge (Req 4)', () => {
   it('omits the badge for a listing with nonWorking: false', async () => {
     const listing = mockListingSummary({ nonWorking: false });
     const el = await mount(
-      <ListingsQueueTable
+      <ListingList
         listings={[listing]}
+        sources={[]}
         sourcesById={new Map([[mockSource().id, mockSource()]])}
         onAccept={vi.fn()}
         onReject={vi.fn()}
@@ -122,6 +131,13 @@ describe('ListingsQueueTable non-working badge (Req 4)', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        editingListingId={null}
+        editingListing={null}
+        editingLoading={false}
+        onToggleEdit={() => {}}
+        onSubmitEdit={async () => { throw new Error('onSubmitEdit not exercised'); }}
+        onCancelEdit={() => {}}
+        onSavedEdit={() => {}}
       />,
     );
     expect(nonWorkingBadgePresent(el)).toBe(false);
@@ -131,8 +147,9 @@ describe('ListingsQueueTable non-working badge (Req 4)', () => {
     const flagged = mockListingSummary({ id: 'listing-flagged', nonWorking: true });
     const unflagged = mockListingSummary({ id: 'listing-unflagged', nonWorking: false });
     const el = await mount(
-      <ListingsQueueTable
+      <ListingList
         listings={[flagged, unflagged]}
+        sources={[]}
         sourcesById={new Map([[mockSource().id, mockSource()]])}
         onAccept={vi.fn()}
         onReject={vi.fn()}
@@ -141,6 +158,13 @@ describe('ListingsQueueTable non-working badge (Req 4)', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        editingListingId={null}
+        editingListing={null}
+        editingLoading={false}
+        onToggleEdit={() => {}}
+        onSubmitEdit={async () => { throw new Error('onSubmitEdit not exercised'); }}
+        onCancelEdit={() => {}}
+        onSavedEdit={() => {}}
       />,
     );
     const rows = Array.from(el.querySelectorAll('tbody tr'));
@@ -155,8 +179,9 @@ describe('ListingsQueueTable selection header/row checkboxes (Req 1/2/3)', () =>
     const listingA = mockListingSummary({ id: 'listing-a' });
     const listingB = mockListingSummary({ id: 'listing-b' });
     const el = await mount(
-      <ListingsQueueTable
+      <ListingList
         listings={[listingA, listingB]}
+        sources={[]}
         sourcesById={new Map([[mockSource().id, mockSource()]])}
         onAccept={vi.fn()}
         onReject={vi.fn()}
@@ -165,6 +190,13 @@ describe('ListingsQueueTable selection header/row checkboxes (Req 1/2/3)', () =>
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        editingListingId={null}
+        editingListing={null}
+        editingLoading={false}
+        onToggleEdit={() => {}}
+        onSubmitEdit={async () => { throw new Error('onSubmitEdit not exercised'); }}
+        onCancelEdit={() => {}}
+        onSavedEdit={() => {}}
       />,
     );
     const header = el.querySelector('input[aria-label="Select all filtered listings"]') as HTMLInputElement;
@@ -176,8 +208,9 @@ describe('ListingsQueueTable selection header/row checkboxes (Req 1/2/3)', () =>
     const listingA = mockListingSummary({ id: 'listing-a' });
     const listingB = mockListingSummary({ id: 'listing-b' });
     const el = await mount(
-      <ListingsQueueTable
+      <ListingList
         listings={[listingA, listingB]}
+        sources={[]}
         sourcesById={new Map([[mockSource().id, mockSource()]])}
         onAccept={vi.fn()}
         onReject={vi.fn()}
@@ -186,6 +219,13 @@ describe('ListingsQueueTable selection header/row checkboxes (Req 1/2/3)', () =>
         selectedIds={new Set(['listing-a', 'listing-b'])}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        editingListingId={null}
+        editingListing={null}
+        editingLoading={false}
+        onToggleEdit={() => {}}
+        onSubmitEdit={async () => { throw new Error('onSubmitEdit not exercised'); }}
+        onCancelEdit={() => {}}
+        onSavedEdit={() => {}}
       />,
     );
     const header = el.querySelector('input[aria-label="Select all filtered listings"]') as HTMLInputElement;
@@ -197,8 +237,9 @@ describe('ListingsQueueTable selection header/row checkboxes (Req 1/2/3)', () =>
     const listingA = mockListingSummary({ id: 'listing-a' });
     const listingB = mockListingSummary({ id: 'listing-b' });
     const el = await mount(
-      <ListingsQueueTable
+      <ListingList
         listings={[listingA, listingB]}
+        sources={[]}
         sourcesById={new Map([[mockSource().id, mockSource()]])}
         onAccept={vi.fn()}
         onReject={vi.fn()}
@@ -207,6 +248,13 @@ describe('ListingsQueueTable selection header/row checkboxes (Req 1/2/3)', () =>
         selectedIds={new Set(['listing-a'])}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        editingListingId={null}
+        editingListing={null}
+        editingLoading={false}
+        onToggleEdit={() => {}}
+        onSubmitEdit={async () => { throw new Error('onSubmitEdit not exercised'); }}
+        onCancelEdit={() => {}}
+        onSavedEdit={() => {}}
       />,
     );
     const header = el.querySelector('input[aria-label="Select all filtered listings"]') as HTMLInputElement;
@@ -218,8 +266,9 @@ describe('ListingsQueueTable selection header/row checkboxes (Req 1/2/3)', () =>
     const toggled: string[] = [];
     const listing = mockListingSummary({ id: 'listing-xyz', title: 'Click Target Listing' });
     const el = await mount(
-      <ListingsQueueTable
+      <ListingList
         listings={[listing]}
+        sources={[]}
         sourcesById={new Map([[mockSource().id, mockSource()]])}
         onAccept={vi.fn()}
         onReject={vi.fn()}
@@ -228,6 +277,13 @@ describe('ListingsQueueTable selection header/row checkboxes (Req 1/2/3)', () =>
         selectedIds={new Set()}
         onToggleOne={(id) => toggled.push(id)}
         onToggleAllFiltered={() => {}}
+        editingListingId={null}
+        editingListing={null}
+        editingLoading={false}
+        onToggleEdit={() => {}}
+        onSubmitEdit={async () => { throw new Error('onSubmitEdit not exercised'); }}
+        onCancelEdit={() => {}}
+        onSavedEdit={() => {}}
       />,
     );
     const rowCheckbox = el.querySelector('input[aria-label="Select Click Target Listing"]') as HTMLInputElement;

@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import type { CreateListingInput, ListingDetail, ListingSummary, Source } from '@pc-parts-flipper/shared';
-import { ListingsQueueTable } from '../src/features/listings-queue/listings-queue-table';
+import { ListingList } from '../src/features/listings/listing-list';
 import { ListingForm } from '../src/features/listings/listing-form';
 import { ListingComparisonSummary } from '../src/features/listings/listing-comparison-summary';
 
@@ -82,8 +82,9 @@ describe('ListingsQueueTable eBay scan badge', () => {
   it('(a) renders the "Found via eBay scan" badge on a row whose externalItemId is set', async () => {
     const listing = makeListing({ externalItemId: 'ebay-123', externalSource: 'ebay' });
     const el = await mount(
-      <ListingsQueueTable
+      <ListingList
         listings={[listing]}
+        sources={[]}
         sourcesById={sourcesById}
         onAccept={() => {}}
         onReject={() => {}}
@@ -92,6 +93,13 @@ describe('ListingsQueueTable eBay scan badge', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        editingListingId={null}
+        editingListing={null}
+        editingLoading={false}
+        onToggleEdit={() => {}}
+        onSubmitEdit={async () => { throw new Error('onSubmitEdit not exercised'); }}
+        onCancelEdit={() => {}}
+        onSavedEdit={() => {}}
       />,
     );
 
@@ -101,8 +109,9 @@ describe('ListingsQueueTable eBay scan badge', () => {
   it('(b) does NOT render the badge on a row whose externalItemId is null', async () => {
     const listing = makeListing({ externalItemId: null });
     const el = await mount(
-      <ListingsQueueTable
+      <ListingList
         listings={[listing]}
+        sources={[]}
         sourcesById={sourcesById}
         onAccept={() => {}}
         onReject={() => {}}
@@ -111,6 +120,13 @@ describe('ListingsQueueTable eBay scan badge', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        editingListingId={null}
+        editingListing={null}
+        editingLoading={false}
+        onToggleEdit={() => {}}
+        onSubmitEdit={async () => { throw new Error('onSubmitEdit not exercised'); }}
+        onCancelEdit={() => {}}
+        onSavedEdit={() => {}}
       />,
     );
 
@@ -256,8 +272,9 @@ describe('ListingsQueueTable regression: non-badge columns and Accept/Reject sti
       comparison: { totalExpectedResaleValue: 200, totalCost: 120, difference: 80 },
     });
     const el = await mount(
-      <ListingsQueueTable
+      <ListingList
         listings={[listing]}
+        sources={[]}
         sourcesById={sourcesById}
         onAccept={(l) => accepted.push(l)}
         onReject={(l) => rejected.push(l)}
@@ -266,6 +283,13 @@ describe('ListingsQueueTable regression: non-badge columns and Accept/Reject sti
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        editingListingId={null}
+        editingListing={null}
+        editingLoading={false}
+        onToggleEdit={() => {}}
+        onSubmitEdit={async () => { throw new Error('onSubmitEdit not exercised'); }}
+        onCancelEdit={() => {}}
+        onSavedEdit={() => {}}
       />,
     );
 
@@ -299,8 +323,9 @@ describe('ListingsQueueTable identify-parts status badge (Req 10/11)', () => {
   it('renders a muted em dash in the Identify Parts column when identifyPartsStatus is null (no job yet)', async () => {
     const listing = makeListing({ identifyPartsStatus: null });
     const el = await mount(
-      <ListingsQueueTable
+      <ListingList
         listings={[listing]}
+        sources={[]}
         sourcesById={sourcesById}
         onAccept={() => {}}
         onReject={() => {}}
@@ -309,6 +334,13 @@ describe('ListingsQueueTable identify-parts status badge (Req 10/11)', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        editingListingId={null}
+        editingListing={null}
+        editingLoading={false}
+        onToggleEdit={() => {}}
+        onSubmitEdit={async () => { throw new Error('onSubmitEdit not exercised'); }}
+        onCancelEdit={() => {}}
+        onSavedEdit={() => {}}
       />,
     );
     const cell = el.querySelector('tbody tr td:nth-child(8)') as HTMLElement;
@@ -319,8 +351,9 @@ describe('ListingsQueueTable identify-parts status badge (Req 10/11)', () => {
     const queued = makeListing({ id: 'listing-queued', identifyPartsStatus: { stage: 'queued', errorMessage: null } });
     const identifying = makeListing({ id: 'listing-identifying', identifyPartsStatus: { stage: 'identifying', errorMessage: null } });
     const el = await mount(
-      <ListingsQueueTable
+      <ListingList
         listings={[queued, identifying]}
+        sources={[]}
         sourcesById={sourcesById}
         onAccept={() => {}}
         onReject={() => {}}
@@ -329,6 +362,13 @@ describe('ListingsQueueTable identify-parts status badge (Req 10/11)', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        editingListingId={null}
+        editingListing={null}
+        editingLoading={false}
+        onToggleEdit={() => {}}
+        onSubmitEdit={async () => { throw new Error('onSubmitEdit not exercised'); }}
+        onCancelEdit={() => {}}
+        onSavedEdit={() => {}}
       />,
     );
     const rows = Array.from(el.querySelectorAll('tbody tr'));
@@ -348,8 +388,9 @@ describe('ListingsQueueTable identify-parts status badge (Req 10/11)', () => {
   it('renders the Complete pill for stage "completed"', async () => {
     const listing = makeListing({ identifyPartsStatus: { stage: 'completed', errorMessage: null } });
     const el = await mount(
-      <ListingsQueueTable
+      <ListingList
         listings={[listing]}
+        sources={[]}
         sourcesById={sourcesById}
         onAccept={() => {}}
         onReject={() => {}}
@@ -358,6 +399,13 @@ describe('ListingsQueueTable identify-parts status badge (Req 10/11)', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        editingListingId={null}
+        editingListing={null}
+        editingLoading={false}
+        onToggleEdit={() => {}}
+        onSubmitEdit={async () => { throw new Error('onSubmitEdit not exercised'); }}
+        onCancelEdit={() => {}}
+        onSavedEdit={() => {}}
       />,
     );
     const cell = el.querySelector('tbody tr td:nth-child(8)') as HTMLElement;
@@ -372,8 +420,9 @@ describe('ListingsQueueTable identify-parts status badge (Req 10/11)', () => {
       identifyPartsStatus: { stage: 'failed', errorMessage: 'OpenAI request timed out after 30s' },
     });
     const el = await mount(
-      <ListingsQueueTable
+      <ListingList
         listings={[listing]}
+        sources={[]}
         sourcesById={sourcesById}
         onAccept={() => {}}
         onReject={() => {}}
@@ -382,6 +431,13 @@ describe('ListingsQueueTable identify-parts status badge (Req 10/11)', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        editingListingId={null}
+        editingListing={null}
+        editingLoading={false}
+        onToggleEdit={() => {}}
+        onSubmitEdit={async () => { throw new Error('onSubmitEdit not exercised'); }}
+        onCancelEdit={() => {}}
+        onSavedEdit={() => {}}
       />,
     );
     const cell = el.querySelector('tbody tr td:nth-child(8)') as HTMLElement;

@@ -37,6 +37,7 @@ function makeListing(overrides: Partial<ListingSummary> = {}): ListingSummary {
     createdAt: '2024-01-01',
     updatedAt: '2024-01-01',
     comparison: { totalExpectedResaleValue: 150, totalCost: 100, difference: 50 },
+    identifyPartsStatus: null,
     ...overrides,
   };
 }
@@ -50,13 +51,17 @@ const sources: Source[] = [{ id: 'source-1', name: 'Test Source', platformType: 
 // fetch itself is ListingsPage's concern, not ListingList's.
 function Harness({ listings }: { listings: ListingSummary[] }) {
   const [editingListingId, setEditingListingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const editingListing: ListingDetail | null = editingListingId === null ? null : { ...listings.find((l) => l.id === editingListingId)!, expectedParts: [] };
+  const sourcesById = new Map(sources.map((source) => [source.id, source]));
+  const allFilteredIds = listings.map((listing) => listing.id);
 
   return (
     <ListingList
       listings={listings}
       sources={sources}
+      sourcesById={sourcesById}
       editingListingId={editingListingId}
       editingListing={editingListing}
       editingLoading={false}
@@ -64,6 +69,23 @@ function Harness({ listings }: { listings: ListingSummary[] }) {
       onSubmitEdit={(input: CreateListingInput) => Promise.resolve({ ...editingListing!, ...input })}
       onCancelEdit={() => setEditingListingId(null)}
       onSavedEdit={() => {}}
+      onAccept={() => {}}
+      onReject={() => {}}
+      pendingListingId={null}
+      allFilteredIds={allFilteredIds}
+      selectedIds={selectedIds}
+      onToggleOne={(id) =>
+        setSelectedIds((current) => {
+          const next = new Set(current);
+          if (next.has(id)) {
+            next.delete(id);
+          } else {
+            next.add(id);
+          }
+          return next;
+        })
+      }
+      onToggleAllFiltered={() => {}}
     />
   );
 }
@@ -145,7 +167,7 @@ describe('ListingList title click -> inline edit row', () => {
     // it's inline (an accordion row under the clicked Listing) rather than
     // rendered anywhere else, e.g. above the table.
     expect(formRowIndex).toBe(listingARowIndex + 1);
-    expect(rows[formRowIndex].querySelector('td')?.getAttribute('colspan')).toBe('5');
+    expect(rows[formRowIndex].querySelector('td')?.getAttribute('colspan')).toBe('9');
   });
 
   it('opening a second Listing closes the first — only one inline edit row at a time', async () => {
@@ -202,3 +224,63 @@ describe('ListingList title click -> inline edit row', () => {
     expect(el.querySelector('form')).toBeNull();
   });
 });
+
+describe('ListingList Accept/Reject gating and per-row in-flight disable (Req 4)', () => {
+  it('hides Accept/Reject entirely for a non-open row, and disables only the pending row\'s own buttons while a sibling open row stays enabled', async () => {
+    const openA = makeListing({ id: 'listing-open-a', title: 'Open A', status: 'open' });
+    const openB = makeListing({ id: 'listing-open-b', title: 'Open B', status: 'open' });
+    const closedListing = makeListing({ id: 'listing-closed', title: 'Closed Listing', status: 'rejected' });
+
+    container = document.createElement('div');
+    await act(async () => {
+      root = createRoot(container!);
+      root!.render(
+        <ListingList
+          listings={[openA, openB, closedListing]}
+          sources={sources}
+          sourcesById={new Map(sources.map((source) => [source.id, source]))}
+          editingListingId={null}
+          editingListing={null}
+          editingLoading={false}
+          onToggleEdit={() => {}}
+          onSubmitEdit={async () => {
+            throw new Error('onSubmitEdit not exercised');
+          }}
+          onCancelEdit={() => {}}
+          onSavedEdit={() => {}}
+          onAccept={() => {}}
+          onReject={() => {}}
+          pendingListingId="listing-open-a"
+          allFilteredIds={[]}
+          selectedIds={new Set()}
+          onToggleOne={() => {}}
+          onToggleAllFiltered={() => {}}
+        />,
+      );
+    });
+
+    // A non-open row (status 'rejected') renders no Accept/Reject buttons
+    // at all — not merely disabled ones.
+    const closedRow = findListingRow(container!, 'Closed Listing');
+    const closedButtons = Array.from(closedRow.querySelectorAll('button')).map((b) => b.textContent);
+    expect(closedButtons).not.toContain('Accept');
+    expect(closedButtons).not.toContain('Reject');
+
+    // Row A is the one named by pendingListingId: its own buttons are
+    // disabled. Row B is a separate open row with no request in flight:
+    // its buttons stay enabled — proof the disable is scoped to the
+    // specific pending row, not every open row.
+    const rowA = findListingRow(container!, 'Open A');
+    const rowB = findListingRow(container!, 'Open B');
+    const acceptA = Array.from(rowA.querySelectorAll('button')).find((b) => b.textContent === 'Accept') as HTMLButtonElement;
+    const rejectA = Array.from(rowA.querySelectorAll('button')).find((b) => b.textContent === 'Reject') as HTMLButtonElement;
+    const acceptB = Array.from(rowB.querySelectorAll('button')).find((b) => b.textContent === 'Accept') as HTMLButtonElement;
+    const rejectB = Array.from(rowB.querySelectorAll('button')).find((b) => b.textContent === 'Reject') as HTMLButtonElement;
+
+    expect(acceptA.disabled).toBe(true);
+    expect(rejectA.disabled).toBe(true);
+    expect(acceptB.disabled).toBe(false);
+    expect(rejectB.disabled).toBe(false);
+  });
+});
+

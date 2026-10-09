@@ -93,9 +93,9 @@ export interface Listing {
  * neither side of the HTTP boundary needs to recompute it from raw figures.
  */
 export interface ListingComparison {
-  totalEstimatedResaleValue: number;
+  totalExpectedResaleValue: number;
   totalCost: number;
-  margin: number;
+  difference: number;
 }
 
 /**
@@ -116,7 +116,7 @@ export type ListingDetail = ListingSummary & { expectedParts: ExpectedPart[] };
 /** `GET /api/listings` response: one page of Listing summaries plus the total count matching the filters, so apps/web can render pagination controls without an unbounded fetch (Req 12, 15). */
 export interface ListListingsResponse {
   listings: ListingSummary[];
-  totalCount: number;
+  total: number;
 }
 
 /** `GET /api/listings/ids` response: every Listing id matching the current filters, so apps/web can resolve "select all" to a full id set without paginating. */

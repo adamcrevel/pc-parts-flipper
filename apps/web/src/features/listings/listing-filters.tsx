@@ -7,7 +7,7 @@ export interface ListingsQueueFilterValue {
   sourceId: string | '';
 }
 
-interface ListingsQueueFiltersProps {
+interface ListingFiltersProps {
   value: ListingsQueueFilterValue;
   sources: Source[];
   onChange: (value: ListingsQueueFilterValue) => void;
@@ -21,12 +21,12 @@ const STATUS_OPTIONS: Array<{ value: ListingStatus | ''; label: string }> = [
 ];
 
 /**
- * Status and Source filter selects for the Listings queue (Req 12). Both
+ * Status and Source filter selects for the Listings view (Req 12). Both
  * selects are controlled: the page owns `value` and re-fetches whenever
  * `onChange` fires, resetting to page 1 so a changed filter never shows a
  * stale offset past the end of the new, smaller result set.
  */
-export function ListingsQueueFilters({ value, sources, onChange }: ListingsQueueFiltersProps) {
+export function ListingFilters({ value, sources, onChange }: ListingFiltersProps) {
   return (
     <div className="flex items-center gap-4">
       <label className="flex items-center gap-2 text-sm">
