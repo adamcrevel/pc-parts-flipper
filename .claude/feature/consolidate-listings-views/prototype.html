@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Listings — Prototype (consolidate-listings-views)</title>
+<style>
+  :root {
+    --background: #ffffff;
+    --foreground: hsl(222.2 84% 4.9%);
+    --card: #ffffff;
+    --card-foreground: hsl(222.2 84% 4.9%);
+    --primary: hsl(222.2 47.4% 11.2%);
+    --primary-foreground: hsl(210 40% 98%);
+    --secondary: hsl(210 40% 96.1%);
+    --secondary-foreground: hsl(222.2 47.4% 11.2%);
+    --muted: hsl(210 40% 96.1%);
+    --muted-foreground: hsl(215.4 16.3% 46.9%);
+    --accent: hsl(210 40% 96.1%);
+    --accent-foreground: hsl(222.2 47.4% 11.2%);
+    --destructive: hsl(0 84.2% 60.2%);
+    --destructive-foreground: hsl(210 40% 98%);
+    --border: hsl(214.3 31.8% 91.4%);
+    --input: hsl(214.3 31.8% 91.4%);
+    --surface-contrast: hsl(215 20% 85%);
+    --save: hsl(222.2 47.4% 11.2%);
+    --save-foreground: hsl(210 40% 98%);
+    --cancel: #ffffff;
+    --radius: 0.5rem;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    padding-bottom: 88px; /* room for fixed bulk bar */
+  }
+  .page { max-width: 1120px; margin: 0 auto; padding: 24px 24px 0; }
+  .row-between { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  h1 { font-size: 1.5rem; font-weight: 600; margin: 0; }
+
+  /* --- filters --- */
+  .filters { display: flex; align-items: center; gap: 16px; }
+  .filter-label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  select, input[type="text"], input[type="number"], input[type="date"], textarea {
+    border: 1px solid var(--input);
+    background: var(--background);
+    border-radius: var(--radius);
+    padding: 5px 10px;
+    font-size: 13px;
+    color: var(--foreground);
+    font-family: inherit;
+  }
+
+  /* --- buttons --- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    white-space: nowrap; border-radius: var(--radius); font-size: 13px; font-weight: 500;
+    height: 36px; padding: 0 16px; cursor: pointer; border: 1px solid transparent;
+    transition: background-color .15s, opacity .15s;
+  }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-default { background: var(--save); color: var(--save-foreground); box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+  .btn-default:hover:not(:disabled) { background: hsl(222.2 47.4% 11.2% / .9); }
+  .btn-outline { background: var(--cancel); border-color: var(--input); box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+  .btn-outline:hover:not(:disabled) { background: var(--accent); }
+  .btn-destructive { background: var(--destructive); color: var(--destructive-foreground); box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+  .btn-destructive:hover:not(:disabled) { background: hsl(0 84.2% 60.2% / .9); }
+  .btn-sm { height: 30px; padding: 0 11px; font-size: 12px; border-radius: var(--radius); }
+  .btn-link { background: transparent; border: none; padding: 0; height: auto; color: var(--primary); font-weight: 500; text-align: left; white-space: normal; }
+  .btn-link:hover { text-decoration: underline; }
+
+  /* --- card --- */
+  .card { border-radius: 0.75rem; border: 1px solid var(--border); background: var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.07); margin-top: 16px; }
+  .card-header { padding: 24px 24px 0; }
+  .card-title { font-weight: 600; font-size: 1rem; }
+  .card-content { padding: 24px; }
+
+  /* --- table --- */
+  table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+  thead tr { border-bottom: 1px solid var(--border); color: var(--muted-foreground); }
+  th { padding: 8px 16px; font-weight: 500; }
+  td { padding: 12px 16px; }
+  tbody tr.data-row { border-bottom: 1px solid var(--border); }
+  tbody tr.data-row:last-of-type { border-bottom: none; }
+  tbody tr.edit-row { border-bottom: 1px solid var(--border); background: hsl(210 40% 96.1% / .5); display: none; }
+  tbody tr.edit-row.open { display: table-row; }
+  tbody tr.data-row.row-open-bg { background: hsl(210 40% 96.1% / .5); }
+  .title-cell { display: flex; align-items: center; gap: 6px; font-weight: 500; }
+  .diff-pos { color: hsl(160 84% 30%); font-weight: 500; }
+  .diff-neg { color: var(--destructive); font-weight: 500; }
+  .muted { color: var(--muted-foreground); }
+  .capitalize { text-transform: capitalize; }
+  .icon { width: 14px; height: 14px; flex-shrink: 0; color: var(--muted-foreground); }
+
+  /* --- badges --- */
+  .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 500; border: 1px solid; }
+  .badge-ebay { border-color: hsl(160 84% 39% / .4); background: hsl(160 84% 39% / .1); color: hsl(160 84% 25%); text-decoration: none; }
+  .badge-nonworking { border-color: hsl(38 92% 50% / .4); background: hsl(38 92% 50% / .1); color: hsl(28 92% 32%); }
+  .badge-dash { font-size: 12px; color: var(--muted-foreground); }
+  .badge-progress { border-color: hsl(199 89% 48% / .4); background: hsl(199 89% 48% / .1); color: hsl(199 89% 32%); gap: 6px; }
+  .badge-progress .dot { width: 6px; height: 6px; border-radius: 50%; background: hsl(199 89% 48%); animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+  .badge-complete { border-color: hsl(173 80% 36% / .4); background: hsl(173 80% 36% / .1); color: hsl(173 80% 24%); }
+  .badge-failed { border-color: hsl(0 84.2% 60.2% / .5); background: hsl(0 84.2% 60.2% / .1); color: hsl(0 72% 42%); cursor: help; }
+
+  /* --- checkboxes --- */
+  input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; }
+
+  /* --- inline edit form (ListingForm) --- */
+  .listing-form { display: flex; flex-direction: column; gap: 16px; border: 1px solid var(--border); border-radius: 0.75rem; padding: 16px; background: var(--card); }
+  .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 13px; font-weight: 500; }
+  .field input, .field select, .field textarea { width: 100%; padding: 6px 10px; }
+
+  .collapsible { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .collapsible-trigger {
+    display: flex; align-items: center; justify-content: space-between; width: 100%;
+    background: var(--surface-contrast); padding: 8px 16px; font-size: 13px; font-weight: 500;
+    cursor: pointer; border: none; text-align: left; font-family: inherit;
+  }
+  .collapsible-trigger:hover { background: hsl(215 20% 85% / .8); }
+  .collapsible-content { padding: 12px 16px; display: none; }
+  .collapsible-content.open { display: block; }
+  .chevron { transition: transform .2s; }
+  .chevron.closed { transform: rotate(-90deg); }
+
+  .parts-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; margin-bottom: 6px; }
+  .parts-row .part-cat { font-weight: 500; min-width: 90px; }
+  .ai-badge { border-color: hsl(270 70% 60% / .4); background: hsl(270 70% 60% / .1); color: hsl(270 60% 42%); border-radius: 999px; padding: 1px 7px; font-size: 10px; font-weight: 500; border: 1px solid; }
+
+  .comparison-box { border: 1px solid var(--border); background: hsl(210 40% 96.1% / .5); border-radius: var(--radius); padding: 12px; font-size: 13px; }
+  .comparison-box p { margin: 0 0 4px; }
+  .comparison-box p:last-child { margin-bottom: 0; }
+
+  .photo-grid { display: flex; gap: 8px; margin-top: 8px; }
+  .photo-thumb { width: 56px; height: 56px; border-radius: var(--radius); background: var(--secondary); border: 1px solid var(--border); }
+
+  .info-banner { border: 1px solid hsl(160 84% 39% / .5); background: hsl(160 84% 39% / .1); color: hsl(160 84% 22%); border-radius: var(--radius); padding: 10px 14px; font-size: 13px; }
+  .accepted-banner { border: 1px solid hsl(160 84% 39% / .5); background: hsl(160 84% 39% / .1); color: hsl(160 84% 22%); border-radius: var(--radius); padding: 12px 16px; font-size: 13px; display: none; align-items: center; justify-content: space-between; margin-top: 16px; }
+  .accepted-banner.show { display: flex; }
+  .accepted-banner a { color: inherit; font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+  .accepted-banner button.dismiss { background: none; border: none; cursor: pointer; color: inherit; font-size: 16px; line-height: 1; padding: 0 0 0 10px; }
+
+  /* --- pagination --- */
+  .pagination { display: flex; align-items: center; justify-content: space-between; padding-top: 8px; font-size: 13px; }
+
+  /* --- bulk bar --- */
+  .bulk-bar {
+    position: fixed; inset: auto 0 0 0; z-index: 50; border-top: 1px solid var(--border);
+    background: var(--background); padding: 12px 24px; box-shadow: 0 -4px 10px rgba(0,0,0,.06);
+    display: none;
+  }
+  .bulk-bar.show { display: block; }
+  .bulk-bar-inner { max-width: 1120px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .bulk-summary { display: none; align-items: center; justify-content: space-between; gap: 8px; }
+  .bulk-summary.show { display: flex; }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <!-- Header: filters (left) + Add Listing (right) — merged from listings-queue-page.tsx + listings-page.tsx -->
+  <div class="row-between">
+    <h1>Listings</h1>
+    <div class="filters">
+      <label class="filter-label">Status
+        <select id="status-filter" onchange="applyFilters()">
+          <option value="">All statuses</option>
+          <option value="open">Open</option>
+          <option value="accepted">Accepted</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </label>
+      <label class="filter-label">Source
+        <select id="source-filter" onchange="applyFilters()">
+          <option value="">All sources</option>
+          <option value="fb">Facebook Marketplace</option>
+          <option value="cl">Craigslist</option>
+          <option value="eb">eBay</option>
+          <option value="ou">OfferUp</option>
+        </select>
+      </label>
+    </div>
+    <button type="button" class="btn btn-default" id="add-listing-btn" onclick="toggleCreateForm()">Add Listing</button>
+  </div>
+
+  <!-- Top-of-page create form (listings-page.tsx), closed by default -->
+  <div id="create-form-wrap" style="display:none; margin-top:16px;">
+    <form class="listing-form" onsubmit="return false;">
+      <div class="form-grid-2">
+        <div class="field"><label>Title</label><input type="text" placeholder="" /></div>
+        <div class="field"><label>Source</label>
+          <select><option>Select a source…</option><option>Facebook Marketplace</option><option>Craigslist</option><option>eBay</option><option>OfferUp</option></select>
+        </div>
+      </div>
+      <div class="field"><label>Description</label><textarea rows="2"></textarea></div>
+      <div class="field"><label>Listing URL</label><input type="text" /></div>
+      <div class="form-grid-3">
+        <div class="field"><label>Asking Price ($)</label><input type="number" step="0.01" /></div>
+        <div class="field"><label>Listing Date</label><input type="date" /></div>
+        <div class="field"><label>Acquisition Fees / Shipping ($)</label><input type="number" step="0.01" /></div>
+      </div>
+      <p class="muted">Save the listing to upload photos.</p>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="btn btn-default">Save</button>
+        <button type="button" class="btn btn-outline" onclick="toggleCreateForm()">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Accept confirmation banner (Req 5) -->
+  <div class="accepted-banner" id="accepted-banner">
+    <span id="accepted-text"></span>
+    <span><a href="#" onclick="return false;">View Purchase</a><button class="dismiss" onclick="document.getElementById('accepted-banner').classList.remove('show')">×</button></span>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div class="card-title">Listings</div></div>
+    <div class="card-content">
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:32px;"><input type="checkbox" id="header-checkbox" aria-label="Select all filtered listings" onchange="toggleAllFiltered()" /></th>
+              <th>Title</th>
+              <th>Source</th>
+              <th>Status</th>
+              <th>Asking Price</th>
+              <th>Expected Resale</th>
+              <th>Difference</th>
+              <th>Identify Parts</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="listings-tbody">
+
+            <!-- L1: completed, ebay badge, photo icon, checked -->
+            <tr class="data-row" data-id="L1" data-status="open" data-source="fb">
+              <td><input type="checkbox" class="row-checkbox" data-id="L1" onchange="toggleOne('L1')" checked /></td>
+              <td class="title-cell">
+                <button type="button" class="btn-link" onclick="toggleEdit('L1')">Dell OptiPlex 7050 SFF - i5-7500, 8GB</button>
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+                <a class="badge badge-ebay" href="#" onclick="return false;">Found via eBay scan</a>
+              </td>
+              <td>Facebook Marketplace</td>
+              <td class="capitalize">open</td>
+              <td>$120.00</td>
+              <td>$210.00</td>
+              <td class="diff-pos">$90.00</td>
+              <td><span class="badge badge-complete">Complete</span></td>
+              <td style="text-align:right; white-space:nowrap;">
+                <button type="button" class="btn btn-outline btn-sm" data-accept="L1" onclick="acceptListing('L1','Dell OptiPlex 7050 SFF - i5-7500, 8GB')">Accept</button>
+                <button type="button" class="btn btn-destructive btn-sm" data-reject="L1" onclick="rejectListing('L1')">Reject</button>
+              </td>
+            </tr>
+            <tr class="edit-row" data-id="L1"><td colspan="9"></td></tr>
+
+            <!-- L2: failed, non-working badge -->
+            <tr class="data-row" data-id="L2" data-status="open" data-source="cl">
+              <td><input type="checkbox" class="row-checkbox" data-id="L2" onchange="toggleOne('L2')" /></td>
+              <td class="title-cell">
+                <button type="button" class="btn-link" onclick="toggleEdit('L2')">HP EliteDesk 800 G3 - broken PSU</button>
+                <span class="badge badge-nonworking">Non-working</span>
+              </td>
+              <td>Craigslist</td>
+              <td class="capitalize">open</td>
+              <td>$45.00</td>
+              <td>$95.00</td>
+              <td class="diff-pos">$50.00</td>
+              <td><span class="badge badge-failed" title="OpenAI request timed out after 30s">Failed</span></td>
+              <td style="text-align:right; white-space:nowrap;">
+                <button type="button" class="btn btn-outline btn-sm" data-accept="L2" onclick="acceptListing('L2','HP EliteDesk 800 G3 - broken PSU')">Accept</button>
+                <button type="button" class="btn btn-destructive btn-sm" data-reject="L2" onclick="rejectListing('L2')">Reject</button>
+              </td>
+            </tr>
+            <tr class="edit-row" data-id="L2"><td colspan="9"></td></tr>
+
+            <!-- L3: in-progress (sourcing_references), ebay badge, OPEN FORM BY DEFAULT -->
+            <tr class="data-row row-open-bg" data-id="L3" data-status="open" data-source="eb">
+              <td><input type="checkbox" class="row-checkbox" data-id="L3" onchange="toggleOne('L3')" /></td>
+              <td class="title-cell">
+                <button type="button" class="btn-link" onclick="toggleEdit('L3')">Lenovo ThinkCentre M900 Tiny</button>
+                <a class="badge badge-ebay" href="#" onclick="return false;">Found via eBay scan</a>
+              </td>
+              <td>eBay</td>
+              <td class="capitalize">open</td>
+              <td>$65.00</td>
+              <td>$60.00</td>
+              <td class="diff-neg">-$5.00</td>
+              <td><span class="badge badge-progress"><span class="dot"></span>In progress</span></td>
+              <td style="text-align:right; white-space:nowrap;">
+                <button type="button" class="btn btn-outline btn-sm" data-accept="L3" onclick="acceptListing('L3','Lenovo ThinkCentre M900 Tiny')">Accept</button>
+                <button type="button" class="btn btn-destructive btn-sm" data-reject="L3" onclick="rejectListing('L3')">Reject</button>
+              </td>
+            </tr>
+            <tr class="edit-row open" data-id="L3">
+              <td colspan="9">
+                <!-- ListingForm, inline, expanded (Req 11) -->
+                <form class="listing-form" onsubmit="return false;">
+                  <a class="badge badge-ebay" href="#" onclick="return false;">Found via eBay scan</a>
+
+                  <div class="collapsible">
+                    <button type="button" class="collapsible-trigger" onclick="toggleCollapsible(this)">
+                      <span>Listing Details</span>
+                      <svg class="icon chevron closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <div class="collapsible-content">
+                      <div class="form-grid-2">
+                        <div class="field"><label>Title</label><input type="text" value="Lenovo ThinkCentre M900 Tiny" /></div>
+                        <div class="field"><label>Source</label>
+                          <select><option>Select a source…</option><option selected>eBay</option><option>Facebook Marketplace</option><option>Craigslist</option><option>OfferUp</option></select>
+                        </div>
+                      </div>
+                      <div class="field"><label>Description</label><textarea rows="2">i5-6500T, 8GB RAM, no storage</textarea></div>
+                      <div class="field"><label>Listing URL</label><input type="text" value="https://ebay.com/itm/123456" /></div>
+                      <div class="form-grid-3">
+                        <div class="field"><label>Asking Price ($)</label><input type="number" step="0.01" value="65.00" /></div>
+                        <div class="field"><label>Listing Date</label><input type="date" value="2026-09-28" /></div>
+                        <div class="field"><label>Acquisition Fees / Shipping ($)</label><input type="number" step="0.01" value="0.00" /></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div class="parts-row">
+                      <span class="part-cat">CPU</span>
+                      <span class="muted">Intel · i5-6500T</span>
+                      <span class="ai-badge">AI suggested</span>
+                      <span style="margin-left:auto;">$35.00</span>
+                    </div>
+                    <div class="parts-row">
+                      <span class="part-cat">RAM</span>
+                      <span class="muted">— / —</span>
+                      <span style="margin-left:auto;">$25.00</span>
+                    </div>
+                    <button type="button" class="btn btn-outline btn-sm">+ Add Part</button>
+                  </div>
+
+                  <div>
+                    <button type="button" class="btn btn-outline btn-sm" id="identify-btn-L3" onclick="identifyParts(this)">Identify Parts</button>
+                    <p class="muted" id="identify-status-L3" style="margin-top:6px; display:none;"></p>
+                  </div>
+
+                  <div class="comparison-box">
+                    <p>Expected resale total: <strong>$60.00</strong> vs. cost (asking + fees): <strong>$65.00</strong></p>
+                    <p class="diff-neg">Projected loss: $5.00</p>
+                  </div>
+
+                  <div>
+                    <div style="font-size:13px; font-weight:500; margin-bottom:6px;">Photos</div>
+                    <button type="button" class="btn btn-outline btn-sm">Choose Photos</button>
+                    <div class="photo-grid">
+                      <div class="photo-thumb"></div>
+                      <div class="photo-thumb"></div>
+                    </div>
+                  </div>
+
+                  <div style="display:flex; gap:8px;">
+                    <button type="button" class="btn btn-default">Save</button>
+                    <button type="button" class="btn btn-outline" onclick="toggleEdit('L3')">Cancel</button>
+                  </div>
+                </form>
+              </td>
+            </tr>
+
+            <!-- L4: accepted, no accept/reject buttons -->
+            <tr class="data-row" data-id="L4" data-status="accepted" data-source="ou">
+              <td><input type="checkbox" class="row-checkbox" data-id="L4" onchange="toggleOne('L4')" /></td>
+              <td class="title-cell">
+                <button type="button" class="btn-link" onclick="toggleEdit('L4')">Custom Build - Ryzen 5 3600 + RTX 2060</button>
+              </td>
+              <td>OfferUp</td>
+              <td class="capitalize">accepted</td>
+              <td>$300.00</td>
+              <td>$520.00</td>
+              <td class="diff-pos">$220.00</td>
+              <td><span class="badge badge-complete">Complete</span></td>
+              <td></td>
+            </tr>
+            <tr class="edit-row" data-id="L4"><td colspan="9"></td></tr>
+
+            <!-- L5: rejected, no job yet (dash) -->
+            <tr class="data-row" data-id="L5" data-status="rejected" data-source="cl">
+              <td><input type="checkbox" class="row-checkbox" data-id="L5" onchange="toggleOne('L5')" /></td>
+              <td class="title-cell">
+                <button type="button" class="btn-link" onclick="toggleEdit('L5')">Gateway DX4860 - no POST</button>
+              </td>
+              <td>Craigslist</td>
+              <td class="capitalize">rejected</td>
+              <td>$20.00</td>
+              <td>$15.00</td>
+              <td class="diff-neg">-$5.00</td>
+              <td><span class="badge-dash">—</span></td>
+              <td></td>
+            </tr>
+            <tr class="edit-row" data-id="L5"><td colspan="9"></td></tr>
+
+            <!-- L6: no job yet (dash), photo icon, checked -->
+            <tr class="data-row" data-id="L6" data-status="open" data-source="fb">
+              <td><input type="checkbox" class="row-checkbox" data-id="L6" onchange="toggleOne('L6')" checked /></td>
+              <td class="title-cell">
+                <button type="button" class="btn-link" onclick="toggleEdit('L6')">Dell Precision T3620 Workstation</button>
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+              </td>
+              <td>Facebook Marketplace</td>
+              <td class="capitalize">open</td>
+              <td>$150.00</td>
+              <td>$310.00</td>
+              <td class="diff-pos">$160.00</td>
+              <td><span class="badge-dash">—</span></td>
+              <td style="text-align:right; white-space:nowrap;">
+                <button type="button" class="btn btn-outline btn-sm" data-accept="L6" onclick="acceptListing('L6','Dell Precision T3620 Workstation')">Accept</button>
+                <button type="button" class="btn btn-destructive btn-sm" data-reject="L6" onclick="rejectListing('L6')">Reject</button>
+              </td>
+            </tr>
+            <tr class="edit-row" data-id="L6"><td colspan="9"></td></tr>
+
+            <!-- L7: in-progress (queued), ebay badge -->
+            <tr class="data-row" data-id="L7" data-status="open" data-source="eb">
+              <td><input type="checkbox" class="row-checkbox" data-id="L7" onchange="toggleOne('L7')" /></td>
+              <td class="title-cell">
+                <button type="button" class="btn-link" onclick="toggleEdit('L7')">HP Z240 SFF - i7-6700, 16GB, GTX 1050</button>
+                <a class="badge badge-ebay" href="#" onclick="return false;">Found via eBay scan</a>
+              </td>
+              <td>eBay</td>
+              <td class="capitalize">open</td>
+              <td>$180.00</td>
+              <td>$275.00</td>
+              <td class="diff-pos">$95.00</td>
+              <td><span class="badge badge-progress"><span class="dot"></span>Waiting to run…</span></td>
+              <td style="text-align:right; white-space:nowrap;">
+                <button type="button" class="btn btn-outline btn-sm" data-accept="L7" onclick="acceptListing('L7','HP Z240 SFF - i7-6700, 16GB, GTX 1050')">Accept</button>
+                <button type="button" class="btn btn-destructive btn-sm" data-reject="L7" onclick="rejectListing('L7')">Reject</button>
+              </td>
+            </tr>
+            <tr class="edit-row" data-id="L7"><td colspan="9"></td></tr>
+
+            <!-- L8: completed, non-working badge, checked -->
+            <tr class="data-row" data-id="L8" data-status="open" data-source="ou">
+              <td><input type="checkbox" class="row-checkbox" data-id="L8" onchange="toggleOne('L8')" checked /></td>
+              <td class="title-cell">
+                <button type="button" class="btn-link" onclick="toggleEdit('L8')">Acer Aspire TC - AMD A8, non-working</button>
+                <span class="badge badge-nonworking">Non-working</span>
+              </td>
+              <td>OfferUp</td>
+              <td class="capitalize">open</td>
+              <td>$25.00</td>
+              <td>$40.00</td>
+              <td class="diff-pos">$15.00</td>
+              <td><span class="badge badge-complete">Complete</span></td>
+              <td style="text-align:right; white-space:nowrap;">
+                <button type="button" class="btn btn-outline btn-sm" data-accept="L8" onclick="acceptListing('L8','Acer Aspire TC - AMD A8, non-working')">Accept</button>
+                <button type="button" class="btn btn-destructive btn-sm" data-reject="L8" onclick="rejectListing('L8')">Reject</button>
+              </td>
+            </tr>
+            <tr class="edit-row" data-id="L8"><td colspan="9"></td></tr>
+
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination footer (Req 2/15) -->
+      <div class="pagination">
+        <span class="muted" id="page-label">Page 1 of 3 (47 total)</span>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-outline btn-sm" id="prev-page" onclick="changePage(-1)" disabled>Previous</button>
+          <button type="button" class="btn btn-outline btn-sm" id="next-page" onclick="changePage(1)">Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Fixed bottom bulk action bar (Req 9), active with 3 rows checked -->
+<div class="bulk-bar" id="bulk-bar">
+  <div class="bulk-bar-inner">
+    <div class="info-banner" id="bulk-summary-banner" style="display:none;"></div>
+    <div class="bulk-summary" id="bulk-summary">
+      <span class="muted" id="bulk-count">3 selected</span>
+      <button type="button" class="btn btn-default btn-sm" id="bulk-identify-btn" onclick="bulkIdentify()">Identify Parts</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ---- Row ids and page state (mirrors ListingsPage/ListingsQueuePage's shape) ----
+  var ALL_IDS = ['L1','L2','L3','L4','L5','L6','L7','L8'];
+  var selectedIds = new Set(['L1','L6','L8']); // 3 pre-checked, matching the row checkboxes marked checked above
+  var currentOpenEditId = 'L3'; // row whose inline edit form starts expanded
+  var currentPage = 1;
+  var totalPages = 3;
+
+  function visibleFilteredIds() {
+    var status = document.getElementById('status-filter').value;
+    var source = document.getElementById('source-filter').value;
+    var ids = [];
+    document.querySelectorAll('tr.data-row').forEach(function (row) {
+      var matchesStatus = status === '' || row.getAttribute('data-status') === status;
+      var matchesSource = source === '' || row.getAttribute('data-source') === source;
+      if (matchesStatus && matchesSource) ids.push(row.getAttribute('data-id'));
+    });
+    return ids;
+  }
+
+  function applyFilters() {
+    var status = document.getElementById('status-filter').value;
+    var source = document.getElementById('source-filter').value;
+    document.querySelectorAll('tr.data-row').forEach(function (row) {
+      var id = row.getAttribute('data-id');
+      var matchesStatus = status === '' || row.getAttribute('data-status') === status;
+      var matchesSource = source === '' || row.getAttribute('data-source') === source;
+      var visible = matchesStatus && matchesSource;
+      row.style.display = visible ? '' : 'none';
+      var editRow = document.querySelector('tr.edit-row[data-id="' + id + '"]');
+      if (editRow && !visible) editRow.classList.remove('open');
+      if (!visible && id === currentOpenEditId) currentOpenEditId = null;
+    });
+    updateHeaderCheckboxState();
+  }
+
+  // ---- Checkbox selection (Req 1/3/7/8) ----
+  function toggleOne(id) {
+    if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id);
+    updateHeaderCheckboxState();
+    updateBulkBar();
+  }
+
+  function toggleAllFiltered() {
+    var filtered = visibleFilteredIds();
+    var allSelected = filtered.length > 0 && filtered.every(function (id) { return selectedIds.has(id); });
+    filtered.forEach(function (id) {
+      if (allSelected) selectedIds.delete(id); else selectedIds.add(id);
+      var cb = document.querySelector('.row-checkbox[data-id="' + id + '"]');
+      if (cb) cb.checked = !allSelected;
+    });
+    updateHeaderCheckboxState();
+    updateBulkBar();
+  }
+
+  function updateHeaderCheckboxState() {
+    var filtered = visibleFilteredIds();
+    var selectedCount = filtered.reduce(function (n, id) { return selectedIds.has(id) ? n + 1 : n; }, 0);
+    var header = document.getElementById('header-checkbox');
+    var allSelected = filtered.length > 0 && selectedCount === filtered.length;
+    var someSelected = selectedCount > 0 && selectedCount < filtered.length;
+    header.checked = allSelected;
+    header.indeterminate = someSelected;
+  }
+
+  function updateBulkBar() {
+    var bar = document.getElementById('bulk-bar');
+    var summary = document.getElementById('bulk-summary');
+    var count = selectedIds.size;
+    document.getElementById('bulk-count').textContent = count + ' selected';
+    if (count > 0) {
+      bar.classList.add('show');
+      summary.classList.add('show');
+    } else {
+      summary.classList.remove('show');
+      var banner = document.getElementById('bulk-summary-banner');
+      if (banner.style.display === 'none') bar.classList.remove('show');
+    }
+  }
+
+  function bulkIdentify() {
+    var count = selectedIds.size;
+    var banner = document.getElementById('bulk-summary-banner');
+    banner.textContent = 'Queued ' + count + ' listing(s) for Identify Parts.';
+    banner.style.display = 'block';
+    selectedIds.clear();
+    ALL_IDS.forEach(function (id) {
+      var cb = document.querySelector('.row-checkbox[data-id="' + id + '"]');
+      if (cb) cb.checked = false;
+    });
+    updateHeaderCheckboxState();
+    updateBulkBar();
+  }
+
+  // ---- Inline edit row open/close (Req 11, unaffected by filters/selection) ----
+  function toggleEdit(id) {
+    var wasOpen = currentOpenEditId === id;
+    if (currentOpenEditId) {
+      var prevRow = document.querySelector('tr.edit-row[data-id="' + currentOpenEditId + '"]');
+      var prevData = document.querySelector('tr.data-row[data-id="' + currentOpenEditId + '"]');
+      if (prevRow) prevRow.classList.remove('open');
+      if (prevData) prevData.classList.remove('row-open-bg');
+    }
+    if (wasOpen) {
+      currentOpenEditId = null;
+      return;
+    }
+    var nextRow = document.querySelector('tr.edit-row[data-id="' + id + '"]');
+    var nextData = document.querySelector('tr.data-row[data-id="' + id + '"]');
+    if (nextRow) nextRow.classList.add('open');
+    if (nextData) nextData.classList.add('row-open-bg');
+    currentOpenEditId = id;
+  }
+
+  // ---- Collapsible "Listing Details" section inside the inline form ----
+  function toggleCollapsible(trigger) {
+    var content = trigger.nextElementSibling;
+    var chevron = trigger.querySelector('.chevron');
+    var open = content.classList.toggle('open');
+    chevron.classList.toggle('closed', !open);
+  }
+
+  // ---- Identify Parts button inside the open form (simulated async) ----
+  function identifyParts(btn) {
+    var statusEl = document.getElementById('identify-status-' + 'L3');
+    btn.disabled = true;
+    btn.textContent = 'Identifying parts…';
+    statusEl.style.display = 'block';
+    statusEl.textContent = 'Waiting to run…';
+    setTimeout(function () {
+      statusEl.textContent = 'In progress';
+      setTimeout(function () {
+        btn.disabled = false;
+        btn.textContent = 'Identify Parts';
+        statusEl.textContent = 'Last run completed just now.';
+      }, 1200);
+    }, 900);
+  }
+
+  // ---- Accept / Reject (Req 4/5/6) ----
+  function acceptListing(id, title) {
+    var row = document.querySelector('tr.data-row[data-id="' + id + '"]');
+    var acceptBtn = row.querySelector('[data-accept="' + id + '"]');
+    var rejectBtn = row.querySelector('[data-reject="' + id + '"]');
+    acceptBtn.disabled = true;
+    rejectBtn.disabled = true;
+    setTimeout(function () {
+      row.setAttribute('data-status', 'accepted');
+      row.querySelector('.capitalize').textContent = 'accepted';
+      acceptBtn.remove();
+      rejectBtn.remove();
+      var banner = document.getElementById('accepted-banner');
+      document.getElementById('accepted-text').textContent = 'Accepted "' + title + '" — created Purchase PCH-0042.';
+      banner.classList.add('show');
+    }, 500);
+  }
+
+  function rejectListing(id) {
+    var row = document.querySelector('tr.data-row[data-id="' + id + '"]');
+    var acceptBtn = row.querySelector('[data-accept="' + id + '"]');
+    var rejectBtn = row.querySelector('[data-reject="' + id + '"]');
+    acceptBtn.disabled = true;
+    rejectBtn.disabled = true;
+    setTimeout(function () {
+      row.setAttribute('data-status', 'rejected');
+      row.querySelector('.capitalize').textContent = 'rejected';
+      acceptBtn.remove();
+      rejectBtn.remove();
+    }, 500);
+  }
+
+  // ---- Create form toggle (Req 12) ----
+  function toggleCreateForm() {
+    var wrap = document.getElementById('create-form-wrap');
+    var btn = document.getElementById('add-listing-btn');
+    var isOpen = wrap.style.display !== 'none';
+    wrap.style.display = isOpen ? 'none' : 'block';
+    btn.disabled = !isOpen;
+  }
+
+  // ---- Pagination (cosmetic page counter, matching PaginationControls' bounds logic) ----
+  function changePage(delta) {
+    currentPage = Math.min(totalPages, Math.max(1, currentPage + delta));
+    document.getElementById('page-label').textContent = 'Page ' + currentPage + ' of ' + totalPages + ' (47 total)';
+    document.getElementById('prev-page').disabled = currentPage <= 1;
+    document.getElementById('next-page').disabled = currentPage >= totalPages;
+  }
+
+  // ---- Initial render ----
+  updateHeaderCheckboxState();
+  updateBulkBar();
+</script>
+
+</body>
+</html>
