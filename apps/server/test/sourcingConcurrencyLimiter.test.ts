@@ -89,6 +89,47 @@ describe('runWithBrandLimit (default SOURCING_PER_BRAND_CONCURRENCY, unset)', ()
     expect(order).toEqual(['1-start', '1-end', '2-start', '2-end']);
   });
 
+  it('releases the departing holder\'s own slot on a contested handoff, so a later uncontended call for the same brand does not deadlock (regression: releaseSlot previously only incremented the waiter without decrementing for the finisher, drifting `active` up by one per handoff and starving every later call once it reached the cap)', async () => {
+    const runWithBrandLimit = await freshRunWithBrandLimit();
+    const order: string[] = [];
+    const d1 = Promise.withResolvers<void>();
+    const d2 = Promise.withResolvers<void>();
+
+    // Two overlapping calls for the same brand (cap=1 by default): call2
+    // queues behind call1 and is handed the slot via the FIFO wake path —
+    // this is the exact contested-handoff path the bug lived in.
+    const call1 = runWithBrandLimit('Hyte', async () => {
+      order.push('1-start');
+      await d1.promise;
+      order.push('1-end');
+    });
+    await tick();
+    const call2 = runWithBrandLimit('Hyte', async () => {
+      order.push('2-start');
+      await d2.promise;
+      order.push('2-end');
+    });
+    await tick();
+
+    d1.resolve();
+    await call1;
+    d2.resolve();
+    await call2;
+    expect(order).toEqual(['1-start', '1-end', '2-start', '2-end']);
+
+    // Both earlier calls are fully finished and no waiter is queued, so a
+    // third, later call for the same brand is completely uncontended — it
+    // must be admitted immediately. Raced against a few microtask/macrotask
+    // turns rather than awaited directly, so a reintroduced deadlock fails
+    // this test fast instead of hanging until vitest's own test timeout.
+    const call3 = runWithBrandLimit('Hyte', async () => 'call3-ran' as const);
+    const outcome = await Promise.race([
+      call3,
+      tick().then(() => tick()).then(() => tick()).then(() => 'still-pending' as const),
+    ]);
+    expect(outcome).toBe('call3-ran');
+  });
+
   it('runs two calls for different brands concurrently, neither waiting on the other', async () => {
     const runWithBrandLimit = await freshRunWithBrandLimit();
     const order: string[] = [];

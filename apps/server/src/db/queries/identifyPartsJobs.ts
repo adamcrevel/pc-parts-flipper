@@ -177,7 +177,8 @@ export async function retryOrFailJob(jobId: string, errorMessage: string): Promi
   const nextRetryAt = computeNextRetryAt(newRetryCount);
   await connection.run(
     `UPDATE identify_parts_jobs
-     SET stage = 'queued', retry_count = $retry_count, next_retry_at = $next_retry_at,
+     SET stage = 'queued', retry_count = $retry_count,
+         next_retry_at = CAST(CAST($next_retry_at AS TIMESTAMPTZ) AS TIMESTAMP),
          error_message = $error_message, updated_at = current_timestamp
      WHERE id = $id`,
     { id: jobId, retry_count: newRetryCount, next_retry_at: nextRetryAt.toISOString(), error_message: errorMessage },

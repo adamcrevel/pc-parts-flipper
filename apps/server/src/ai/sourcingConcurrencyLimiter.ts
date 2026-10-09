@@ -73,15 +73,21 @@ function acquireSlot(state: BrandSlotState): Promise<void> {
 
 /** Releases a slot held for `state`, waking the next FIFO waiter (if any) rather than leaving the slot idle. */
 function releaseSlot(state: BrandSlotState): void {
+  // Unconditionally release the departing holder's own slot first. A prior
+  // version skipped this when a waiter existed (reasoning that the
+  // waiter's own `next()` closure re-increments `active`, so the count
+  // would "stay the same") — that double-counted: the departing holder's
+  // slot was never actually freed, and the new holder got an *additional*
+  // increment on top of it, so `active` drifted up by one on every
+  // contested handoff and never returned to 0, permanently starving every
+  // later call for that brand once SOURCING_PER_BRAND_CONCURRENCY was
+  // reached. Decrementing here first, then letting the waiter's own
+  // closure re-increment when handing off, keeps the net effect of one
+  // release + one claim at zero, exactly as a correct semaphore requires.
+  state.active -= 1;
   const next = state.waiters.shift();
   if (next) {
-    // Hand the freed slot straight to the next waiter in arrival order
-    // instead of decrementing active — next() re-increments it itself, so
-    // the slot count never dips to let a non-FIFO latecomer race in ahead
-    // of an already-queued waiter.
     next();
-  } else {
-    state.active -= 1;
   }
 }
 

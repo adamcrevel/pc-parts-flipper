@@ -286,7 +286,7 @@ export const ALTER_STATEMENTS: readonly string[] = [
   // treating that one infra failure as a permanent "already attempted."
   // `next_retry_at` stays NULL forever for a genuinely succeeded/not-found
   // row (T2), so the skip-check's `next_retry_at IS NULL OR next_retry_at
-  // <= current_timestamp` keeps reporting those as attempted exactly as
+  // > current_timestamp` keeps reporting those as attempted exactly as
   // today. `retry_count`/`next_retry_at` on the two job tables do the same
   // for job-level retry (Req 5, 6): a job re-queued after an infra failure
   // waits out its own backoff window before `claimNextQueuedJob` picks it
