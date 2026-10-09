@@ -223,3 +223,26 @@ Findings:
 Standing gate: full suite 870 tests (645 server + 215 web + 10 shared) vs BaselineTests 787 — coverage increased, no shrinkage. Suite is NOT fully green: 1 inherited failure (test/listingPhotos.test.ts's disk-stat case, confirmed pre-existing on baseline commit c21b366, not a regression) plus 2 new failures in apps/server/test/jobRetryInterval.test.ts (TE3's own new test, deliberately reproducing the T3 timestamp must_fix above — expected to pass once T3 is fixed). `npm run lint`: clean.
 UAT: not_run
 
+All three must_fix items resolved directly by the orchestrator (commit 57237e4), re-verified
+independently rather than trusting self-report alone:
+- MF-1 (T3): both `retryOrFailJob`/`retryOrFailPriceJob` now bind `next_retry_at` via
+  `CAST(CAST($next_retry_at AS TIMESTAMPTZ) AS TIMESTAMP)`, matching
+  sourcingAttempts.ts/catalogSourcingAttempts.ts exactly. `jobRetryInterval.test.ts` (TE3's
+  reproduction) now passes; measured interval correct at ~300s.
+- MF-2 (T5): `releaseSlot` now unconditionally decrements `active` for the departing holder
+  before any FIFO handoff. Added a new regression test ("releases the departing holder's own
+  slot on a contested handoff...") reproducing the exact scenario validate-lead traced by hand
+  (two overlapping same-brand calls, then a third later uncontended call) — fails against the
+  pre-fix code (hangs until raced against a bounded tick-based timeout), passes against the fix.
+- MF-3 (T1): schema.ts's Phase-3 comment corrected from `<=` to `>`, matching A8's real shipped
+  implementation.
+Re-verification: full suite clean except the one confirmed-pre-existing `listingPhotos.test.ts`
+flake. Final count: 636 server + 215 web + 10 shared = 861 total, vs BaselineTests 787 (+74,
+no shrinkage). `npm run lint`: clean. Two additional apparent file-level failures
+(listingsAcceptReject.test.ts, photoServing.test.ts) during one contaminated run were caused by
+the orchestrator's own mistake of launching two full-suite `vitest run` invocations
+concurrently against the same ports/DB — both re-ran clean in isolation immediately after,
+confirmed environmental, not a regression (same established pattern as every other feature this
+session).
+UAT: pending
+
