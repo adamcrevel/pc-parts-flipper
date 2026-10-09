@@ -334,6 +334,54 @@ describe('parseIdentificationResponse', () => {
     expect(result.notes).toBe('');
   });
 
+  it('extracts and parses JSON embedded in leading prose with a code fence, via the bracket-extraction fallback', () => {
+    // The model added a caveat sentence before the fence despite being told
+    // not to — the exact shape of the real observed production failure.
+    // stripCodeFence's whole-string anchors cannot strip a fence that isn't
+    // at the very start of the response, so this only succeeds because of
+    // the extractBracketedJson fallback, not the existing fence-strip path.
+    const payload = JSON.stringify({
+      parts: [{ category: 'CPU', description: 'Ryzen 5 5600X', confidence: 'medium', source: 'text' }],
+      notes: '',
+    });
+    const raw = `I can't fully confirm this, but here's my identification:\n\`\`\`json\n${payload}\n\`\`\``;
+
+    const result = parser.parseIdentificationResponse(raw);
+
+    expect(result.parts).toHaveLength(1);
+    expect(result.parts[0].category).toBe('CPU');
+    expect(result.parts[0].description).toBe('Ryzen 5 5600X');
+  });
+
+  it('extracts and parses a bare JSON object preceded by leading prose, via the bracket-extraction fallback', () => {
+    // No fence at all this time — leading prose directly ahead of a bare
+    // object. A direct JSON.parse of the whole string fails because of the
+    // leading sentence, so this also only succeeds via the fallback.
+    const payload = JSON.stringify({
+      parts: [{ category: 'GPU', description: 'RTX 3060', confidence: 'high', source: 'image' }],
+      notes: '',
+    });
+    const raw = `Here is what I found:\n${payload}`;
+
+    const result = parser.parseIdentificationResponse(raw);
+
+    expect(result.parts).toHaveLength(1);
+    expect(result.parts[0].category).toBe('GPU');
+  });
+
+  it('extracts and parses JSON followed by trailing prose, via the bracket-extraction fallback', () => {
+    const payload = JSON.stringify({
+      parts: [{ category: 'RAM', description: '16GB kit', confidence: 'medium', source: 'text' }],
+      notes: '',
+    });
+    const raw = `${payload}\nLet me know if you need anything else checked.`;
+
+    const result = parser.parseIdentificationResponse(raw);
+
+    expect(result.parts).toHaveLength(1);
+    expect(result.parts[0].category).toBe('RAM');
+  });
+
   it('coerces an unrecognized category to Other and logs a warning', () => {
     const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
     const raw = JSON.stringify({
@@ -412,6 +460,45 @@ describe('parseIdentificationResponse', () => {
     expect(() => parser.parseIdentificationResponse('{"notes":"nothing found"}')).toThrow(
       expect.objectContaining({ statusCode: 502, message: expect.stringContaining('missing a "parts" array') }),
     );
+  });
+});
+
+describe('extractBracketedJson', () => {
+  it('extracts an object payload delimited by its first { and last }', () => {
+    const raw = 'preface text {"a":1,"b":{"nested":2}} trailing text';
+
+    expect(parser.extractBracketedJson(raw, 'object')).toBe('{"a":1,"b":{"nested":2}}');
+  });
+
+  it('extracts an array payload delimited by its first [ and last ]', () => {
+    const raw = 'preface text [1,2,[3,4]] trailing text';
+
+    expect(parser.extractBracketedJson(raw, 'array')).toBe('[1,2,[3,4]]');
+  });
+
+  it('returns undefined when the requested opening bracket is absent', () => {
+    expect(parser.extractBracketedJson('no brackets of any kind here', 'object')).toBeUndefined();
+    expect(parser.extractBracketedJson('{"only":"an object"}', 'array')).toBeUndefined();
+  });
+
+  it('returns undefined when the requested closing bracket is absent', () => {
+    expect(parser.extractBracketedJson('{"unterminated":"object"', 'object')).toBeUndefined();
+  });
+
+  it('returns undefined when a closing bracket of the other kind precedes the requested opening bracket', () => {
+    // The only `}` in the text sits before the only `{`, so there is no
+    // substring running forward from open to close to return.
+    const raw = '} some text { more text';
+
+    expect(parser.extractBracketedJson(raw, 'object')).toBeUndefined();
+  });
+
+  it('spans past extra same-kind brackets inside the payload rather than stopping at the first close', () => {
+    // Three closing braces appear before the final one; taking the FIRST
+    // close instead of the last would truncate the payload mid-object.
+    const raw = '{"outer":{"a":1},"list":[{"x":1},{"y":2}]}';
+
+    expect(parser.extractBracketedJson(raw, 'object')).toBe(raw);
   });
 });
 

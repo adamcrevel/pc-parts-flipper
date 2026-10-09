@@ -43,6 +43,37 @@ export function stripCodeFence(raw: string): string {
   return trimmed.replace(OPENING_FENCE, '').replace(CLOSING_FENCE, '').trim();
 }
 
+/**
+ * Finds the outermost bracketed JSON payload embedded in `text`: the
+ * substring running from the first opening bracket matching `kind` (`{` for
+ * `'object'`, `[` for `'array'`) to the LAST occurrence of its matching
+ * closing bracket, inclusive. Returns `undefined` if either bracket is
+ * absent, or if the closing bracket occurs before the opening one.
+ *
+ * Pure string search — it does no JSON validation of its own; the caller
+ * still runs the returned substring through `parseJson`/`JSON.parse` to
+ * confirm it is actually valid. Used as the fallback for a model response
+ * that wraps a genuinely valid JSON payload in incidental prose (a caveat
+ * sentence before or after it, despite the prompt's "no commentary"
+ * instruction) — a direct parse of the full response fails, but the
+ * substring this function extracts parses cleanly. Deliberately not a more
+ * elaborate recovery: a truncated/incomplete payload (cut off mid-generation)
+ * still fails, since the closing bracket it should have isn't there to find.
+ */
+export function extractBracketedJson(text: string, kind: 'object' | 'array'): string | undefined {
+  const openChar = kind === 'object' ? '{' : '[';
+  const closeChar = kind === 'object' ? '}' : ']';
+
+  const openIndex = text.indexOf(openChar);
+  const closeIndex = text.lastIndexOf(closeChar);
+
+  if (openIndex === -1 || closeIndex === -1 || closeIndex < openIndex) {
+    return undefined;
+  }
+
+  return text.slice(openIndex, closeIndex + 1);
+}
+
 // Loosely-typed view of one parsed part before any field has been confirmed.
 interface RawPart {
   category?: unknown;
@@ -181,7 +212,21 @@ function parseJson(text: string): unknown {
  */
 export function parseIdentificationResponse(rawStdout: string): IdentifyPartsResponse {
   const text = stripCodeFence(rawStdout);
-  const parsed = parseJson(text);
+  let parsed = parseJson(text);
+
+  // The cheap direct-parse attempt above already covers a bare or
+  // fully-fenced JSON payload. This fallback only runs when that attempt
+  // failed, and searches the ORIGINAL raw text (not the fence-stripped
+  // version — bracket search is immune to whether a fence wraps the
+  // payload or not) for an outermost `{...}` payload, recovering a response
+  // that embeds valid JSON inside incidental prose the model added despite
+  // being told not to.
+  if (parsed === undefined) {
+    const extracted = extractBracketedJson(rawStdout, 'object');
+    if (extracted !== undefined) {
+      parsed = parseJson(extracted);
+    }
+  }
 
   if (typeof parsed !== 'object' || parsed === null) {
     logger.error({ outputPreview: text.slice(0, 200) }, 'AI identification output was not valid JSON');

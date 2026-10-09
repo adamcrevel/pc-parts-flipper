@@ -520,6 +520,44 @@ describe('parseVisualComparisonResponse', () => {
     });
   });
 
+  it('extracts and parses JSON embedded in leading prose with a code fence, via the bracket-extraction fallback', () => {
+    // The model added a caveat sentence before the fence despite being told
+    // not to — the exact shape of the real observed production failure.
+    // stripCodeFence's whole-string anchors cannot strip a fence that isn't
+    // at the very start of the response, so this only succeeds because of
+    // the extractBracketedJson fallback, not the existing fence-strip path.
+    const payload = JSON.stringify([{ partIndex: 0, brand: 'NVIDIA', partNumber: 'RTX 3080', identityCandidates: [] }]);
+    const raw = `I can't fully confirm this, but here's my comparison:\n\`\`\`json\n${payload}\n\`\`\``;
+
+    const result = parser.parseVisualComparisonResponse(raw);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({ partIndex: 0, brand: 'NVIDIA', partNumber: 'RTX 3080', identityCandidates: [] });
+  });
+
+  it('extracts and parses a bare JSON array preceded by leading prose, via the bracket-extraction fallback', () => {
+    // No fence at all this time — leading prose directly ahead of a bare
+    // array. A direct JSON.parse of the whole string fails because of the
+    // leading sentence, so this also only succeeds via the fallback.
+    const payload = JSON.stringify([{ partIndex: 1, brand: 'AMD', partNumber: 'Ryzen 5 3600', identityCandidates: [] }]);
+    const raw = `Here's my comparison:\n${payload}`;
+
+    const result = parser.parseVisualComparisonResponse(raw);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({ partIndex: 1, brand: 'AMD', partNumber: 'Ryzen 5 3600', identityCandidates: [] });
+  });
+
+  it('extracts and parses JSON followed by trailing prose, via the bracket-extraction fallback', () => {
+    const payload = JSON.stringify([{ partIndex: 2, brand: 'Intel', partNumber: 'i5-10400', identityCandidates: [] }]);
+    const raw = `${payload}\nLet me know if you need anything else checked.`;
+
+    const result = parser.parseVisualComparisonResponse(raw);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({ partIndex: 2, brand: 'Intel', partNumber: 'i5-10400', identityCandidates: [] });
+  });
+
   it('passes explicitly-null brand/partNumber through as null with no warning', () => {
     const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
     const raw = JSON.stringify([
