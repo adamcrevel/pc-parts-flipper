@@ -13,7 +13,14 @@
 // Requirement 3 governs every failure path below: a sourcing attempt that
 // times out, cannot spawn `omp`, returns unparseable output, or returns a URL
 // that fails verification is an EXPECTED outcome, not a bug — it is logged at
-// Info, recorded as a failed attempt, and never propagated to the caller.
+// Info, recorded as an attempt, and never propagated to the caller.
+//
+// sourcing-resilience T6 changes only HOW that attempt is recorded: instead of
+// one binary succeeded/failed flag, each attempt is classified three ways
+// (succeeded / not_found / infrastructure_blocked) so an infrastructure
+// failure can be retried later with backoff while a genuine not-found stays
+// permanent (Requirements 1-2). The `omp` call itself now also runs under the
+// per-brand concurrency cap (sourcingConcurrencyLimiter.ts, Requirement 4).
 import type { AiIdentifiedPart } from '@pc-parts-flipper/shared';
 import {
   hasCatalogSourcingBeenAttempted,
@@ -22,12 +29,13 @@ import {
   insertSourcedReferencePhoto,
   recordSourcingAttempt,
 } from '../db/index.js';
-import type { ComponentCategory } from '../db/index.js';
+import type { ComponentCategory, SourcingOutcome } from '../db/index.js';
 import { logger } from '../logger.js';
 import { sourceCatalogIfNeeded } from './catalogSourcingOrchestrator.js';
 import { buildImageSourcingPrompt } from './imageSourcingPrompt.js';
 import { parseImageSourcingResponse } from './imageSourcingParser.js';
 import { DEFAULT_OMP_SOURCING_TIMEOUT_MS, getOmpSourcingRunner } from './ompSourcingRunner.js';
+import { runWithBrandLimit } from './sourcingConcurrencyLimiter.js';
 
 /**
  * Hard ceiling on tools-enabled sourcing calls one identify-parts request may
@@ -50,40 +58,73 @@ export type SourceablePart = Pick<AiIdentifiedPart, 'category' | 'brand' | 'part
 export type ReferenceSourcer = (part: SourceablePart) => Promise<void>;
 
 /**
- * Runs one sourcing attempt end to end and reports whether a verified photo
- * was actually added to the library. Resolves false — never throws — for
- * every failure mode: runner timeout/ENOENT/non-zero exit, a structurally
- * unparseable response, a "not found" answer, or a URL whose download or
- * real-image verification fails inside insertSourcedReferencePhoto.
+ * Runs one sourcing attempt end to end and classifies how it ended, for the
+ * attempt record the caller writes. Resolves — never throws — for every
+ * failure mode, exactly as before (Requirement 3).
+ *
+ * The classification (sourcing-resilience Requirements 1-2) is what decides
+ * whether this combo may ever be attempted again:
+ * - `infrastructure_blocked` — the runner timed out, could not spawn `omp`,
+ *   exited non-zero, or returned output `parseImageSourcingResponse` rejected
+ *   (all thrown), OR the model itself reported `blocked: true` (rate limit,
+ *   CAPTCHA, access denied). The model never got a real chance to search, so
+ *   the combo is retried later with exponential backoff.
+ * - `not_found` — a clean, completed search that genuinely found nothing.
+ *   Permanent: this combo is never attempted again.
+ * - `succeeded` — a clean answer whose URL downloaded and verified as a real
+ *   image, so a photo is now in the library.
+ *
+ * The `omp` call runs inside runWithBrandLimit so concurrent attempts for the
+ * same brand do not hit that manufacturer's site at once (Requirement 4).
  */
 async function attemptSourcing(
   category: ComponentCategory,
   brand: string,
   partNumber: string,
-): Promise<boolean> {
+): Promise<SourcingOutcome> {
   try {
     const prompt = buildImageSourcingPrompt(category, brand, partNumber);
-    const rawStdout = await getOmpSourcingRunner()(prompt, { timeoutMs: DEFAULT_OMP_SOURCING_TIMEOUT_MS });
+    const rawStdout = await runWithBrandLimit(brand, () =>
+      getOmpSourcingRunner()(prompt, { timeoutMs: DEFAULT_OMP_SOURCING_TIMEOUT_MS }),
+    );
     const result = parseImageSourcingResponse(rawStdout);
+
+    // Checked before `found`: a blocked model never completed a real search,
+    // so whatever it reported is not a genuine not-found (Requirement 1).
+    if (result.blocked) {
+      logger.info(
+        { category, brand, partNumber },
+        'Reference photo sourcing was blocked (rate limit/CAPTCHA/access denied); will be retried after backoff',
+      );
+      return 'infrastructure_blocked';
+    }
 
     // parseImageSourcingResponse already coerces a malformed url to
     // found:false, so a non-null url here is the only case worth downloading.
     if (!result.found || result.url === null) {
       logger.info({ category, brand, partNumber }, 'Reference photo sourcing found no manufacturer photo');
-      return false;
+      return 'not_found';
     }
 
     // insertSourcedReferencePhoto does its own download + real-image
     // verification and reports inserted:false rather than throwing for a bad URL.
     const { inserted } = await insertSourcedReferencePhoto(category, brand, partNumber, result.url);
     logger.info({ category, brand, partNumber, url: result.url, inserted }, 'Reference photo sourcing attempt finished');
-    return inserted;
+
+    // Deliberate edge case, not an oversight: a found:true answer whose URL
+    // fails to download or verify is classified 'not_found', NOT
+    // 'infrastructure_blocked'. Our infrastructure worked fine — the model's
+    // claimed URL simply did not pan out, which is a model-content problem,
+    // and retrying the identical search would only produce the same bad URL.
+    return inserted ? 'succeeded' : 'not_found';
   } catch (err) {
     // Info, not Error: Requirement 3 makes a failed sourcing attempt an
     // expected outcome of an on-demand best-effort call, not a server fault.
+    // Every throw reaching here — runner spawn/timeout/non-zero exit, or a
+    // parser rejection — is an infrastructure failure worth retrying.
     const message = err instanceof Error ? err.message : String(err);
     logger.info({ category, brand, partNumber, message }, 'Reference photo sourcing attempt failed; continuing without a sourced photo');
-    return false;
+    return 'infrastructure_blocked';
   }
 }
 
@@ -170,14 +211,15 @@ export function createReferenceSourcer(): ReferenceSourcer {
     attemptsUsed += 1;
     logger.info({ category, brand, partNumber, attemptsUsed }, 'Starting reference photo sourcing attempt');
 
-    const inserted = await attemptSourcing(category, brand, partNumber);
+    const outcome = await attemptSourcing(category, brand, partNumber);
 
     try {
-      // Recorded regardless of outcome — the attempt record is what makes
-      // Requirement 6's "never re-attempt the same combo" true for failures too.
-      // Binary for now: T6 replaces this with the full three-way
-      // succeeded/not_found/infrastructure_blocked classification.
-      await recordSourcingAttempt(category, brand, partNumber, inserted ? 'succeeded' : 'not_found');
+      // Recorded on every outcome — the attempt record is what makes
+      // Requirement 6's "never re-attempt the same combo" true for a genuine
+      // not-found too. An 'infrastructure_blocked' outcome is the one kind
+      // that stays retryable: recordSourcingAttempt stamps it with a growing
+      // next_retry_at instead of foreclosing the combo forever (T2).
+      await recordSourcingAttempt(category, brand, partNumber, outcome);
     } catch (err) {
       // A failure to write the bookkeeping row must not fail identify-parts
       // either; the worst case is one wasted re-attempt on a later request.

@@ -17,6 +17,7 @@ import type { CreateExpectedPartInput, ExpectedPart, Listing } from '../src/db/i
 const claimNextQueuedJob = vi.fn<[], Promise<IdentifyPartsJob | null>>();
 const completeJob = vi.fn<[string, IdentifyPartsResponse], Promise<void>>();
 const failJob = vi.fn<[string, string], Promise<void>>();
+const retryOrFailJob = vi.fn<[string, string], Promise<void>>();
 const resetOrphanedJobsToQueued = vi.fn<[], Promise<string[]>>();
 const updateJobStage = vi.fn<[string, 'sourcing_references' | 'comparing'], Promise<void>>();
 const getListingById = vi.fn<[string], Promise<Listing | null>>();
@@ -39,6 +40,7 @@ vi.mock('../src/db/index.js', () => ({
   claimNextQueuedJob: (...args: []) => claimNextQueuedJob(...args),
   completeJob: (...args: [string, IdentifyPartsResponse]) => completeJob(...args),
   failJob: (...args: [string, string]) => failJob(...args),
+  retryOrFailJob: (...args: [string, string]) => retryOrFailJob(...args),
   resetOrphanedJobsToQueued: (...args: []) => resetOrphanedJobsToQueued(...args),
   updateJobStage: (...args: [string, 'sourcing_references' | 'comparing']) => updateJobStage(...args),
   getListingById: (...args: [string]) => getListingById(...args),
@@ -112,6 +114,7 @@ beforeEach(() => {
   claimNextQueuedJob.mockReset().mockResolvedValue(null);
   completeJob.mockReset().mockResolvedValue(undefined);
   failJob.mockReset().mockResolvedValue(undefined);
+  retryOrFailJob.mockReset().mockResolvedValue(undefined);
   resetOrphanedJobsToQueued.mockReset().mockResolvedValue([]);
   updateJobStage.mockReset().mockResolvedValue(undefined);
   getListingById.mockReset().mockResolvedValue(null);
@@ -174,6 +177,7 @@ describe('startIdentifyPartsWorkerPool (T2, Req 4, 5, 6)', () => {
 
     expect(completeJob).toHaveBeenCalledWith('job-A', fakeResult);
     expect(failJob).not.toHaveBeenCalled();
+    expect(retryOrFailJob).not.toHaveBeenCalled();
   });
 
   it('never calls updateJobStage when the pipeline never raises a stage transition (e.g. no eligible parts)', async () => {
@@ -193,7 +197,7 @@ describe('startIdentifyPartsWorkerPool (T2, Req 4, 5, 6)', () => {
     expect(completeJob).toHaveBeenCalledWith('job-B', fakeResult);
   });
 
-  it('fails a job without calling identifyListingParts when its Listing has been deleted', async () => {
+  it('permanently fails a job without calling identifyListingParts or retryOrFailJob when its Listing has been deleted', async () => {
     const job = jobFixture('job-C', 'listing-deleted');
 
     claimNextQueuedJob.mockResolvedValueOnce(job).mockResolvedValue(null);
@@ -206,6 +210,11 @@ describe('startIdentifyPartsWorkerPool (T2, Req 4, 5, 6)', () => {
     expect(failJob).toHaveBeenCalledWith('job-C', 'Listing no longer exists');
     expect(identifyListingParts).not.toHaveBeenCalled();
     expect(completeJob).not.toHaveBeenCalled();
+    // T7: the Listing-deleted branch is checked outside the try/catch and
+    // is unaffected by the retry wiring below — it must never go through
+    // retryOrFailJob, since no amount of retrying brings a deleted Listing
+    // back.
+    expect(retryOrFailJob).not.toHaveBeenCalled();
   });
 
   // Proves the pool's own activeCount bookkeeping (the part the
@@ -215,7 +224,7 @@ describe('startIdentifyPartsWorkerPool (T2, Req 4, 5, 6)', () => {
   // claim and process a second job. If the pool never decremented
   // activeCount on completion, job-2 would never be claimed and
   // identifyListingParts would be called exactly once instead of twice.
-  it('frees its slot after a job fails, so the pool immediately claims and processes the next queued job', async () => {
+  it('frees its slot after a job throws, so the pool immediately claims and processes the next queued job', async () => {
     const listingFailing = listingFixture('listing-fail');
     const listingOk = listingFixture('listing-ok');
     const job1 = jobFixture('job-1', 'listing-fail');
@@ -238,7 +247,15 @@ describe('startIdentifyPartsWorkerPool (T2, Req 4, 5, 6)', () => {
 
     await vi.waitFor(() => expect(completeJob).toHaveBeenCalledTimes(1));
 
-    expect(failJob).toHaveBeenCalledWith('job-1', 'boom');
+    // T7: a thrown error routes through retryOrFailJob (requeue-with-backoff),
+    // never failJob (permanent failure) — the full requeue/backoff/reclaim
+    // behavior retryOrFailJob itself performs is proven directly, against a
+    // real DuckDB file, in identifyPartsJobs.test.ts's own
+    // "retryOrFailJob" describe block; this assertion is this pool's half
+    // of the contract: that it calls the right function with the right
+    // arguments, and still frees its slot for the next job either way.
+    expect(retryOrFailJob).toHaveBeenCalledWith('job-1', 'boom');
+    expect(failJob).not.toHaveBeenCalled();
     expect(completeJob).toHaveBeenCalledWith('job-2', fakeResult);
     expect(identifyListingParts).toHaveBeenCalledTimes(2);
   });
@@ -391,7 +408,7 @@ describe('persistIdentifiedParts dedupe & job-failure data integrity (T1, Req 1-
     expect(triggerPriceLookups).toHaveBeenCalledWith([expect.objectContaining({ id: 'new-1' })]);
   });
 
-  it('leaves existing Expected Parts completely untouched when the job fails (identifyListingParts throws)', async () => {
+  it('leaves existing Expected Parts completely untouched and retries (never permanently fails) when the job throws (identifyListingParts throws)', async () => {
     const listing = listingFixture('listing-fail-keep');
     const job = jobFixture('job-fail-keep', 'listing-fail-keep');
 
@@ -445,9 +462,10 @@ describe('persistIdentifiedParts dedupe & job-failure data integrity (T1, Req 1-
 
     activeHandle = startIdentifyPartsWorkerPool();
 
-    await vi.waitFor(() => expect(failJob).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(retryOrFailJob).toHaveBeenCalledTimes(1));
 
-    expect(failJob).toHaveBeenCalledWith('job-fail-keep', 'AI pipeline exploded');
+    expect(retryOrFailJob).toHaveBeenCalledWith('job-fail-keep', 'AI pipeline exploded');
+    expect(failJob).not.toHaveBeenCalled();
     expect(completeJob).not.toHaveBeenCalled();
     expect(listExpectedPartsByListing).not.toHaveBeenCalled();
     expect(deleteExpectedPart).not.toHaveBeenCalled();

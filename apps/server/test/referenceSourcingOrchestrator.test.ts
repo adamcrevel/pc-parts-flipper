@@ -594,3 +594,301 @@ describe('identifyListingParts catalog-mode reference sourcing (ai-catalog-sourc
     expect(await db.hasCatalogSourcingBeenAttempted('Case', 'FailCatalogBrand')).toBe(true);
   });
 });
+
+// The WHOLE classification recorded for one single-product combo
+// (sourcing-resilience T6, Requirements 1-2). Asserted as one object rather
+// than a single flag because `succeeded` alone cannot tell the two failure
+// outcomes apart: a genuine not_found and an infrastructure_blocked attempt
+// both store succeeded=false, and only `blocked` + an open retry window
+// (next_retry_at) name which one was actually recorded.
+interface AttemptClassification {
+  succeeded: boolean;
+  blocked: boolean;
+  retryScheduled: boolean;
+}
+
+async function referenceAttemptClassification(
+  category: string,
+  brand: string,
+  partNumber: string,
+): Promise<AttemptClassification | null> {
+  const connection = await getConnection();
+  const reader = await connection.runAndReadAll(
+    `SELECT succeeded, blocked, next_retry_at FROM part_reference_sourcing_attempts
+     WHERE category = $category AND brand = $brand AND part_number = $part_number`,
+    { category, brand, part_number: partNumber },
+  );
+  const rows = reader.getRowObjectsJson();
+  return rows.length === 0
+    ? null
+    : {
+        succeeded: Boolean(rows[0].succeeded),
+        blocked: Boolean(rows[0].blocked),
+        retryScheduled: Boolean(rows[0].next_retry_at),
+      };
+}
+
+async function catalogAttemptClassification(category: string, brand: string): Promise<AttemptClassification | null> {
+  const connection = await getConnection();
+  const reader = await connection.runAndReadAll(
+    `SELECT succeeded, blocked, next_retry_at FROM part_catalog_sourcing_attempts
+     WHERE category = $category AND brand = $brand`,
+    { category, brand },
+  );
+  const rows = reader.getRowObjectsJson();
+  return rows.length === 0
+    ? null
+    : {
+        succeeded: Boolean(rows[0].succeeded),
+        blocked: Boolean(rows[0].blocked),
+        retryScheduled: Boolean(rows[0].next_retry_at),
+      };
+}
+
+const SUCCEEDED: AttemptClassification = { succeeded: true, blocked: false, retryScheduled: false };
+const NOT_FOUND: AttemptClassification = { succeeded: false, blocked: false, retryScheduled: false };
+const INFRA_BLOCKED: AttemptClassification = { succeeded: false, blocked: true, retryScheduled: true };
+
+describe('createReferenceSourcer — three-way outcome classification (sourcing-resilience Requirements 1-2)', () => {
+  it('records infrastructure_blocked, not not_found, when the model reports blocked:true', async () => {
+    recordSourcingCalls(async () => '{"found":false,"url":null,"blocked":true}');
+
+    await orchestrator.createReferenceSourcer()({ category: 'GPU', brand: 'RateLimitedBrand', partNumber: 'RL-1' });
+
+    expect(await referenceAttemptClassification('GPU', 'RateLimitedBrand', 'RL-1')).toEqual(INFRA_BLOCKED);
+    expect(await countPhotoRows('GPU', 'RateLimitedBrand', 'RL-1')).toBe(0);
+  });
+
+  it('records infrastructure_blocked when the runner itself throws', async () => {
+    recordSourcingCalls(async () => {
+      throw new Error("'omp' exited with code 1");
+    });
+
+    await expect(
+      orchestrator.createReferenceSourcer()({ category: 'GPU', brand: 'RunnerThrowBrand', partNumber: 'RT-1' }),
+    ).resolves.toBeUndefined();
+    expect(await referenceAttemptClassification('GPU', 'RunnerThrowBrand', 'RT-1')).toEqual(INFRA_BLOCKED);
+  });
+
+  it('records infrastructure_blocked when the parser rejects the response', async () => {
+    recordSourcingCalls(async () => 'I could not find anything, sorry.');
+
+    await orchestrator.createReferenceSourcer()({ category: 'GPU', brand: 'UnparseableBrand', partNumber: 'UP-1' });
+
+    expect(await referenceAttemptClassification('GPU', 'UnparseableBrand', 'UP-1')).toEqual(INFRA_BLOCKED);
+  });
+
+  it('records not_found — permanently, with no retry window — for a clean found:false, blocked:false answer', async () => {
+    recordSourcingCalls(async () => '{"found":false,"url":null,"blocked":false}');
+
+    await orchestrator.createReferenceSourcer()({ category: 'GPU', brand: 'CleanMissBrand', partNumber: 'CM-1' });
+
+    expect(await referenceAttemptClassification('GPU', 'CleanMissBrand', 'CM-1')).toEqual(NOT_FOUND);
+  });
+
+  it('records not_found, NOT infrastructure_blocked, when a found:true url fails download verification', async () => {
+    const { server, url } = await startFixtureServer(404, Buffer.from('nope'));
+    try {
+      recordSourcingCalls(async () => JSON.stringify({ found: true, url, blocked: false }));
+
+      await orchestrator.createReferenceSourcer()({ category: 'GPU', brand: 'DeadUrlBrand', partNumber: 'DU-1' });
+
+      // The deliberate edge case T6 calls out: our infrastructure worked, the
+      // model's claimed URL simply did not pan out, so this stays permanent.
+      expect(await referenceAttemptClassification('GPU', 'DeadUrlBrand', 'DU-1')).toEqual(NOT_FOUND);
+    } finally {
+      await stopFixtureServer(server);
+    }
+  });
+
+  it('records succeeded for a found:true url that downloads and verifies', async () => {
+    const { server, url } = await startFixtureServer(200, JPEG_BYTES);
+    try {
+      recordSourcingCalls(async () => JSON.stringify({ found: true, url, blocked: false }));
+
+      await orchestrator.createReferenceSourcer()({ category: 'GPU', brand: 'LiveUrlBrand', partNumber: 'LU-1' });
+
+      expect(await referenceAttemptClassification('GPU', 'LiveUrlBrand', 'LU-1')).toEqual(SUCCEEDED);
+      expect(await countPhotoRows('GPU', 'LiveUrlBrand', 'LU-1')).toBe(1);
+    } finally {
+      await stopFixtureServer(server);
+    }
+  });
+});
+
+describe('sourceCatalogIfNeeded — three-way outcome classification (sourcing-resilience Requirements 1-2)', () => {
+  it('records infrastructure_blocked, not not_found, for an empty catalog the model reports as blocked', async () => {
+    recordSourcingCalls(async () => '{"products":[],"blocked":true}');
+
+    await orchestrator.createReferenceSourcer()({ category: 'Case', brand: 'BlockedCatalogBrand', partNumber: null });
+
+    expect(await catalogAttemptClassification('Case', 'BlockedCatalogBrand')).toEqual(INFRA_BLOCKED);
+  });
+
+  it('keeps the products a blocked catalog response did report, and still records infrastructure_blocked', async () => {
+    const { server, url } = await startFixtureServer(200, JPEG_BYTES);
+    try {
+      recordSourcingCalls(async () =>
+        JSON.stringify({ products: [{ partNumber: 'PART-1', url }], blocked: true }),
+      );
+
+      await orchestrator.createReferenceSourcer()({ category: 'PSU', brand: 'PartialCatalogBrand', partNumber: null });
+
+      // The photo it managed to report is real and kept...
+      expect(await countPhotoRows('PSU', 'PartialCatalogBrand', 'PART-1')).toBe(1);
+      // ...but the rest of the catalog was never genuinely browsed, so the
+      // combo stays retryable rather than being recorded as a success.
+      expect(await catalogAttemptClassification('PSU', 'PartialCatalogBrand')).toEqual(INFRA_BLOCKED);
+    } finally {
+      await stopFixtureServer(server);
+    }
+  });
+
+  it('records infrastructure_blocked when the catalog runner throws', async () => {
+    recordSourcingCalls(async () => {
+      throw new Error('AI catalog sourcing timed out after 600000ms');
+    });
+
+    await expect(
+      orchestrator.createReferenceSourcer()({ category: 'Cooler', brand: 'ThrowCatalogBrand', partNumber: null }),
+    ).resolves.toBeUndefined();
+    expect(await catalogAttemptClassification('Cooler', 'ThrowCatalogBrand')).toEqual(INFRA_BLOCKED);
+  });
+
+  it('records not_found — permanently, with no retry window — for a clean empty, unblocked catalog', async () => {
+    recordSourcingCalls(async () => '{"products":[],"blocked":false}');
+
+    await orchestrator.createReferenceSourcer()({ category: 'RAM', brand: 'EmptyUnblockedBrand', partNumber: null });
+
+    expect(await catalogAttemptClassification('RAM', 'EmptyUnblockedBrand')).toEqual(NOT_FOUND);
+  });
+
+  it('records not_found, NOT infrastructure_blocked, when every reported url fails download verification', async () => {
+    const { server, url } = await startFixtureServer(404, Buffer.from('nope'));
+    try {
+      recordSourcingCalls(async () =>
+        JSON.stringify({ products: [{ partNumber: 'DEADCAT-1', url }], blocked: false }),
+      );
+
+      await orchestrator.createReferenceSourcer()({ category: 'RAM', brand: 'DeadCatalogBrand', partNumber: null });
+
+      expect(await catalogAttemptClassification('RAM', 'DeadCatalogBrand')).toEqual(NOT_FOUND);
+    } finally {
+      await stopFixtureServer(server);
+    }
+  });
+
+  it('records succeeded when at least one catalog product downloads and verifies', async () => {
+    const { server, url } = await startFixtureServer(200, JPEG_BYTES);
+    try {
+      recordSourcingCalls(async () =>
+        JSON.stringify({ products: [{ partNumber: 'LIVECAT-1', url }], blocked: false }),
+      );
+
+      await orchestrator.createReferenceSourcer()({ category: 'Cooler', brand: 'LiveCatalogBrand', partNumber: null });
+
+      expect(await catalogAttemptClassification('Cooler', 'LiveCatalogBrand')).toEqual(SUCCEEDED);
+    } finally {
+      await stopFixtureServer(server);
+    }
+  });
+});
+
+// What a gated sourcing runner recorded: how many calls it was entered by in
+// total, the most that were ever inside it at once, and the handle that lets
+// every held call finish.
+interface GatedSourcing {
+  entries: number;
+  maxConcurrent: number;
+  release: () => void;
+}
+
+// Installs a sourcing runner that holds EVERY call open until the test
+// releases it, counting how many are inside at once — the only way to observe
+// whether the per-brand cap (runWithBrandLimit, Requirement 4) actually wraps
+// the call. A second concurrent entry opens the gate itself, so a cap that is
+// not holding fails the maxConcurrent assertion instead of hanging the suite.
+function recordGatedSourcing(response: string): GatedSourcing {
+  let active = 0;
+  const { promise: gate, resolve: openGate } = Promise.withResolvers<void>();
+  const observed: GatedSourcing = { entries: 0, maxConcurrent: 0, release: openGate };
+
+  sourcingRunner.setOmpSourcingRunnerOverride(async () => {
+    active += 1;
+    observed.entries += 1;
+    observed.maxConcurrent = Math.max(observed.maxConcurrent, active);
+    if (active > 1) {
+      openGate();
+    }
+    await gate;
+    active -= 1;
+    return response;
+  });
+
+  return observed;
+}
+
+// Hands the event loop over, one turn at a time, until `ready()` is true or
+// `maxTurns` turns have passed. This is not a wall-clock delay —
+// setImmediate resolves on the next loop turn, never after a guessed
+// duration (ts-no-test-timers) — and the loop ends on a real condition
+// rather than a fixed count wherever one exists.
+async function drainEventLoop(ready: () => boolean, maxTurns = 2_000): Promise<void> {
+  for (let turn = 0; turn < maxTurns; turn += 1) {
+    if (ready()) {
+      return;
+    }
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setImmediate(resolve);
+    await promise;
+  }
+}
+
+describe('sourcing orchestrators — per-brand concurrency cap (sourcing-resilience Requirement 4)', () => {
+  it('never runs two single-product sourcing calls for the same brand at the same time', async () => {
+    const observed = recordGatedSourcing('{"found":false,"url":null,"blocked":false}');
+
+    const first = orchestrator.createReferenceSourcer()({ category: 'GPU', brand: 'SerialBrand', partNumber: 'SERIAL-1' });
+    const second = orchestrator.createReferenceSourcer()({ category: 'GPU', brand: 'SerialBrand', partNumber: 'SERIAL-2' });
+
+    // Wait for the first call to actually be inside the runner (its own DB
+    // pre-checks are real async work), then keep handing the loop over: a
+    // second call that is merely slower rather than genuinely capped would
+    // arrive during this window and push maxConcurrent to 2.
+    await drainEventLoop(() => observed.entries >= 1);
+    await drainEventLoop(() => observed.entries >= 2, 500);
+    // The first call is still held inside the runner, so the second reached
+    // the cap and is waiting there rather than hitting the same brand's site.
+    expect(observed.maxConcurrent).toBe(1);
+
+    observed.release();
+    await Promise.all([first, second]);
+
+    // Waiting, never dropped: the held call ran to completion afterwards.
+    expect(observed.entries).toBe(2);
+    expect(observed.maxConcurrent).toBe(1);
+    expect(await referenceAttemptClassification('GPU', 'SerialBrand', 'SERIAL-1')).toEqual(NOT_FOUND);
+    expect(await referenceAttemptClassification('GPU', 'SerialBrand', 'SERIAL-2')).toEqual(NOT_FOUND);
+  });
+
+  it('never runs two catalog sourcing calls for the same brand at the same time', async () => {
+    const observed = recordGatedSourcing('{"products":[],"blocked":false}');
+
+    // Same brand, two categories — two distinct catalog combos that would
+    // otherwise browse the same manufacturer's site simultaneously.
+    const first = orchestrator.createReferenceSourcer()({ category: 'GPU', brand: 'SerialCatalogBrand', partNumber: null });
+    const second = orchestrator.createReferenceSourcer()({ category: 'PSU', brand: 'SerialCatalogBrand', partNumber: null });
+
+    await drainEventLoop(() => observed.entries >= 1);
+    await drainEventLoop(() => observed.entries >= 2, 500);
+    expect(observed.maxConcurrent).toBe(1);
+
+    observed.release();
+    await Promise.all([first, second]);
+
+    expect(observed.entries).toBe(2);
+    expect(observed.maxConcurrent).toBe(1);
+    expect(await catalogAttemptClassification('GPU', 'SerialCatalogBrand')).toEqual(NOT_FOUND);
+    expect(await catalogAttemptClassification('PSU', 'SerialCatalogBrand')).toEqual(NOT_FOUND);
+  });
+});

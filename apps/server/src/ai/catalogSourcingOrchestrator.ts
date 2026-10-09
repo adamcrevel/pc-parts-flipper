@@ -16,11 +16,12 @@
 // attempt" helper, just exported because it is non-trivial enough to need
 // its own tests.
 import { insertSourcedReferencePhoto, recordCatalogSourcingAttempt } from '../db/index.js';
-import type { ComponentCategory } from '../db/index.js';
+import type { ComponentCategory, SourcingOutcome } from '../db/index.js';
 import { logger } from '../logger.js';
 import { buildCatalogSourcingPrompt } from './catalogSourcingPrompt.js';
 import { parseCatalogSourcingResponse } from './catalogSourcingParser.js';
 import { getOmpSourcingRunner } from './ompSourcingRunner.js';
+import { runWithBrandLimit } from './sourcingConcurrencyLimiter.js';
 
 /**
  * Catalog browsing needs more real browsing time than finding one already-
@@ -41,18 +42,41 @@ export const DEFAULT_OMP_CATALOG_SOURCING_TIMEOUT_MS = 600_000;
  * this combo. Resolves without throwing in every case — Requirement 3's "a
  * failed attempt is an expected outcome" rule from single-product sourcing
  * applies identically here: a timeout, spawn failure, or unparseable
- * response is logged at Info and recorded as a zero-product attempt, never
- * propagated to the caller. Does NOT itself check whether this combo was
- * already attempted or whether budget remains — the caller owns both
- * (see file header).
+ * response is logged at Info and recorded, never propagated to the caller.
+ * Does NOT itself check whether this combo was already attempted or whether
+ * budget remains — the caller owns both (see file header).
+ *
+ * The `omp` call runs inside runWithBrandLimit, so concurrent sourcing calls
+ * for the same brand — from this path or the single-product one — do not hit
+ * that manufacturer's site at once (sourcing-resilience Requirement 4).
+ *
+ * How the attempt is recorded is three-way (sourcing-resilience Requirements
+ * 1-2), and that is what decides whether this brand may be browsed again:
+ * - `infrastructure_blocked` — anything thrown (runner timeout/spawn failure/
+ *   non-zero exit, or a parser rejection), OR a clean response the model
+ *   itself marked `blocked` (rate limit, CAPTCHA, access denied). The site
+ *   was never genuinely browsed, so the combo is retried later with backoff.
+ * - `not_found` — a clean, completed browse that verified no product at all.
+ *   Permanent: this combo is never attempted again.
+ * - `succeeded` — at least one product downloaded and verified as a real image.
+ *
+ * A blocked response that still carried some candidates has them inserted
+ * first and is STILL recorded `infrastructure_blocked`: the photos it did
+ * manage to report are real and worth keeping now, and the rest of the
+ * catalog is still worth retrying later.
  */
 export async function sourceCatalogIfNeeded(category: ComponentCategory, brand: string): Promise<void> {
   let insertedCount = 0;
-  let succeeded = false;
+  // Deliberately pessimistic default: anything thrown below leaves the
+  // outcome here, which is the retryable classification (Requirement 1) —
+  // the clean paths all assign explicitly before the try block ends.
+  let outcome: SourcingOutcome = 'infrastructure_blocked';
   try {
     const prompt = buildCatalogSourcingPrompt(category, brand);
-    const rawStdout = await getOmpSourcingRunner()(prompt, { timeoutMs: DEFAULT_OMP_CATALOG_SOURCING_TIMEOUT_MS });
-    const candidates = parseCatalogSourcingResponse(rawStdout);
+    const rawStdout = await runWithBrandLimit(brand, () =>
+      getOmpSourcingRunner()(prompt, { timeoutMs: DEFAULT_OMP_CATALOG_SOURCING_TIMEOUT_MS }),
+    );
+    const { candidates, blocked } = parseCatalogSourcingResponse(rawStdout);
 
     // Sequential, not Promise.all: each insert does a real network download,
     // so one at a time avoids hammering the manufacturer's site with many
@@ -68,8 +92,18 @@ export async function sourceCatalogIfNeeded(category: ComponentCategory, brand: 
       }
     }
 
-    succeeded = insertedCount > 0;
-    logger.info({ category, brand, found: candidates.length, insertedCount }, 'Catalog sourcing attempt finished');
+    // `blocked` wins over the insert count: a browse the model was denied
+    // never proved this brand has nothing more to offer. Without it, a
+    // zero-insert blocked attempt would be mistaken for a genuine empty
+    // catalog and foreclosed forever. Note a candidate whose download or
+    // verification failed leaves this 'not_found', NOT blocked — our
+    // infrastructure worked; the model's claimed URL simply did not pan out,
+    // which is a model-content problem and would repeat on a retry.
+    outcome = blocked ? 'infrastructure_blocked' : insertedCount > 0 ? 'succeeded' : 'not_found';
+    logger.info(
+      { category, brand, found: candidates.length, insertedCount, blocked },
+      'Catalog sourcing attempt finished',
+    );
   } catch (err) {
     // Info, not Error: Requirement 3's "a failed attempt is an expected
     // outcome" rule from single-product sourcing applies identically here.
@@ -81,11 +115,11 @@ export async function sourceCatalogIfNeeded(category: ComponentCategory, brand: 
   }
 
   try {
-    // Recorded regardless of outcome — the attempt record is what makes
-    // Requirement 5's "never re-attempt the same combo" true for failures too.
-    // Binary for now: T6 replaces this with the full three-way
-    // succeeded/not_found/infrastructure_blocked classification.
-    await recordCatalogSourcingAttempt(category, brand, succeeded ? 'succeeded' : 'not_found', insertedCount);
+    // Recorded on every outcome — the attempt record is what makes
+    // Requirement 5's "never re-attempt the same combo" true for a genuine
+    // not-found too, while an 'infrastructure_blocked' one is stamped with a
+    // growing next_retry_at and becomes attemptable again later (T2).
+    await recordCatalogSourcingAttempt(category, brand, outcome, insertedCount);
   } catch (err) {
     // A failure to write the bookkeeping row must not fail identify-parts
     // either; the worst case is one wasted re-attempt on a later request.

@@ -14,7 +14,7 @@ import type { PricePartsJob } from '../src/db/index.js';
 
 const claimNextQueuedPriceJob = vi.fn<[], Promise<PricePartsJob | null>>();
 const completePriceJob = vi.fn<[string], Promise<void>>();
-const failPriceJob = vi.fn<[string, string], Promise<void>>();
+const retryOrFailPriceJob = vi.fn<[string, string], Promise<void>>();
 const resetOrphanedPriceJobsToQueued = vi.fn<[], Promise<string[]>>();
 const updatePriceCacheEntryValue = vi.fn<[string, string, string, number | null], Promise<void>>();
 const propagateCachedPriceToExpectedParts = vi.fn<[string, string, string, number], Promise<void>>();
@@ -28,7 +28,7 @@ const propagateCachedPriceToExpectedParts = vi.fn<[string, string, string, numbe
 vi.mock('../src/db/index.js', () => ({
   claimNextQueuedPriceJob: (...args: []) => claimNextQueuedPriceJob(...args),
   completePriceJob: (...args: [string]) => completePriceJob(...args),
-  failPriceJob: (...args: [string, string]) => failPriceJob(...args),
+  retryOrFailPriceJob: (...args: [string, string]) => retryOrFailPriceJob(...args),
   resetOrphanedPriceJobsToQueued: (...args: []) => resetOrphanedPriceJobsToQueued(...args),
   updatePriceCacheEntryValue: (...args: [string, string, string, number | null]) =>
     updatePriceCacheEntryValue(...args),
@@ -66,7 +66,7 @@ let activeHandle: { stop(): void } | null = null;
 beforeEach(() => {
   claimNextQueuedPriceJob.mockReset().mockResolvedValue(null);
   completePriceJob.mockReset().mockResolvedValue(undefined);
-  failPriceJob.mockReset().mockResolvedValue(undefined);
+  retryOrFailPriceJob.mockReset().mockResolvedValue(undefined);
   resetOrphanedPriceJobsToQueued.mockReset().mockResolvedValue([]);
   updatePriceCacheEntryValue.mockReset().mockResolvedValue(undefined);
   propagateCachedPriceToExpectedParts.mockReset().mockResolvedValue(undefined);
@@ -104,7 +104,7 @@ describe('startPricePartsWorkerPool (T5, Req 11)', () => {
     expect(updatePriceCacheEntryValue).toHaveBeenCalledWith('CPU', 'Intel', 'i7-9700K', 45.5);
     expect(propagateCachedPriceToExpectedParts).toHaveBeenCalledWith('CPU', 'Intel', 'i7-9700K', 45.5);
     expect(completePriceJob).toHaveBeenCalledWith('job-A');
-    expect(failPriceJob).not.toHaveBeenCalled();
+    expect(retryOrFailPriceJob).not.toHaveBeenCalled();
   });
 
   it('completes a no-confident-price job with the cache value left null and never propagates', async () => {
@@ -119,19 +119,19 @@ describe('startPricePartsWorkerPool (T5, Req 11)', () => {
     expect(updatePriceCacheEntryValue).toHaveBeenCalledWith('CPU', 'Intel', 'i7-9700K', null);
     expect(propagateCachedPriceToExpectedParts).not.toHaveBeenCalled();
     expect(completePriceJob).toHaveBeenCalledWith('job-B');
-    expect(failPriceJob).not.toHaveBeenCalled();
+    expect(retryOrFailPriceJob).not.toHaveBeenCalled();
   });
 
-  it('fails (not completes) a job whose AI runner call crashes, recording the error message', async () => {
+  it('retries (requeues, never permanently fails) a job whose AI runner call crashes, recording the error message', async () => {
     const job = jobFixture('job-C');
     claimNextQueuedPriceJob.mockResolvedValueOnce(job).mockResolvedValue(null);
     ompSourcingRunner.mockRejectedValue(new Error('omp spawn failed'));
 
     activeHandle = startPricePartsWorkerPool();
 
-    await vi.waitFor(() => expect(failPriceJob).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(retryOrFailPriceJob).toHaveBeenCalledTimes(1));
 
-    expect(failPriceJob).toHaveBeenCalledWith('job-C', 'omp spawn failed');
+    expect(retryOrFailPriceJob).toHaveBeenCalledWith('job-C', 'omp spawn failed');
     expect(completePriceJob).not.toHaveBeenCalled();
     expect(updatePriceCacheEntryValue).not.toHaveBeenCalled();
     expect(propagateCachedPriceToExpectedParts).not.toHaveBeenCalled();
@@ -162,7 +162,7 @@ describe('startPricePartsWorkerPool (T5, Req 11)', () => {
 
     await vi.waitFor(() => expect(completePriceJob).toHaveBeenCalledTimes(1));
 
-    expect(failPriceJob).toHaveBeenCalledWith('job-1', 'boom');
+    expect(retryOrFailPriceJob).toHaveBeenCalledWith('job-1', 'boom');
     expect(completePriceJob).toHaveBeenCalledWith('job-2');
     expect(ompSourcingRunner).toHaveBeenCalledTimes(2);
   });

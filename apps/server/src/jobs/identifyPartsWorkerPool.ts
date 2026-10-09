@@ -1,12 +1,23 @@
 // Manages an async worker pool that claims queued identify-parts jobs and
-// processes them to completion (or failure). Jobs transition through stages
-// as they run: 'queued' → 'identifying' (via claim), then optionally to
+// processes them to completion, to a permanent failure, or back to
+// 'queued' for an automatic retry. Jobs transition through stages as they
+// run: 'queued' → 'identifying' (via claim), then optionally to
 // 'sourcing_references' and 'comparing' (stage callbacks from
-// identifyListingParts), then finally to 'completed' or 'failed'. The pool
-// size is configurable via IDENTIFY_PARTS_POOL_SIZE (default 1) so the
-// number of concurrent AI identify passes can be tuned for available
-// resources — each pass takes ~15–45s depending on photo availability, so
-// production should be set higher than 1 to keep the queue flowing.
+// identifyListingParts), then finally to 'completed'. If the pipeline
+// itself throws (any error caught in processJob's try/catch), the job is
+// NOT marked 'failed' — it is returned to 'queued' via retryOrFailJob
+// (T3/sourcing-resilience), with its retry_count incremented and a future
+// next_retry_at computed by computeNextRetryAt's growing backoff, so
+// claimNextQueuedJob won't reclaim it again until that window passes.
+// 'failed' is reserved for the one permanent, non-retried case: the
+// Listing having been deleted (checked directly below, before the
+// try/catch, via the explicit `listing === null` branch — never routed
+// through retryOrFailJob, since no amount of retrying brings a deleted
+// Listing back). The pool size is configurable via
+// IDENTIFY_PARTS_POOL_SIZE (default 1) so the number of concurrent AI
+// identify passes can be tuned for available resources — each pass takes
+// ~15–45s depending on photo availability, so production should be set
+// higher than 1 to keep the queue flowing.
 // On startup, any jobs left in identifying/sourcing_references/comparing
 // stages (e.g., from a previous server crash) are reset to 'queued' so they
 // re-enter the queue and are re-processed by the new pool instance.
@@ -20,6 +31,7 @@ import {
   failJob,
   listExpectedPartsByListing,
   resetOrphanedJobsToQueued,
+  retryOrFailJob,
   updateJobStage,
   getListingById,
 } from '../db/index.js';
@@ -149,13 +161,17 @@ async function persistIdentifiedParts(listingId: string, listing: Listing, resul
  * identification two-pass flow (with stage callbacks wired to
  * updateJobStage), persists every identified part as a real Expected Part
  * (persistIdentifiedParts, above — happens here, unconditionally, not left
- * to the UI), and either completes the job with the result or fails it
- * with an error message. If persistence itself throws, the job is failed
- * (not completed) rather than reporting success over data that didn't
- * actually save. Always decrements activeCount and calls pump again in a
- * finally block, so a freed slot tries to fill itself immediately. If the
- * listing is deleted (getListingById returns null), fails the job without
- * calling identifyListingParts.
+ * to the UI), and either completes the job with the result or, if anything
+ * in that path throws (persistence included — a job that threw while
+ * persisting is not reported complete over data that didn't actually
+ * save), returns it to 'queued' for an automatic backoff-gated retry via
+ * retryOrFailJob (T3) rather than permanently failing it. Always
+ * decrements activeCount and calls pump again in a finally block, so a
+ * freed slot tries to fill itself immediately. If the listing is deleted
+ * (getListingById returns null), permanently fails the job via failJob
+ * without calling identifyListingParts — that one case is checked outside
+ * the try/catch and is never retried, since no amount of retrying brings a
+ * deleted Listing back.
  */
 async function processJob(job: IdentifyPartsJob): Promise<void> {
   try {
@@ -174,7 +190,7 @@ async function processJob(job: IdentifyPartsJob): Promise<void> {
     // Derive error message the same way other error paths in this codebase
     // do, so the message is always a string.
     const message = err instanceof Error ? err.message : String(err);
-    await failJob(job.id, message);
+    await retryOrFailJob(job.id, message);
   } finally {
     activeCount -= 1;
     // Fire off pump without awaiting; it continues its background loop.
