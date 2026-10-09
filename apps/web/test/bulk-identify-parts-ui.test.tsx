@@ -10,8 +10,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { MemoryRouter } from 'react-router-dom';
 import type { IdentifyPartsBulkResult, ListingSummary, Source } from '@pc-parts-flipper/shared';
-import { ListingsQueuePage } from '../src/routes/listings-queue-page';
-import { BulkIdentifyPartsBar } from '../src/features/listings-queue/bulk-identify-parts-bar';
+import { ListingsPage } from '../src/routes/listings-page';
+import { BulkIdentifyPartsBar } from '../src/features/listings/bulk-identify-parts-bar';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -188,7 +188,7 @@ describe('BulkIdentifyPartsBar (Req 8/9)', () => {
   });
 });
 
-describe('ListingsQueuePage selection wiring (Req 2/4/12)', () => {
+describe('ListingsPage selection wiring (Req 2/4/12)', () => {
   it('keeps a selection made on page 1 while the user pages away and back', async () => {
     const listings = Array.from({ length: 21 }, (_, i) => makeListing(i));
     fetchListingsMock.mockImplementation(({ limit, offset }: { limit: number; offset: number }) =>
@@ -198,7 +198,7 @@ describe('ListingsQueuePage selection wiring (Req 2/4/12)', () => {
 
     const el = await mount(
       <MemoryRouter>
-        <ListingsQueuePage />
+        <ListingsPage />
       </MemoryRouter>,
     );
     await waitFor(() => el.querySelectorAll('tbody tr').length === PAGE_SIZE);
@@ -239,7 +239,7 @@ describe('ListingsQueuePage selection wiring (Req 2/4/12)', () => {
 
     const el = await mount(
       <MemoryRouter>
-        <ListingsQueuePage />
+        <ListingsPage />
       </MemoryRouter>,
     );
     await waitFor(() => el.querySelectorAll('tbody tr').length === PAGE_SIZE);
@@ -280,7 +280,7 @@ describe('ListingsQueuePage selection wiring (Req 2/4/12)', () => {
 
     const el = await mount(
       <MemoryRouter>
-        <ListingsQueuePage />
+        <ListingsPage />
       </MemoryRouter>,
     );
     await waitFor(() => el.querySelectorAll('tbody tr').length === PAGE_SIZE);
@@ -310,7 +310,7 @@ describe('ListingsQueuePage selection wiring (Req 2/4/12)', () => {
 
     const el = await mount(
       <MemoryRouter>
-        <ListingsQueuePage />
+        <ListingsPage />
       </MemoryRouter>,
     );
     await waitFor(() => el.querySelectorAll('tbody tr').length === PAGE_SIZE);
@@ -340,7 +340,7 @@ describe('ListingsQueuePage selection wiring (Req 2/4/12)', () => {
 
       const el = await mount(
         <MemoryRouter>
-          <ListingsQueuePage />
+          <ListingsPage />
         </MemoryRouter>,
       );
       expect(el.querySelectorAll('tbody tr').length).toBe(1);
@@ -392,7 +392,7 @@ describe('ListingsQueuePage selection wiring (Req 2/4/12)', () => {
 
     const el = await mount(
       <MemoryRouter>
-        <ListingsQueuePage />
+        <ListingsPage />
       </MemoryRouter>,
     );
 

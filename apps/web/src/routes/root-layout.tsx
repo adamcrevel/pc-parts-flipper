@@ -10,7 +10,6 @@ import { useThemePreference, type ThemePreference } from '@/lib/use-theme-prefer
 const NAV_ITEMS = [
   { to: '/sources', label: 'Sources' },
   { to: '/listings', label: 'Listings' },
-  { to: '/listings-queue', label: 'Listings Queue' },
   { to: '/purchases', label: 'Purchases' },
   { to: '/parts', label: 'Parts' },
   { to: '/sale-listings', label: 'Sale Listings' },
