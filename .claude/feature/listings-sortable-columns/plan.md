@@ -9,6 +9,7 @@ OrchestrationTokensBreakdown: input 0 + output 20,692 + cache-write 704,200 + ca
 Prototype: https://gist.githack.com/adamcrevel/867fced113ae376421e9e58a1bbdf6f7/raw/prototype.html
 BaselineTests: 878
 BaselineSuite: pass
+Walkthrough: https://gist.githack.com/adamcrevel/ee645e0f328d115cf8ab6449e0c62e8c/raw/walkthrough.html
 
 ## Goal
 
