@@ -545,4 +545,221 @@ describe('Reference photo promotion hook — DB-verified (T2)', () => {
     const afterSecond = await fetchSummary();
     expect(afterSecond?.identifyPartsStatus).toEqual({ stage: 'queued', errorMessage: null });
   }, 30_000);
+
+  // T2 proof (server-side sortable columns on GET /api/listings, Req 1, 6,
+  // 8, 9). Nested inside this block rather than given a describe block of
+  // its own for the module-caching reason documented above: a fourth
+  // top-level block cannot re-import the db modules against its own data
+  // dir. Seeds four Listings, each under its own Source, whose seven
+  // sortable values deliberately disagree with one another — the title
+  // order, the Source-name order, the price order and the default
+  // listing-date order are all different — so a comparator that sorted by
+  // the wrong field, or never sorted at all, could not produce the
+  // expected sequence by luck.
+  describe('sortable columns on GET /api/listings', () => {
+    // The seeded Listings' ids, used to pick this block's own rows out of
+    // the shared per-suite database (earlier tests in this file left their
+    // own Listings behind) while keeping the server's relative ordering.
+    const sortSeedIds = new Set<string>();
+    // title -> id, so each expectation below reads as the column order a
+    // user would see rather than a list of opaque uuids.
+    const seedTitles = {
+      banana: 'Sort Banana workstation',
+      apple: 'Sort apple micro bundle',
+      cherry: 'Sort Cherry tower',
+      date: 'Sort date mini PC',
+    };
+
+    beforeAll(async () => {
+      // Four Sources whose names order Alpha < Delta < Mike < Zulu, which
+      // matches neither the creation order nor (with overwhelming
+      // likelihood) their random uuids — so sorting by `sourceId` instead
+      // of the resolved name (Req 6) cannot pass the Source test below.
+      const sourceNames = ['Zulu Sort Source', 'Alpha Sort Source', 'Mike Sort Source', 'Delta Sort Source'];
+      const [zulu, alpha, mike, delta] = await Promise.all(
+        sourceNames.map((name) => hookDb.createSource({ name, platformType: 'ebay', url: null, notes: null, connectorConfig: null })),
+      );
+      // askingPrice, expected resale and their difference each order the
+      // four rows differently, so one column's expectation can never be
+      // satisfied by another column's comparator:
+      //   asking     apple 100 < date 220 < banana 300 < cherry 400
+      //   resale     banana 50 < cherry 180 < apple 400 < date 500
+      //   difference banana -250 < cherry -220 < date 280 < apple 300
+      // listingDate descending (the default order) is cherry, apple,
+      // banana, date — different again.
+      const seeds = [
+        { title: seedTitles.banana, sourceId: zulu.id, askingPrice: 300, resale: 50, listingDate: '2026-02-01' },
+        { title: seedTitles.apple, sourceId: alpha.id, askingPrice: 100, resale: 400, listingDate: '2026-03-01' },
+        { title: seedTitles.cherry, sourceId: mike.id, askingPrice: 400, resale: 180, listingDate: '2026-04-01' },
+        { title: seedTitles.date, sourceId: delta.id, askingPrice: 220, resale: 500, listingDate: '2026-01-01' },
+      ];
+      const byTitle = new Map<string, string>();
+      for (const seed of seeds) {
+        const created = await postJson<ListingDetail>(
+          `${HOOK_BASE_URL}/api/listings`,
+          listingBody(seed.sourceId, {
+            title: seed.title,
+            askingPrice: seed.askingPrice,
+            acquisitionFees: 0,
+            listingDate: seed.listingDate,
+            expectedParts: [{ componentCategory: 'GPU', brand: null, partNumber: null, description: 'Sort seed part', estimatedResaleValue: seed.resale }],
+          }),
+        );
+        expect(created.status, `sort seed creation failed: ${JSON.stringify(created.body)}`).toBe(201);
+        sortSeedIds.add(created.body.id);
+        byTitle.set(seed.title, created.body.id);
+      }
+
+      // Status spread across all three values (apple accepted, cherry
+      // rejected, banana/date left open) so the Status column has a real
+      // three-way order plus one tie to sort.
+      const acceptRes = await fetch(`${HOOK_BASE_URL}/api/listings/${byTitle.get(seedTitles.apple)}/accept`, { method: 'POST' });
+      expect(acceptRes.status, 'sort seed accept failed').toBe(201);
+      const rejectRes = await fetch(`${HOOK_BASE_URL}/api/listings/${byTitle.get(seedTitles.cherry)}/reject`, { method: 'POST' });
+      expect(rejectRes.status, 'sort seed reject failed').toBe(200);
+
+      // Identify-parts stages: apple 'queued', cherry 'failed', and
+      // banana/date deliberately left with no job at all, which is the case
+      // the route treats as an empty stage.
+      const queued = await hookDb.insertQueuedJobIfNoneActive(byTitle.get(seedTitles.apple)!);
+      expect(queued).not.toBeNull();
+      const failing = await hookDb.insertQueuedJobIfNoneActive(byTitle.get(seedTitles.cherry)!);
+      expect(failing).not.toBeNull();
+      await hookDb.failJob(failing!.id, 'Sort seed failure');
+    }, 30_000);
+
+    // Fetches one unpaginated page with the given query string and returns
+    // just this block's four seeded titles, in the order the server put
+    // them — the shared database holds other tests' Listings too, and their
+    // presence between these rows is irrelevant to the relative order being
+    // asserted.
+    async function seedTitleOrder(query: string): Promise<string[]> {
+      const res = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?limit=500${query}`);
+      expect(res.status).toBe(200);
+      return res.body.listings.filter((listing) => sortSeedIds.has(listing.id)).map((listing) => listing.title);
+    }
+
+    it('sorts by title ascending by displayed text, case-insensitively, and reverses it for sortDirection=desc (Req 1, 3)', async () => {
+      const ascending = [seedTitles.apple, seedTitles.banana, seedTitles.cherry, seedTitles.date];
+      // 'Sort apple...' sorts first despite its lowercase initial — a raw
+      // `<` comparison on the string would put every capitalized title
+      // ahead of it instead.
+      expect(await seedTitleOrder('&sortBy=title&sortDirection=asc')).toEqual(ascending);
+      expect(await seedTitleOrder('&sortBy=title&sortDirection=desc')).toEqual([...ascending].reverse());
+      // Omitting sortDirection means ascending (Req 2's freshly-clicked
+      // column), not "whatever the database returned".
+      expect(await seedTitleOrder('&sortBy=title')).toEqual(ascending);
+    });
+
+    it("sorts by Source's resolved name, not its stored sourceId (Req 6)", async () => {
+      // Alpha < Delta < Mike < Zulu by name: apple, date, cherry, banana.
+      expect(await seedTitleOrder('&sortBy=source')).toEqual([seedTitles.apple, seedTitles.date, seedTitles.cherry, seedTitles.banana]);
+      expect(await seedTitleOrder('&sortBy=source&sortDirection=desc')).toEqual([seedTitles.banana, seedTitles.cherry, seedTitles.date, seedTitles.apple]);
+    });
+
+    it('sorts by status, keeping tied rows in the default listing-date order (Req 1)', async () => {
+      // accepted < open < rejected; banana and date are both open, and the
+      // tie resolves to listing_date DESC (banana 2026-02-01 before date
+      // 2026-01-01) because the sort is stable over listListings' order.
+      expect(await seedTitleOrder('&sortBy=status')).toEqual([seedTitles.apple, seedTitles.banana, seedTitles.date, seedTitles.cherry]);
+    });
+
+    it('reverses a tied sort field exactly, mirroring which tied row lands first, not just the 3-way status order (Req 3)', async () => {
+      // None of the other direction-reversal tests (title/source/
+      // askingPrice/difference) contain a genuine tie, so none of them can
+      // tell a correct summaries.reverse() apart from an alternative
+      // implementation that re-sorts with a flipped comparator instead —
+      // that alternative would leave a stable tie's relative order
+      // (banana-then-date) untouched in both directions, since
+      // Array.prototype.sort's stability guarantee preserves input order
+      // for equal keys regardless of comparator sign. Only reverse()
+      // actually swaps the tied pair too, producing date-then-banana here.
+      expect(await seedTitleOrder('&sortBy=status&sortDirection=desc')).toEqual([seedTitles.cherry, seedTitles.date, seedTitles.banana, seedTitles.apple]);
+    });
+
+    it('sorts by askingPrice numerically in both directions (Req 1)', async () => {
+      const ascending = [seedTitles.apple, seedTitles.date, seedTitles.banana, seedTitles.cherry];
+      expect(await seedTitleOrder('&sortBy=askingPrice')).toEqual(ascending);
+      expect(await seedTitleOrder('&sortBy=askingPrice&sortDirection=desc')).toEqual([...ascending].reverse());
+    });
+
+    it('sorts by the computed expected resale total, not asking price (Req 6)', async () => {
+      // 50 < 180 < 400 < 500 — the reverse of neither the title nor the
+      // asking-price order.
+      expect(await seedTitleOrder('&sortBy=expectedResale')).toEqual([seedTitles.banana, seedTitles.cherry, seedTitles.apple, seedTitles.date]);
+    });
+
+    it('sorts by the computed difference, including negative values, not by any stored field (Req 6)', async () => {
+      // -250 < -220 < 280 < 300: the two losses must sort below both
+      // profits, which a comparator treating these as text would get wrong.
+      expect(await seedTitleOrder('&sortBy=difference')).toEqual([seedTitles.banana, seedTitles.cherry, seedTitles.date, seedTitles.apple]);
+      expect(await seedTitleOrder('&sortBy=difference&sortDirection=desc')).toEqual([seedTitles.apple, seedTitles.date, seedTitles.cherry, seedTitles.banana]);
+    });
+
+    it('sorts by identify-parts stage, grouping Listings with no job at all at the ascending end (Req 1)', async () => {
+      // '' (no job: banana, then date by the stable listing-date tie) <
+      // 'failed' (cherry) < 'queued' (apple).
+      expect(await seedTitleOrder('&sortBy=identifyParts')).toEqual([seedTitles.banana, seedTitles.date, seedTitles.cherry, seedTitles.apple]);
+    });
+
+    it('ignores an unrecognized sortBy, and a sortDirection sent without any sortBy, leaving the default order untouched (Req 9)', async () => {
+      // Default order is listing_date DESC: cherry, apple, banana, date.
+      const defaultOrder = [seedTitles.cherry, seedTitles.apple, seedTitles.banana, seedTitles.date];
+      expect(await seedTitleOrder('')).toEqual(defaultOrder);
+      expect(await seedTitleOrder('&sortBy=listingDate')).toEqual(defaultOrder);
+      expect(await seedTitleOrder('&sortBy=')).toEqual(defaultOrder);
+      expect(await seedTitleOrder('&sortDirection=desc')).toEqual(defaultOrder);
+
+      // Stronger than the orders above: the whole unsorted response —
+      // every row, every field, and `total` — must be identical with an
+      // unrecognized sortBy to what it is without the param at all.
+      const withoutSort = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?limit=500`);
+      const withBadSort = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?limit=500&sortBy=notAColumn&sortDirection=desc`);
+      expect(withBadSort.status).toBe(200);
+      expect(withBadSort.body).toEqual(withoutSort.body);
+    });
+
+    it('sorts the whole filtered dataset before slicing the requested page, not just the rows on it (Req 8)', async () => {
+      // Five Listings under one dedicated Source, created so that the
+      // default listing-date order (30, 10, 50, 20, 40) is nothing like the
+      // asking-price order — a server that sorted only the rows of the
+      // page it had already fetched would return [10, 30] for page one.
+      const pagingSource = await hookDb.createSource({ name: 'Paging Sort Source', platformType: 'ebay', url: null, notes: null, connectorConfig: null });
+      const prices = [
+        { askingPrice: 30, listingDate: '2026-05-05' },
+        { askingPrice: 10, listingDate: '2026-05-04' },
+        { askingPrice: 50, listingDate: '2026-05-03' },
+        { askingPrice: 20, listingDate: '2026-05-02' },
+        { askingPrice: 40, listingDate: '2026-05-01' },
+      ];
+      for (const row of prices) {
+        const created = await postJson<ListingDetail>(
+          `${HOOK_BASE_URL}/api/listings`,
+          listingBody(pagingSource.id, { title: `Paging ${row.askingPrice}`, askingPrice: row.askingPrice, acquisitionFees: 0, listingDate: row.listingDate, expectedParts: [] }),
+        );
+        expect(created.status, `paging seed failed: ${JSON.stringify(created.body)}`).toBe(201);
+      }
+
+      const pageOf = async (offset: number): Promise<ListListingsResponse> => {
+        const res = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${pagingSource.id}&sortBy=askingPrice&limit=2&offset=${offset}`);
+        expect(res.status).toBe(200);
+        return res.body;
+      };
+
+      const first = await pageOf(0);
+      const second = await pageOf(2);
+      const third = await pageOf(4);
+      expect(first.listings.map((listing) => listing.askingPrice)).toEqual([10, 20]);
+      expect(second.listings.map((listing) => listing.askingPrice)).toEqual([30, 40]);
+      expect(third.listings.map((listing) => listing.askingPrice)).toEqual([50]);
+      // `total` still counts the whole filtered set on every page, so the
+      // pagination controls are unaffected by sorting.
+      expect([first.total, second.total, third.total]).toEqual([5, 5, 5]);
+
+      // Descending pages mirror the ascending ones exactly.
+      const firstDesc = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${pagingSource.id}&sortBy=askingPrice&sortDirection=desc&limit=2&offset=0`);
+      expect(firstDesc.status).toBe(200);
+      expect(firstDesc.body.listings.map((listing) => listing.askingPrice)).toEqual([50, 40]);
+    }, 30_000);
+  });
 });

@@ -1,0 +1,1162 @@
+<title>Walkthrough</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--add-bg:rgba(31,95,79,.10);--del-bg:rgba(163,49,42,.10);--radius:8px}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74;
+--add-bg:rgba(79,181,154,.14);--del-bg:rgba(224,123,116,.14)}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+h1{margin:0 0 8px;font-size:20px;letter-spacing:-.01em}
+.overview-text{margin:0;font-size:15px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.card-head,.file-head{width:100%;display:flex;justify-content:space-between;align-items:center;
+gap:12px;font:inherit;text-align:left;background:none;border:none;color:var(--ink);cursor:pointer;
+padding:14px 18px}
+.card-head{font-weight:600}
+.card-head .meta{font-size:12px;color:var(--muted);font-weight:400}
+.card-body{padding:0 18px 16px;display:grid;gap:12px}
+.summary{margin:0;font-size:14px}
+.note{font-size:12px;color:var(--muted);margin:2px 0}
+.flow{overflow-x:auto}
+.flow-svg{display:block}
+.flow-box{fill:var(--bg);stroke:var(--line)}
+.flow-box-text{width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;
+justify-content:center;align-items:center;gap:4px;padding:8px 12px;text-align:center;
+font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.flow-label{font-size:12px;font-weight:600;color:var(--ink);line-height:1.25;margin:0;
+display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+text-overflow:ellipsis;word-break:break-word}
+.flow-note{font-size:10.5px;color:var(--muted);line-height:1.3;margin:0;
+display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+text-overflow:ellipsis;word-break:break-word}
+.flow-arrow{stroke:var(--muted);stroke-width:1.5}
+.flow-arrowhead{fill:var(--muted)}
+.files{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.file-group{padding:10px 4px 12px}
+.file-group:not(:last-child){border-bottom:1px solid var(--line)}
+.file-note{margin:0 0 8px;font-size:13px}
+.file-rows{list-style:none;margin:0;padding:0}
+.file{border-top:1px solid var(--line)}
+.file:first-child{border-top:none}
+.file-head{padding:10px 4px;font-size:13px}
+.file-head .path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.tag{display:inline-block;padding:0 6px;border:1px solid var(--line);border-radius:999px;
+font-size:11px;color:var(--muted)}
+.file-body{padding:0 4px 12px;display:grid;gap:8px}
+.hunk{overflow-x:auto;border:1px solid var(--line);border-radius:6px}
+.hunk-head{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);
+padding:5px 9px;border-bottom:1px solid var(--line)}
+.hunk pre{margin:0;padding:6px 9px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+white-space:pre}
+.hunk pre span{display:block;padding:0 4px}
+.hunk pre .add{background:var(--add-bg);color:var(--good)}
+.hunk pre .del{background:var(--del-bg);color:var(--bad)}
+</style>
+<main>
+<section class="panel overview">
+<h1>Walkthrough</h1>
+<p class="overview-text">The Listings table&#x27;s 7 data-bearing column headers (Title, Source, Status, Asking Price, Expected Resale, Difference, Identify Parts) are now click-to-sort: a click makes that column the single active sort field (ascending), a second click on it flips to descending, and clicking a different header replaces the field outright. Because the table is server-paginated, sorting had to reorder the *whole filtered dataset* before the page is sliced — not just the 20 visible rows — so the server fetches every matching Listing once, resolves each column&#x27;s real displayed value (a Source&#x27;s name, not its id; the computed Expected Resale/Difference totals, not a stored price), sorts, then slices the requested page. With no header ever clicked, the table&#x27;s row order is byte-for-byte unchanged from today.</p>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Shared sort vocabulary</span><span class="meta">1 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">One new pair of types defines the allow-list of sortable fields and directions, shared by</p>
+<p class="note">Tasks: T1</p>
+<ul class="files"><li class="file-group">
+<p class="file-note">adds `ListingSortField` (exactly the 7 sortable columns) and</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">packages/shared/src/listings.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -112,6 +112,31 @@ export type ListingSummary = Listing &amp; {</div><pre><span class="ctx"> /** `GET /api/listings/:id` shape: a Listing with its full Expected Parts set. */</span>
+<span class="ctx"> export type ListingDetail = ListingSummary &amp; { expectedParts: ExpectedPart[] };</span>
+<span class="ctx"> </span>
+<span class="add">+/**</span>
+<span class="add">+ * The allow-list of columns a user can click-to-sort the Listings table by</span>
+<span class="add">+ * (Req 1-4, 10). One value per sortable column&#x27;s real underlying value, not</span>
+<span class="add">+ * its display proxy — `&#x27;source&#x27;` sorts by the Source&#x27;s resolved name,</span>
+<span class="add">+ * `&#x27;expectedResale&#x27;`/`&#x27;difference&#x27;` sort by `ListingComparison`&#x27;s computed</span>
+<span class="add">+ * numbers, not any raw stored field (Req 6). The table&#x27;s two non-comparable</span>
+<span class="add">+ * columns (leading checkbox selection, trailing Accept/Reject actions) have</span>
+<span class="add">+ * no value here and so can never become the active sort field (Req 10).</span>
+<span class="add">+ */</span>
+<span class="add">+export type ListingSortField =</span>
+<span class="add">+  | &#x27;title&#x27;</span>
+<span class="add">+  | &#x27;source&#x27;</span>
+<span class="add">+  | &#x27;status&#x27;</span>
+<span class="add">+  | &#x27;askingPrice&#x27;</span>
+<span class="add">+  | &#x27;expectedResale&#x27;</span>
+<span class="add">+  | &#x27;difference&#x27;</span>
+<span class="add">+  | &#x27;identifyParts&#x27;;</span>
+<span class="add">+</span>
+<span class="add">+/**</span>
+<span class="add">+ * Sort order for whichever `ListingSortField` is currently active. Clicking</span>
+<span class="add">+ * an inactive column&#x27;s header starts it `&#x27;asc&#x27;` (Req 2); clicking the</span>
+<span class="add">+ * already-active column&#x27;s header again flips between the two (Req 3).</span>
+<span class="add">+ */</span>
+<span class="add">+export type ListingSortDirection = &#x27;asc&#x27; | &#x27;desc&#x27;;</span>
+<span class="add">+</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** `GET /api/listings` response: one page of Listing summaries plus the total count matching the filters, so apps/web can render pagination controls without an unbounded fetch (Req 12, 15). */</span>
+<span class="ctx"> export interface ListListingsResponse {</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Server-side sort across the whole filtered dataset</span><span class="meta">2 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">`GET /api/listings` gains optional `sortBy`/`sortDirection` query params. When absent,</p>
+<p class="note">Tasks: T2</p>
+<div class="flow"><svg viewBox="0 0 914 108" role="img" aria-label="data flow" class="flow-svg">
+<rect x="8" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="8" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Query params</div><div class="flow-note">`sortBy`/`sortDirection` parsed, unrecognized values ignored</div></div></foreignObject>
+<line x1="198" y1="54" x2="238" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="244" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="244" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Fetch all filtered rows</div><div class="flow-note">one unpaginated `listListings` call via `limit: total`</div></div></foreignObject>
+<line x1="434" y1="54" x2="474" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="480" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="480" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Resolve real values</div><div class="flow-note">Source name lookup, computed Expected Resale/Difference</div></div></foreignObject>
+<line x1="670" y1="54" x2="710" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="716" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="716" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Sort &amp; slice</div><div class="flow-note">stable sort, reverse for desc, slice the requested page</div></div></foreignObject>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" class="flow-arrowhead"/></marker></defs>
+</svg></div>
+<ul class="files"><li class="file-group">
+<p class="file-note">adds the `SORT_KEYS` per-column extractor map and</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/routes/listings.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -20,6 +20,8 @@ import type {</div><pre><span class="ctx">   ExpectedPartInput,</span>
+<span class="ctx">   ListingComparison,</span>
+<span class="ctx">   ListingDetail,</span>
+<span class="add">+  ListingSortDirection,</span>
+<span class="add">+  ListingSortField,</span>
+<span class="ctx">   ListingStatus,</span>
+<span class="ctx">   ListingSummary,</span>
+<span class="ctx">   ListListingIdsResponse,</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -36,6 +38,7 @@ import {</div><pre><span class="ctx">   listExpectedPartsByListing,</span>
+<span class="ctx">   listListingIds,</span>
+<span class="ctx">   listListings,</span>
+<span class="add">+  listSources,</span>
+<span class="ctx">   promoteReferencePhotos,</span>
+<span class="ctx">   transitionOpenListing,</span>
+<span class="ctx">   updateListing,</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -68,6 +71,81 @@ async function toSummary(listing: Listing): Promise&lt;ListingSummary&gt; {</div><pre><span class="ctx">   };</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="add">+/**</span>
+<span class="add">+ * Per-column sort-key extractors, one per `ListingSortField` (Req 1, 6).</span>
+<span class="add">+ * Each returns the value that column actually displays, never a raw stored</span>
+<span class="add">+ * proxy for it: `source` resolves the Source&#x27;s *name* through the id-&gt;name</span>
+<span class="add">+ * table its caller passes (every other extractor ignores that argument),</span>
+<span class="add">+ * `expectedResale`/`difference` read the computed `ListingComparison`</span>
+<span class="add">+ * rather than any stored price, and `identifyParts` reads the latest job&#x27;s</span>
+<span class="add">+ * stage, treating a Listing with no job at all as an empty stage so those</span>
+<span class="add">+ * rows group together at one end of the column instead of scattering.</span>
+<span class="add">+ * Declared as a Record keyed by the shared union, so a column added to</span>
+<span class="add">+ * `ListingSortField` later fails to compile until its extractor lands here.</span>
+<span class="add">+ */</span>
+<span class="add">+const SORT_KEYS: Record&lt;ListingSortField, (listing: ListingSummary, sourceNamesById: Record&lt;string, string&gt;) =&gt; string | number&gt; = {</span>
+<span class="add">+  title: (listing) =&gt; listing.title,</span>
+<span class="add">+  source: (listing, sourceNamesById) =&gt; sourceNamesById[listing.sourceId] ?? &#x27;&#x27;,</span>
+<span class="add">+  status: (listing) =&gt; listing.status,</span>
+<span class="add">+  askingPrice: (listing) =&gt; listing.askingPrice,</span>
+<span class="add">+  expectedResale: (listing) =&gt; listing.comparison.totalExpectedResaleValue,</span>
+<span class="add">+  difference: (listing) =&gt; listing.comparison.difference,</span>
+<span class="add">+  identifyParts: (listing) =&gt; listing.identifyPartsStatus?.stage ?? &#x27;&#x27;,</span>
+<span class="add">+};</span>
+<span class="add">+</span>
+<span class="add">+// The allow-list of accepted `sortBy` query values, derived from SORT_KEYS</span>
+<span class="add">+// itself so the two can never drift apart.</span>
+<span class="add">+const VALID_SORT_FIELDS = Object.keys(SORT_KEYS) as ListingSortField[];</span>
+<span class="add">+</span>
+<span class="add">+/**</span>
+<span class="add">+ * Builds one page of the Listings table ordered across the WHOLE filtered</span>
+<span class="add">+ * dataset rather than within the requested page (Req 1, 6, 8). The table is</span>
+<span class="add">+ * server-paginated, so a correct &quot;cheapest first&quot; has to reorder every</span>
+<span class="add">+ * matching Listing before the page is sliced out — sorting only the 20 rows</span>
+<span class="add">+ * a page happens to hold would be a different, wrong answer.</span>
+<span class="add">+ *</span>
+<span class="add">+ * Flow: count the filtered set, fetch all of it in one unpaginated</span>
+<span class="add">+ * `listListings` call (`limit: total` turns pagination off for this fetch),</span>
+<span class="add">+ * enrich every row through the same unchanged `toSummary` the unsorted path</span>
+<span class="add">+ * uses — which is what makes the computed comparison and the identify-parts</span>
+<span class="add">+ * stage available as real sort keys (Req 6) — resolve Source names only</span>
+<span class="add">+ * when actually sorting by Source, so no other column pays for that query,</span>
+<span class="add">+ * then sort, reverse for &#x27;desc&#x27;, and slice the requested page. `total`</span>
+<span class="add">+ * still reports the whole filtered count, so pagination controls are</span>
+<span class="add">+ * unaffected by sorting (Req 8).</span>
+<span class="add">+ *</span>
+<span class="add">+ * `Array.prototype.sort` is stable (ES2019+), so rows tied on the sort</span>
+<span class="add">+ * field keep the relative order `listListings` already gave them</span>
+<span class="add">+ * (`listing_date DESC, id ASC`) with no secondary sort key needed; the</span>
+<span class="add">+ * `reverse()` for &#x27;desc&#x27; flips those ties too, which keeps &#x27;desc&#x27; the exact</span>
+<span class="add">+ * mirror image of &#x27;asc&#x27;.</span>
+<span class="add">+ */</span>
+<span class="add">+async function listSortedListingsPage(</span>
+<span class="add">+  filters: { status?: ListingStatus; sourceId?: string },</span>
+<span class="add">+  sortBy: ListingSortField,</span>
+<span class="add">+  sortDirection: ListingSortDirection,</span>
+<span class="add">+  limit: number,</span>
+<span class="add">+  offset: number,</span>
+<span class="add">+): Promise&lt;ListListingsResponse&gt; {</span>
+<span class="add">+  const total = await countListings(filters);</span>
+<span class="add">+  const listings = await listListings({ ...filters, limit: total, offset: 0 });</span>
+<span class="add">+  const summaries = await Promise.all(listings.map(toSummary));</span>
+<span class="add">+  const sourceNamesById: Record&lt;string, string&gt; = sortBy === &#x27;source&#x27; ? Object.fromEntries((await listSources()).map((source) =&gt; [source.id, source.name])) : {};</span>
+<span class="add">+  const sortKeyOf = SORT_KEYS[sortBy];</span>
+<span class="add">+  summaries.sort((a, b) =&gt; {</span>
+<span class="add">+    const keyA = sortKeyOf(a, sourceNamesById);</span>
+<span class="add">+    const keyB = sortKeyOf(b, sourceNamesById);</span>
+<span class="add">+    // Text columns compare by locale, so a column of names orders the way a</span>
+<span class="add">+    // user reads it rather than by raw UTF-16 code unit; money/number</span>
+<span class="add">+    // columns subtract, so -15 sorts below 5 instead of lexically after it.</span>
+<span class="add">+    return typeof keyA === &#x27;string&#x27; &amp;&amp; typeof keyB === &#x27;string&#x27; ? keyA.localeCompare(keyB) : Number(keyA) - Number(keyB);</span>
+<span class="add">+  });</span>
+<span class="add">+  if (sortDirection === &#x27;desc&#x27;) {</span>
+<span class="add">+    summaries.reverse();</span>
+<span class="add">+  }</span>
+<span class="add">+  return { listings: summaries.slice(offset, offset + limit), total };</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="ctx"> // Attaches both the full Expected Parts set and the Req 3 comparison, for</span>
+<span class="ctx"> // the single-listing response.</span>
+<span class="ctx"> async function toDetail(listing: Listing): Promise&lt;ListingDetail&gt; {</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -187,11 +265,13 @@ export async function registerListingsRoutes&lt;</div><pre><span class="ctx">   });</span>
+<span class="ctx"> </span>
+<span class="ctx">   server.get(&#x27;/api/listings&#x27;, async (request): Promise&lt;ListListingsResponse&gt; =&gt; {</span>
+<span class="del">-    const { status, sourceId, limit, offset } = request.query as {</span>
+<span class="add">+    const { status, sourceId, limit, offset, sortBy, sortDirection } = request.query as {</span>
+<span class="ctx">       status?: string;</span>
+<span class="ctx">       sourceId?: string;</span>
+<span class="ctx">       limit?: string;</span>
+<span class="ctx">       offset?: string;</span>
+<span class="add">+      sortBy?: string;</span>
+<span class="add">+      sortDirection?: string;</span>
+<span class="ctx">     };</span>
+<span class="ctx">     // An unrecognized status value is ignored (no filter applied) rather</span>
+<span class="ctx">     // than rejected — GET requests validate loosely, unlike the write path.</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -203,7 +283,22 @@ export async function registerListingsRoutes&lt;</div><pre><span class="ctx">     // a second unpaginated fetch.</span>
+<span class="ctx">     const limitValue = limit !== undefined ? Number(limit) : 20;</span>
+<span class="ctx">     const offsetValue = offset !== undefined ? Number(offset) : 0;</span>
+<span class="del">-    logger.info({ route: &#x27;GET /api/listings&#x27;, status: statusFilter, sourceId: sourceIdFilter, limit: limitValue, offset: offsetValue }, &#x27;Listing listings&#x27;);</span>
+<span class="add">+    // Req 1: the click-to-sort column params, validated as loosely as</span>
+<span class="add">+    // `status` above — an unrecognized `sortBy` applies no sort at all, and</span>
+<span class="add">+    // any `sortDirection` other than &#x27;desc&#x27; means ascending, the direction</span>
+<span class="add">+    // a freshly-clicked column starts in (Req 2).</span>
+<span class="add">+    const sortField = typeof sortBy === &#x27;string&#x27; &amp;&amp; VALID_SORT_FIELDS.includes(sortBy as ListingSortField) ? (sortBy as ListingSortField) : undefined;</span>
+<span class="add">+    const sortDirectionValue: ListingSortDirection = sortDirection === &#x27;desc&#x27; ? &#x27;desc&#x27; : &#x27;asc&#x27;;</span>
+<span class="add">+    logger.info(</span>
+<span class="add">+      { route: &#x27;GET /api/listings&#x27;, status: statusFilter, sourceId: sourceIdFilter, limit: limitValue, offset: offsetValue, sortBy: sortField, sortDirection: sortField !== undefined ? sortDirectionValue : undefined },</span>
+<span class="add">+      &#x27;Listing listings&#x27;,</span>
+<span class="add">+    );</span>
+<span class="add">+    if (sortField !== undefined) {</span>
+<span class="add">+      return listSortedListingsPage({ status: statusFilter, sourceId: sourceIdFilter }, sortField, sortDirectionValue, limitValue, offsetValue);</span>
+<span class="add">+    }</span>
+<span class="add">+    // Req 9: with no sort requested this stays exactly the original path —</span>
+<span class="add">+    // SQL-level LIMIT/OFFSET over listListings&#x27; default listing_date DESC</span>
+<span class="add">+    // ordering, untouched by this feature.</span>
+<span class="ctx">     const [listings, total] = await Promise.all([</span>
+<span class="ctx">       listListings({ status: statusFilter, sourceId: sourceIdFilter, limit: limitValue, offset: offsetValue }),</span>
+<span class="ctx">       countListings({ status: statusFilter, sourceId: sourceIdFilter }),</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">new `describe` block seeding Listings whose seven sortable</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/test/listings.test.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -545,4 +545,221 @@ describe(&#x27;Reference photo promotion hook — DB-verified (T2)&#x27;, () =&gt; {</div><pre><span class="ctx">     const afterSecond = await fetchSummary();</span>
+<span class="ctx">     expect(afterSecond?.identifyPartsStatus).toEqual({ stage: &#x27;queued&#x27;, errorMessage: null });</span>
+<span class="ctx">   }, 30_000);</span>
+<span class="add">+</span>
+<span class="add">+  // T2 proof (server-side sortable columns on GET /api/listings, Req 1, 6,</span>
+<span class="add">+  // 8, 9). Nested inside this block rather than given a describe block of</span>
+<span class="add">+  // its own for the module-caching reason documented above: a fourth</span>
+<span class="add">+  // top-level block cannot re-import the db modules against its own data</span>
+<span class="add">+  // dir. Seeds four Listings, each under its own Source, whose seven</span>
+<span class="add">+  // sortable values deliberately disagree with one another — the title</span>
+<span class="add">+  // order, the Source-name order, the price order and the default</span>
+<span class="add">+  // listing-date order are all different — so a comparator that sorted by</span>
+<span class="add">+  // the wrong field, or never sorted at all, could not produce the</span>
+<span class="add">+  // expected sequence by luck.</span>
+<span class="add">+  describe(&#x27;sortable columns on GET /api/listings&#x27;, () =&gt; {</span>
+<span class="add">+    // The seeded Listings&#x27; ids, used to pick this block&#x27;s own rows out of</span>
+<span class="add">+    // the shared per-suite database (earlier tests in this file left their</span>
+<span class="add">+    // own Listings behind) while keeping the server&#x27;s relative ordering.</span>
+<span class="add">+    const sortSeedIds = new Set&lt;string&gt;();</span>
+<span class="add">+    // title -&gt; id, so each expectation below reads as the column order a</span>
+<span class="add">+    // user would see rather than a list of opaque uuids.</span>
+<span class="add">+    const seedTitles = {</span>
+<span class="add">+      banana: &#x27;Sort Banana workstation&#x27;,</span>
+<span class="add">+      apple: &#x27;Sort apple micro bundle&#x27;,</span>
+<span class="add">+      cherry: &#x27;Sort Cherry tower&#x27;,</span>
+<span class="add">+      date: &#x27;Sort date mini PC&#x27;,</span>
+<span class="add">+    };</span>
+<span class="add">+</span>
+<span class="add">+    beforeAll(async () =&gt; {</span>
+<span class="add">+      // Four Sources whose names order Alpha &lt; Delta &lt; Mike &lt; Zulu, which</span>
+<span class="add">+      // matches neither the creation order nor (with overwhelming</span>
+<span class="add">+      // likelihood) their random uuids — so sorting by `sourceId` instead</span>
+<span class="add">+      // of the resolved name (Req 6) cannot pass the Source test below.</span>
+<span class="add">+      const sourceNames = [&#x27;Zulu Sort Source&#x27;, &#x27;Alpha Sort Source&#x27;, &#x27;Mike Sort Source&#x27;, &#x27;Delta Sort Source&#x27;];</span>
+<span class="add">+      const [zulu, alpha, mike, delta] = await Promise.all(</span>
+<span class="add">+        sourceNames.map((name) =&gt; hookDb.createSource({ name, platformType: &#x27;ebay&#x27;, url: null, notes: null, connectorConfig: null })),</span>
+<span class="add">+      );</span>
+<span class="add">+      // askingPrice, expected resale and their difference each order the</span>
+<span class="add">+      // four rows differently, so one column&#x27;s expectation can never be</span>
+<span class="add">+      // satisfied by another column&#x27;s comparator:</span>
+<span class="add">+      //   asking     apple 100 &lt; date 220 &lt; banana 300 &lt; cherry 400</span>
+<span class="add">+      //   resale     banana 50 &lt; cherry 180 &lt; apple 400 &lt; date 500</span>
+<span class="add">+      //   difference banana -250 &lt; cherry -220 &lt; date 280 &lt; apple 300</span>
+<span class="add">+      // listingDate descending (the default order) is cherry, apple,</span>
+<span class="add">+      // banana, date — different again.</span>
+<span class="add">+      const seeds = [</span>
+<span class="add">+        { title: seedTitles.banana, sourceId: zulu.id, askingPrice: 300, resale: 50, listingDate: &#x27;2026-02-01&#x27; },</span>
+<span class="add">+        { title: seedTitles.apple, sourceId: alpha.id, askingPrice: 100, resale: 400, listingDate: &#x27;2026-03-01&#x27; },</span>
+<span class="add">+        { title: seedTitles.cherry, sourceId: mike.id, askingPrice: 400, resale: 180, listingDate: &#x27;2026-04-01&#x27; },</span>
+<span class="add">+        { title: seedTitles.date, sourceId: delta.id, askingPrice: 220, resale: 500, listingDate: &#x27;2026-01-01&#x27; },</span>
+<span class="add">+      ];</span>
+<span class="add">+      const byTitle = new Map&lt;string, string&gt;();</span>
+<span class="add">+      for (const seed of seeds) {</span>
+<span class="add">+        const created = await postJson&lt;ListingDetail&gt;(</span>
+<span class="add">+          `${HOOK_BASE_URL}/api/listings`,</span>
+<span class="add">+          listingBody(seed.sourceId, {</span>
+<span class="add">+            title: seed.title,</span>
+<span class="add">+            askingPrice: seed.askingPrice,</span>
+<span class="add">+            acquisitionFees: 0,</span>
+<span class="add">+            listingDate: seed.listingDate,</span>
+<span class="add">+            expectedParts: [{ componentCategory: &#x27;GPU&#x27;, brand: null, partNumber: null, description: &#x27;Sort seed part&#x27;, estimatedResaleValue: seed.resale }],</span>
+<span class="add">+          }),</span>
+<span class="add">+        );</span>
+<span class="add">+        expect(created.status, `sort seed creation failed: ${JSON.stringify(created.body)}`).toBe(201);</span>
+<span class="add">+        sortSeedIds.add(created.body.id);</span>
+<span class="add">+        byTitle.set(seed.title, created.body.id);</span>
+<span class="add">+      }</span>
+<span class="add">+</span>
+<span class="add">+      // Status spread across all three values (apple accepted, cherry</span>
+<span class="add">+      // rejected, banana/date left open) so the Status column has a real</span>
+<span class="add">+      // three-way order plus one tie to sort.</span>
+<span class="add">+      const acceptRes = await fetch(`${HOOK_BASE_URL}/api/listings/${byTitle.get(seedTitles.apple)}/accept`, { method: &#x27;POST&#x27; });</span>
+<span class="add">+      expect(acceptRes.status, &#x27;sort seed accept failed&#x27;).toBe(201);</span>
+<span class="add">+      const rejectRes = await fetch(`${HOOK_BASE_URL}/api/listings/${byTitle.get(seedTitles.cherry)}/reject`, { method: &#x27;POST&#x27; });</span>
+<span class="add">+      expect(rejectRes.status, &#x27;sort seed reject failed&#x27;).toBe(200);</span>
+<span class="add">+</span>
+<span class="add">+      // Identify-parts stages: apple &#x27;queued&#x27;, cherry &#x27;failed&#x27;, and</span>
+<span class="add">+      // banana/date deliberately left with no job at all, which is the case</span>
+<span class="add">+      // the route treats as an empty stage.</span>
+<span class="add">+      const queued = await hookDb.insertQueuedJobIfNoneActive(byTitle.get(seedTitles.apple)!);</span>
+<span class="add">+      expect(queued).not.toBeNull();</span>
+<span class="add">+      const failing = await hookDb.insertQueuedJobIfNoneActive(byTitle.get(seedTitles.cherry)!);</span>
+<span class="add">+      expect(failing).not.toBeNull();</span>
+<span class="add">+      await hookDb.failJob(failing!.id, &#x27;Sort seed failure&#x27;);</span>
+<span class="add">+    }, 30_000);</span>
+<span class="add">+</span>
+<span class="add">+    // Fetches one unpaginated page with the given query string and returns</span>
+<span class="add">+    // just this block&#x27;s four seeded titles, in the order the server put</span>
+<span class="add">+    // them — the shared database holds other tests&#x27; Listings too, and their</span>
+<span class="add">+    // presence between these rows is irrelevant to the relative order being</span>
+<span class="add">+    // asserted.</span>
+<span class="add">+    async function seedTitleOrder(query: string): Promise&lt;string[]&gt; {</span>
+<span class="add">+      const res = await getJson&lt;ListListingsResponse&gt;(`${HOOK_BASE_URL}/api/listings?limit=500${query}`);</span>
+<span class="add">+      expect(res.status).toBe(200);</span>
+<span class="add">+      return res.body.listings.filter((listing) =&gt; sortSeedIds.has(listing.id)).map((listing) =&gt; listing.title);</span>
+<span class="add">+    }</span>
+<span class="add">+</span>
+<span class="add">+    it(&#x27;sorts by title ascending by displayed text, case-insensitively, and reverses it for sortDirection=desc (Req 1, 3)&#x27;, async () =&gt; {</span>
+<span class="add">+      const ascending = [seedTitles.apple, seedTitles.banana, seedTitles.cherry, seedTitles.date];</span>
+<span class="add">+      // &#x27;Sort apple...&#x27; sorts first despite its lowercase initial — a raw</span>
+<span class="add">+      // `&lt;` comparison on the string would put every capitalized title</span>
+<span class="add">+      // ahead of it instead.</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&amp;sortBy=title&amp;sortDirection=asc&#x27;)).toEqual(ascending);</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&amp;sortBy=title&amp;sortDirection=desc&#x27;)).toEqual([...ascending].reverse());</span>
+<span class="add">+      // Omitting sortDirection means ascending (Req 2&#x27;s freshly-clicked</span>
+<span class="add">+      // column), not &quot;whatever the database returned&quot;.</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&amp;sortBy=title&#x27;)).toEqual(ascending);</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    it(&quot;sorts by Source&#x27;s resolved name, not its stored sourceId (Req 6)&quot;, async () =&gt; {</span>
+<span class="add">+      // Alpha &lt; Delta &lt; Mike &lt; Zulu by name: apple, date, cherry, banana.</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&amp;sortBy=source&#x27;)).toEqual([seedTitles.apple, seedTitles.date, seedTitles.cherry, seedTitles.banana]);</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&amp;sortBy=source&amp;sortDirection=desc&#x27;)).toEqual([seedTitles.banana, seedTitles.cherry, seedTitles.date, seedTitles.apple]);</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    it(&#x27;sorts by status, keeping tied rows in the default listing-date order (Req 1)&#x27;, async () =&gt; {</span>
+<span class="add">+      // accepted &lt; open &lt; rejected; banana and date are both open, and the</span>
+<span class="add">+      // tie resolves to listing_date DESC (banana 2026-02-01 before date</span>
+<span class="add">+      // 2026-01-01) because the sort is stable over listListings&#x27; order.</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&amp;sortBy=status&#x27;)).toEqual([seedTitles.apple, seedTitles.banana, seedTitles.date, seedTitles.cherry]);</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    it(&#x27;reverses a tied sort field exactly, mirroring which tied row lands first, not just the 3-way status order (Req 3)&#x27;, async () =&gt; {</span>
+<span class="add">+      // None of the other direction-reversal tests (title/source/</span>
+<span class="add">+      // askingPrice/difference) contain a genuine tie, so none of them can</span>
+<span class="add">+      // tell a correct summaries.reverse() apart from an alternative</span>
+<span class="add">+      // implementation that re-sorts with a flipped comparator instead —</span>
+<span class="add">+      // that alternative would leave a stable tie&#x27;s relative order</span>
+<span class="add">+      // (banana-then-date) untouched in both directions, since</span>
+<span class="add">+      // Array.prototype.sort&#x27;s stability guarantee preserves input order</span>
+<span class="add">+      // for equal keys regardless of comparator sign. Only reverse()</span>
+<span class="add">+      // actually swaps the tied pair too, producing date-then-banana here.</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&amp;sortBy=status&amp;sortDirection=desc&#x27;)).toEqual([seedTitles.cherry, seedTitles.date, seedTitles.banana, seedTitles.apple]);</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    it(&#x27;sorts by askingPrice numerically in both directions (Req 1)&#x27;, async () =&gt; {</span>
+<span class="add">+      const ascending = [seedTitles.apple, seedTitles.date, seedTitles.banana, seedTitles.cherry];</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&amp;sortBy=askingPrice&#x27;)).toEqual(ascending);</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&amp;sortBy=askingPrice&amp;sortDirection=desc&#x27;)).toEqual([...ascending].reverse());</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    it(&#x27;sorts by the computed expected resale total, not asking price (Req 6)&#x27;, async () =&gt; {</span>
+<span class="add">+      // 50 &lt; 180 &lt; 400 &lt; 500 — the reverse of neither the title nor the</span>
+<span class="add">+      // asking-price order.</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&amp;sortBy=expectedResale&#x27;)).toEqual([seedTitles.banana, seedTitles.cherry, seedTitles.apple, seedTitles.date]);</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    it(&#x27;sorts by the computed difference, including negative values, not by any stored field (Req 6)&#x27;, async () =&gt; {</span>
+<span class="add">+      // -250 &lt; -220 &lt; 280 &lt; 300: the two losses must sort below both</span>
+<span class="add">+      // profits, which a comparator treating these as text would get wrong.</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&amp;sortBy=difference&#x27;)).toEqual([seedTitles.banana, seedTitles.cherry, seedTitles.date, seedTitles.apple]);</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&amp;sortBy=difference&amp;sortDirection=desc&#x27;)).toEqual([seedTitles.apple, seedTitles.date, seedTitles.cherry, seedTitles.banana]);</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    it(&#x27;sorts by identify-parts stage, grouping Listings with no job at all at the ascending end (Req 1)&#x27;, async () =&gt; {</span>
+<span class="add">+      // &#x27;&#x27; (no job: banana, then date by the stable listing-date tie) &lt;</span>
+<span class="add">+      // &#x27;failed&#x27; (cherry) &lt; &#x27;queued&#x27; (apple).</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&amp;sortBy=identifyParts&#x27;)).toEqual([seedTitles.banana, seedTitles.date, seedTitles.cherry, seedTitles.apple]);</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    it(&#x27;ignores an unrecognized sortBy, and a sortDirection sent without any sortBy, leaving the default order untouched (Req 9)&#x27;, async () =&gt; {</span>
+<span class="add">+      // Default order is listing_date DESC: cherry, apple, banana, date.</span>
+<span class="add">+      const defaultOrder = [seedTitles.cherry, seedTitles.apple, seedTitles.banana, seedTitles.date];</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&#x27;)).toEqual(defaultOrder);</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&amp;sortBy=listingDate&#x27;)).toEqual(defaultOrder);</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&amp;sortBy=&#x27;)).toEqual(defaultOrder);</span>
+<span class="add">+      expect(await seedTitleOrder(&#x27;&amp;sortDirection=desc&#x27;)).toEqual(defaultOrder);</span>
+<span class="add">+</span>
+<span class="add">+      // Stronger than the orders above: the whole unsorted response —</span>
+<span class="add">+      // every row, every field, and `total` — must be identical with an</span>
+<span class="add">+      // unrecognized sortBy to what it is without the param at all.</span>
+<span class="add">+      const withoutSort = await getJson&lt;ListListingsResponse&gt;(`${HOOK_BASE_URL}/api/listings?limit=500`);</span>
+<span class="add">+      const withBadSort = await getJson&lt;ListListingsResponse&gt;(`${HOOK_BASE_URL}/api/listings?limit=500&amp;sortBy=notAColumn&amp;sortDirection=desc`);</span>
+<span class="add">+      expect(withBadSort.status).toBe(200);</span>
+<span class="add">+      expect(withBadSort.body).toEqual(withoutSort.body);</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    it(&#x27;sorts the whole filtered dataset before slicing the requested page, not just the rows on it (Req 8)&#x27;, async () =&gt; {</span>
+<span class="add">+      // Five Listings under one dedicated Source, created so that the</span>
+<span class="add">+      // default listing-date order (30, 10, 50, 20, 40) is nothing like the</span>
+<span class="add">+      // asking-price order — a server that sorted only the rows of the</span>
+<span class="add">+      // page it had already fetched would return [10, 30] for page one.</span>
+<span class="add">+      const pagingSource = await hookDb.createSource({ name: &#x27;Paging Sort Source&#x27;, platformType: &#x27;ebay&#x27;, url: null, notes: null, connectorConfig: null });</span>
+<span class="add">+      const prices = [</span>
+<span class="add">+        { askingPrice: 30, listingDate: &#x27;2026-05-05&#x27; },</span>
+<span class="add">+        { askingPrice: 10, listingDate: &#x27;2026-05-04&#x27; },</span>
+<span class="add">+        { askingPrice: 50, listingDate: &#x27;2026-05-03&#x27; },</span>
+<span class="add">+        { askingPrice: 20, listingDate: &#x27;2026-05-02&#x27; },</span>
+<span class="add">+        { askingPrice: 40, listingDate: &#x27;2026-05-01&#x27; },</span>
+<span class="add">+      ];</span>
+<span class="add">+      for (const row of prices) {</span>
+<span class="add">+        const created = await postJson&lt;ListingDetail&gt;(</span>
+<span class="add">+          `${HOOK_BASE_URL}/api/listings`,</span>
+<span class="add">+          listingBody(pagingSource.id, { title: `Paging ${row.askingPrice}`, askingPrice: row.askingPrice, acquisitionFees: 0, listingDate: row.listingDate, expectedParts: [] }),</span>
+<span class="add">+        );</span>
+<span class="add">+        expect(created.status, `paging seed failed: ${JSON.stringify(created.body)}`).toBe(201);</span>
+<span class="add">+      }</span>
+<span class="add">+</span>
+<span class="add">+      const pageOf = async (offset: number): Promise&lt;ListListingsResponse&gt; =&gt; {</span>
+<span class="add">+        const res = await getJson&lt;ListListingsResponse&gt;(`${HOOK_BASE_URL}/api/listings?sourceId=${pagingSource.id}&amp;sortBy=askingPrice&amp;limit=2&amp;offset=${offset}`);</span>
+<span class="add">+        expect(res.status).toBe(200);</span>
+<span class="add">+        return res.body;</span>
+<span class="add">+      };</span>
+<span class="add">+</span>
+<span class="add">+      const first = await pageOf(0);</span>
+<span class="add">+      const second = await pageOf(2);</span>
+<span class="add">+      const third = await pageOf(4);</span>
+<span class="add">+      expect(first.listings.map((listing) =&gt; listing.askingPrice)).toEqual([10, 20]);</span>
+<span class="add">+      expect(second.listings.map((listing) =&gt; listing.askingPrice)).toEqual([30, 40]);</span>
+<span class="add">+      expect(third.listings.map((listing) =&gt; listing.askingPrice)).toEqual([50]);</span>
+<span class="add">+      // `total` still counts the whole filtered set on every page, so the</span>
+<span class="add">+      // pagination controls are unaffected by sorting.</span>
+<span class="add">+      expect([first.total, second.total, third.total]).toEqual([5, 5, 5]);</span>
+<span class="add">+</span>
+<span class="add">+      // Descending pages mirror the ascending ones exactly.</span>
+<span class="add">+      const firstDesc = await getJson&lt;ListListingsResponse&gt;(`${HOOK_BASE_URL}/api/listings?sourceId=${pagingSource.id}&amp;sortBy=askingPrice&amp;sortDirection=desc&amp;limit=2&amp;offset=0`);</span>
+<span class="add">+      expect(firstDesc.status).toBe(200);</span>
+<span class="add">+      expect(firstDesc.body.listings.map((listing) =&gt; listing.askingPrice)).toEqual([50, 40]);</span>
+<span class="add">+    }, 30_000);</span>
+<span class="add">+  });</span>
+<span class="ctx"> });</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Client wiring and sortable header UI</span><span class="meta">7 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">The Listings page tracks the active sort field/direction as its own state, threads it</p>
+<p class="note">Tasks: T3</p>
+<div class="flow"><svg viewBox="0 0 914 108" role="img" aria-label="data flow" class="flow-svg">
+<rect x="8" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="8" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Click a header</div><div class="flow-note">`onSortChange(field)` fires from `ListingList`</div></div></foreignObject>
+<line x1="198" y1="54" x2="238" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="244" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="244" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Page decides</div><div class="flow-note">same field flips direction; a different field replaces it ascending, page resets to 1</div></div></foreignObject>
+<line x1="434" y1="54" x2="474" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="480" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="480" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Refetch</div><div class="flow-note">`sortBy`/`sortDirection` included in the next `fetchListings` call</div></div></foreignObject>
+<line x1="670" y1="54" x2="710" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="716" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="716" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Render</div><div class="flow-note">`SortableHeader` shows an arrow and `aria-sort` only on the active column</div></div></foreignObject>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" class="flow-arrowhead"/></marker></defs>
+</svg></div>
+<ul class="files"><li class="file-group">
+<p class="file-note">`FetchListingsOptions` gains `sortBy`/</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/features/listings/listings-api.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -6,6 +6,8 @@ import type {</div><pre><span class="ctx">   IdentifyPartsBulkResult,</span>
+<span class="ctx">   ListingDetail,</span>
+<span class="ctx">   ListingStatus,</span>
+<span class="add">+  ListingSortDirection,</span>
+<span class="add">+  ListingSortField,</span>
+<span class="ctx">   ListListingsResponse,</span>
+<span class="ctx">   ListListingIdsResponse,</span>
+<span class="ctx">   UpdateListingInput,</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -17,12 +19,20 @@ import { ApiError, apiClient } from &#x27;@/lib/api-client&#x27;;</div><pre><span class="ctx"> // request/response typing in one place so listings-page.tsx and its</span>
+<span class="ctx"> // sub-components never hand-write a path string or `as` cast.</span>
+<span class="ctx"> </span>
+<span class="del">-/** Optional filters/pagination matching the GET /api/listings query support (Req 12, 15). */</span>
+<span class="add">+/**</span>
+<span class="add">+ * Optional filters/pagination matching the GET /api/listings query support</span>
+<span class="add">+ * (Req 12, 15), plus the optional sort field/direction the sortable column</span>
+<span class="add">+ * headers drive. Both sort fields are omitted entirely when no header has</span>
+<span class="add">+ * been clicked yet, which is what leaves the server on its default</span>
+<span class="add">+ * newest-first ordering.</span>
+<span class="add">+ */</span>
+<span class="ctx"> export interface FetchListingsOptions {</span>
+<span class="ctx">   status?: ListingStatus;</span>
+<span class="ctx">   sourceId?: string;</span>
+<span class="ctx">   limit?: number;</span>
+<span class="ctx">   offset?: number;</span>
+<span class="add">+  sortBy?: ListingSortField;</span>
+<span class="add">+  sortDirection?: ListingSortDirection;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** Fetches one page of Listings (each annotated with its Req 3 comparison) plus the total matching count, for pagination (Req 15). */</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -32,6 +42,8 @@ export function fetchListings(options: FetchListingsOptions = {}): Promise&lt;ListL</div><pre><span class="ctx">   if (options.sourceId) params.set(&#x27;sourceId&#x27;, options.sourceId);</span>
+<span class="ctx">   if (options.limit !== undefined) params.set(&#x27;limit&#x27;, String(options.limit));</span>
+<span class="ctx">   if (options.offset !== undefined) params.set(&#x27;offset&#x27;, String(options.offset));</span>
+<span class="add">+  if (options.sortBy) params.set(&#x27;sortBy&#x27;, options.sortBy);</span>
+<span class="add">+  if (options.sortDirection) params.set(&#x27;sortDirection&#x27;, options.sortDirection);</span>
+<span class="ctx">   const query = params.toString();</span>
+<span class="ctx">   return apiClient.get&lt;ListListingsResponse&gt;(`/api/listings${query.length &gt; 0 ? `?${query}` : &#x27;&#x27;}`);</span>
+<span class="ctx"> }</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">new `sortBy`/`sortDirection` state (both start</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/routes/listings-page.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -1,6 +1,6 @@</div><pre><span class="ctx"> import { useCallback, useEffect, useMemo, useRef, useState } from &#x27;react&#x27;;</span>
+<span class="ctx"> import { Link } from &#x27;react-router-dom&#x27;;</span>
+<span class="del">-import type { CreateListingInput, ListingDetail, ListingSummary, Source } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="add">+import type { CreateListingInput, ListingDetail, ListingSortDirection, ListingSortField, ListingSummary, Source } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> import { Button } from &#x27;@/components/ui/button&#x27;;</span>
+<span class="ctx"> import { Card, CardContent, CardHeader, CardTitle } from &#x27;@/components/ui/card&#x27;;</span>
+<span class="ctx"> import { LoadingSpinner } from &#x27;@/components/loading-spinner&#x27;;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -37,6 +37,12 @@ export function ListingsPage() {</div><pre><span class="ctx">   const [sources, setSources] = useState&lt;Source[] | null&gt;(null);</span>
+<span class="ctx">   const [filters, setFilters] = useState&lt;ListingsQueueFilterValue&gt;({ status: &#x27;&#x27;, sourceId: &#x27;&#x27; });</span>
+<span class="ctx">   const [page, setPage] = useState(1);</span>
+<span class="add">+  // The column the table is sorted by and its direction, or `undefined` for</span>
+<span class="add">+  // both until a header is clicked: no sort param is sent then, which is</span>
+<span class="add">+  // what leaves the server on its existing default (newest listingDate</span>
+<span class="add">+  // first) ordering. Only one field is ever active at a time.</span>
+<span class="add">+  const [sortBy, setSortBy] = useState&lt;ListingSortField | undefined&gt;(undefined);</span>
+<span class="add">+  const [sortDirection, setSortDirection] = useState&lt;ListingSortDirection | undefined&gt;(undefined);</span>
+<span class="ctx">   const [loadError, setLoadError] = useState&lt;string | null&gt;(null);</span>
+<span class="ctx">   const [actionError, setActionError] = useState&lt;string | null&gt;(null);</span>
+<span class="ctx">   const [acceptedMessage, setAcceptedMessage] = useState&lt;{ text: string; purchaseId: string } | null&gt;(null);</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -82,6 +88,8 @@ export function ListingsPage() {</div><pre><span class="ctx">         sourceId: filters.sourceId || undefined,</span>
+<span class="ctx">         limit: PAGE_SIZE,</span>
+<span class="ctx">         offset: (page - 1) * PAGE_SIZE,</span>
+<span class="add">+        sortBy,</span>
+<span class="add">+        sortDirection,</span>
+<span class="ctx">       });</span>
+<span class="ctx">       // An accept/reject action can shrink the filtered result set enough</span>
+<span class="ctx">       // that the current page no longer exists (e.g. the last row on the</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -100,7 +108,7 @@ export function ListingsPage() {</div><pre><span class="ctx">     } catch (err) {</span>
+<span class="ctx">       setLoadError(err instanceof ApiError ? err.message : &#x27;Failed to load listings.&#x27;);</span>
+<span class="ctx">     }</span>
+<span class="del">-  }, [filters, page]);</span>
+<span class="add">+  }, [filters, page, sortBy, sortDirection]);</span>
+<span class="ctx"> </span>
+<span class="ctx">   useEffect(() =&gt; {</span>
+<span class="ctx">     void loadListings();</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -188,6 +196,25 @@ export function ListingsPage() {</div><pre><span class="ctx">     setPage(1);</span>
+<span class="ctx">   }</span>
+<span class="ctx"> </span>
+<span class="add">+  // Clicking a sortable column header. Clicking the column that is already</span>
+<span class="add">+  // active only reverses its direction; clicking any other column replaces</span>
+<span class="add">+  // the active field outright, starting ascending — so exactly one field is</span>
+<span class="add">+  // ever sorted by, never a combination. Either way the sorted order is</span>
+<span class="add">+  // computed server-side across the whole filtered dataset, so the result&#x27;s</span>
+<span class="add">+  // first page is a different set of rows than before: reset to page 1, the</span>
+<span class="add">+  // same way a filter change does. Note this deliberately leaves `filters`</span>
+<span class="add">+  // alone, just as handleFiltersChange leaves the sort alone — the two</span>
+<span class="add">+  // compose rather than clearing each other.</span>
+<span class="add">+  function handleSortChange(field: ListingSortField) {</span>
+<span class="add">+    if (sortBy === field) {</span>
+<span class="add">+      setSortDirection((current) =&gt; (current === &#x27;asc&#x27; ? &#x27;desc&#x27; : &#x27;asc&#x27;));</span>
+<span class="add">+    } else {</span>
+<span class="add">+      setSortBy(field);</span>
+<span class="add">+      setSortDirection(&#x27;asc&#x27;);</span>
+<span class="add">+    }</span>
+<span class="add">+    setPage(1);</span>
+<span class="add">+  }</span>
+<span class="add">+</span>
+<span class="ctx">   // Clicking a Listing&#x27;s title: closes it if it&#x27;s already the open row,</span>
+<span class="ctx">   // otherwise closes whichever other row was open and opens this one,</span>
+<span class="ctx">   // fetching its full detail (Expected Parts included) before the form can</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -319,6 +346,9 @@ export function ListingsPage() {</div><pre><span class="ctx">                 allFilteredIds={allFilteredIds}</span>
+<span class="ctx">                 selectedIds={selectedIds}</span>
+<span class="ctx">                 onToggleOne={handleToggleOne}</span>
+<span class="add">+                sortBy={sortBy}</span>
+<span class="add">+                sortDirection={sortDirection}</span>
+<span class="add">+                onSortChange={handleSortChange}</span>
+<span class="ctx">                 onToggleAllFiltered={handleToggleAllFiltered}</span>
+<span class="ctx">               /&gt;</span>
+<span class="ctx">               &lt;PaginationControls page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} /&gt;</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">the 7 sortable `&lt;th&gt;` cells become</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/features/listings/listing-list.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -1,6 +1,6 @@</div><pre><span class="ctx"> import { Fragment, useEffect, useRef } from &#x27;react&#x27;;</span>
+<span class="del">-import { Image } from &#x27;lucide-react&#x27;;</span>
+<span class="del">-import type { CreateListingInput, ListingDetail, ListingSummary, Source } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="add">+import { ArrowDown, ArrowUp, Image } from &#x27;lucide-react&#x27;;</span>
+<span class="add">+import type { CreateListingInput, ListingDetail, ListingSortDirection, ListingSortField, ListingSummary, Source } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> import { Button } from &#x27;@/components/ui/button&#x27;;</span>
+<span class="ctx"> import { LoadingSpinner } from &#x27;@/components/loading-spinner&#x27;;</span>
+<span class="ctx"> import { ListingForm } from &#x27;@/features/listings/listing-form&#x27;;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -41,6 +41,15 @@ interface ListingListProps {</div><pre><span class="ctx">   selectedIds: Set&lt;string&gt;;</span>
+<span class="ctx">   onToggleOne: (id: string) =&gt; void;</span>
+<span class="ctx">   onToggleAllFiltered: () =&gt; void;</span>
+<span class="add">+  // The column currently sorted by and its direction, or `undefined` when</span>
+<span class="add">+  // nothing has been sorted yet (the server&#x27;s default newest-first order).</span>
+<span class="add">+  // Only ever one field at a time — clicking a different header replaces it.</span>
+<span class="add">+  sortBy?: ListingSortField;</span>
+<span class="add">+  sortDirection?: ListingSortDirection;</span>
+<span class="add">+  // Clicking a sortable header&#x27;s label asks the page above to make that</span>
+<span class="add">+  // field active (ascending) or, when it is already active, to flip its</span>
+<span class="add">+  // direction. This component holds no sort state of its own.</span>
+<span class="add">+  onSortChange: (field: ListingSortField) =&gt; void;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="ctx"> // One table body plus, for whichever row is open, an extra full-width row</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -49,6 +58,63 @@ interface ListingListProps {</div><pre><span class="ctx"> // Listing it edits regardless of scroll position.</span>
+<span class="ctx"> const COLUMN_COUNT = 9;</span>
+<span class="ctx"> </span>
+<span class="add">+// Every sortable column, in the left-to-right order the table renders them:</span>
+<span class="add">+// the shared `ListingSortField` value sent to the server paired with the</span>
+<span class="add">+// header label shown to the user. The two non-comparable columns (the</span>
+<span class="add">+// leading selection checkbox and the trailing Accept/Reject actions) carry</span>
+<span class="add">+// no comparable value, so they have no entry here and stay plain `&lt;th&gt;`s.</span>
+<span class="add">+const SORTABLE_COLUMNS: { field: ListingSortField; label: string }[] = [</span>
+<span class="add">+  { field: &#x27;title&#x27;, label: &#x27;Title&#x27; },</span>
+<span class="add">+  { field: &#x27;source&#x27;, label: &#x27;Source&#x27; },</span>
+<span class="add">+  { field: &#x27;status&#x27;, label: &#x27;Status&#x27; },</span>
+<span class="add">+  { field: &#x27;askingPrice&#x27;, label: &#x27;Asking Price&#x27; },</span>
+<span class="add">+  { field: &#x27;expectedResale&#x27;, label: &#x27;Expected Resale&#x27; },</span>
+<span class="add">+  { field: &#x27;difference&#x27;, label: &#x27;Difference&#x27; },</span>
+<span class="add">+  { field: &#x27;identifyParts&#x27;, label: &#x27;Identify Parts&#x27; },</span>
+<span class="add">+];</span>
+<span class="add">+</span>
+<span class="add">+/**</span>
+<span class="add">+ * One clickable column header. Its label is a button that reports the</span>
+<span class="add">+ * click up to the page (which owns the sort state and the refetch); the</span>
+<span class="add">+ * header renders a direction arrow — up for ascending, down for</span>
+<span class="add">+ * descending — only when its own field is the active one, so exactly one</span>
+<span class="add">+ * header in the table ever shows an indicator. `aria-sort` carries the same</span>
+<span class="add">+ * information for assistive tech, reading `none` on every inactive column.</span>
+<span class="add">+ */</span>
+<span class="add">+function SortableHeader({</span>
+<span class="add">+  field,</span>
+<span class="add">+  label,</span>
+<span class="add">+  sortBy,</span>
+<span class="add">+  sortDirection,</span>
+<span class="add">+  onSortChange,</span>
+<span class="add">+}: {</span>
+<span class="add">+  field: ListingSortField;</span>
+<span class="add">+  label: string;</span>
+<span class="add">+  sortBy?: ListingSortField;</span>
+<span class="add">+  sortDirection?: ListingSortDirection;</span>
+<span class="add">+  onSortChange: (field: ListingSortField) =&gt; void;</span>
+<span class="add">+}) {</span>
+<span class="add">+  const isActive = sortBy === field;</span>
+<span class="add">+  // A field can only ever be active ascending or descending; an active</span>
+<span class="add">+  // field with no direction yet reads as ascending, matching the page&#x27;s own</span>
+<span class="add">+  // first-click behaviour.</span>
+<span class="add">+  const isDescending = isActive &amp;&amp; sortDirection === &#x27;desc&#x27;;</span>
+<span class="add">+  const Arrow = isDescending ? ArrowDown : ArrowUp;</span>
+<span class="add">+</span>
+<span class="add">+  return (</span>
+<span class="add">+    &lt;th className=&quot;px-4 py-2 font-medium&quot; aria-sort={isActive ? (isDescending ? &#x27;descending&#x27; : &#x27;ascending&#x27;) : &#x27;none&#x27;}&gt;</span>
+<span class="add">+      &lt;button</span>
+<span class="add">+        type=&quot;button&quot;</span>
+<span class="add">+        className=&quot;inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground&quot;</span>
+<span class="add">+        onClick={() =&gt; onSortChange(field)}</span>
+<span class="add">+      &gt;</span>
+<span class="add">+        {label}</span>
+<span class="add">+        {isActive &amp;&amp; &lt;Arrow className=&quot;h-3.5 w-3.5 shrink-0&quot; aria-label={`Sorted ${isDescending ? &#x27;descending&#x27; : &#x27;ascending&#x27;}`} /&gt;}</span>
+<span class="add">+      &lt;/button&gt;</span>
+<span class="add">+    &lt;/th&gt;</span>
+<span class="add">+  );</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="ctx"> /**</span>
+<span class="ctx">  * Table of every Listing (Req 2), each row showing the Req 3 comparison,</span>
+<span class="ctx">  * Source, Identify-Parts status, and Accept/Reject actions, plus a</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -74,6 +140,9 @@ export function ListingList({</div><pre><span class="ctx">   selectedIds,</span>
+<span class="ctx">   onToggleOne,</span>
+<span class="ctx">   onToggleAllFiltered,</span>
+<span class="add">+  sortBy,</span>
+<span class="add">+  sortDirection,</span>
+<span class="add">+  onSortChange,</span>
+<span class="ctx"> }: ListingListProps) {</span>
+<span class="ctx">   const headerCheckboxRef = useRef&lt;HTMLInputElement&gt;(null);</span>
+<span class="ctx"> </span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -110,13 +179,16 @@ export function ListingList({</div><pre><span class="ctx">                 onChange={onToggleAllFiltered}</span>
+<span class="ctx">               /&gt;</span>
+<span class="ctx">             &lt;/th&gt;</span>
+<span class="del">-            &lt;th className=&quot;px-4 py-2 font-medium&quot;&gt;Title&lt;/th&gt;</span>
+<span class="del">-            &lt;th className=&quot;px-4 py-2 font-medium&quot;&gt;Source&lt;/th&gt;</span>
+<span class="del">-            &lt;th className=&quot;px-4 py-2 font-medium&quot;&gt;Status&lt;/th&gt;</span>
+<span class="del">-            &lt;th className=&quot;px-4 py-2 font-medium&quot;&gt;Asking Price&lt;/th&gt;</span>
+<span class="del">-            &lt;th className=&quot;px-4 py-2 font-medium&quot;&gt;Expected Resale&lt;/th&gt;</span>
+<span class="del">-            &lt;th className=&quot;px-4 py-2 font-medium&quot;&gt;Difference&lt;/th&gt;</span>
+<span class="del">-            &lt;th className=&quot;px-4 py-2 font-medium&quot;&gt;Identify Parts&lt;/th&gt;</span>
+<span class="add">+            {SORTABLE_COLUMNS.map((column) =&gt; (</span>
+<span class="add">+              &lt;SortableHeader</span>
+<span class="add">+                key={column.field}</span>
+<span class="add">+                field={column.field}</span>
+<span class="add">+                label={column.label}</span>
+<span class="add">+                sortBy={sortBy}</span>
+<span class="add">+                sortDirection={sortDirection}</span>
+<span class="add">+                onSortChange={onSortChange}</span>
+<span class="add">+              /&gt;</span>
+<span class="add">+            ))}</span>
+<span class="ctx">             &lt;th className=&quot;px-4 py-2 font-medium&quot; /&gt;</span>
+<span class="ctx">           &lt;/tr&gt;</span>
+<span class="ctx">         &lt;/thead&gt;</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">exercises the header click/flip/replace behavior and the</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/listing-list.test.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -13,7 +13,7 @@</div><pre><span class="ctx"> import { afterEach, describe, expect, it } from &#x27;vitest&#x27;;</span>
+<span class="ctx"> import { createRoot, type Root } from &#x27;react-dom/client&#x27;;</span>
+<span class="ctx"> import { act, useState } from &#x27;react&#x27;;</span>
+<span class="del">-import type { CreateListingInput, ListingDetail, ListingSummary, Source } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="add">+import type { CreateListingInput, ListingDetail, ListingSortDirection, ListingSortField, ListingSummary, Source } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> import { ListingList } from &#x27;../src/features/listings/listing-list&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> globalThis.IS_REACT_ACT_ENVIRONMENT = true;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -49,7 +49,17 @@ const sources: Source[] = [{ id: &#x27;source-1&#x27;, name: &#x27;Test Source&#x27;, platformType:</div><pre><span class="ctx"> // instead of reimplementing it. Treats the clicked ListingSummary as if it</span>
+<span class="ctx"> // were the already-fetched ListingDetail (no Expected Parts) since the</span>
+<span class="ctx"> // fetch itself is ListingsPage&#x27;s concern, not ListingList&#x27;s.</span>
+<span class="del">-function Harness({ listings }: { listings: ListingSummary[] }) {</span>
+<span class="add">+function Harness({</span>
+<span class="add">+  listings,</span>
+<span class="add">+  sortBy,</span>
+<span class="add">+  sortDirection,</span>
+<span class="add">+  onSortChange = () =&gt; {},</span>
+<span class="add">+}: {</span>
+<span class="add">+  listings: ListingSummary[];</span>
+<span class="add">+  sortBy?: ListingSortField;</span>
+<span class="add">+  sortDirection?: ListingSortDirection;</span>
+<span class="add">+  onSortChange?: (field: ListingSortField) =&gt; void;</span>
+<span class="add">+}) {</span>
+<span class="ctx">   const [editingListingId, setEditingListingId] = useState&lt;string | null&gt;(null);</span>
+<span class="ctx">   const [selectedIds, setSelectedIds] = useState&lt;Set&lt;string&gt;&gt;(new Set());</span>
+<span class="ctx"> </span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -86,6 +96,9 @@ function Harness({ listings }: { listings: ListingSummary[] }) {</div><pre><span class="ctx">         })</span>
+<span class="ctx">       }</span>
+<span class="ctx">       onToggleAllFiltered={() =&gt; {}}</span>
+<span class="add">+      sortBy={sortBy}</span>
+<span class="add">+      sortDirection={sortDirection}</span>
+<span class="add">+      onSortChange={onSortChange}</span>
+<span class="ctx">     /&gt;</span>
+<span class="ctx">   );</span>
+<span class="ctx"> }</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -102,11 +115,17 @@ afterEach(() =&gt; {</div><pre><span class="ctx">   root = null;</span>
+<span class="ctx"> });</span>
+<span class="ctx"> </span>
+<span class="del">-async function mount(listings: ListingSummary[]): Promise&lt;HTMLDivElement&gt; {</span>
+<span class="add">+// Mounts the harness. `sort` carries the optional active-sort props (and a</span>
+<span class="add">+// click spy) the sortable-header tests need; the older tests pass none and</span>
+<span class="add">+// get the unsorted default.</span>
+<span class="add">+async function mount(</span>
+<span class="add">+  listings: ListingSummary[],</span>
+<span class="add">+  sort: { sortBy?: ListingSortField; sortDirection?: ListingSortDirection; onSortChange?: (field: ListingSortField) =&gt; void } = {},</span>
+<span class="add">+): Promise&lt;HTMLDivElement&gt; {</span>
+<span class="ctx">   container = document.createElement(&#x27;div&#x27;);</span>
+<span class="ctx">   await act(async () =&gt; {</span>
+<span class="ctx">     root = createRoot(container!);</span>
+<span class="del">-    root.render(&lt;Harness listings={listings} /&gt;);</span>
+<span class="add">+    root.render(&lt;Harness listings={listings} sortBy={sort.sortBy} sortDirection={sort.sortDirection} onSortChange={sort.onSortChange} /&gt;);</span>
+<span class="ctx">   });</span>
+<span class="ctx">   return container;</span>
+<span class="ctx"> }</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -284,3 +303,98 @@ describe(&#x27;ListingList Accept/Reject gating and per-row in-flight disable (Req 4)</div><pre><span class="ctx">   });</span>
+<span class="ctx"> });</span>
+<span class="ctx"> </span>
+<span class="add">+</span>
+<span class="add">+// Sortable column headers (Req 1, 5, 10). ListingList holds no sort state</span>
+<span class="add">+// of its own — it renders whichever field/direction it is handed and</span>
+<span class="add">+// reports clicks upward — so these tests pin exactly that: which headers</span>
+<span class="add">+// are clickable, which field each one reports, and that the direction</span>
+<span class="add">+// arrow appears on the active column only.</span>
+<span class="add">+describe(&#x27;ListingList sortable column headers&#x27;, () =&gt; {</span>
+<span class="add">+  const SORTABLE_LABELS = [&#x27;Title&#x27;, &#x27;Source&#x27;, &#x27;Status&#x27;, &#x27;Asking Price&#x27;, &#x27;Expected Resale&#x27;, &#x27;Difference&#x27;, &#x27;Identify Parts&#x27;];</span>
+<span class="add">+</span>
+<span class="add">+  function headerCells(el: HTMLElement): HTMLTableCellElement[] {</span>
+<span class="add">+    return Array.from(el.querySelectorAll(&#x27;thead th&#x27;));</span>
+<span class="add">+  }</span>
+<span class="add">+</span>
+<span class="add">+  function headerButton(el: HTMLElement, label: string): HTMLButtonElement {</span>
+<span class="add">+    const button = Array.from(el.querySelectorAll(&#x27;thead button&#x27;)).find((b) =&gt; b.textContent?.trim() === label);</span>
+<span class="add">+    if (!button) {</span>
+<span class="add">+      throw new Error(`No sortable header button found for &quot;${label}&quot;`);</span>
+<span class="add">+    }</span>
+<span class="add">+    return button as HTMLButtonElement;</span>
+<span class="add">+  }</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;makes exactly the 7 data-bearing headers clickable, each reporting its own sort field, and leaves the checkbox and actions columns plain&#x27;, async () =&gt; {</span>
+<span class="add">+    const clicked: string[] = [];</span>
+<span class="add">+    const el = await mount([makeListing()], { onSortChange: (field) =&gt; clicked.push(field) });</span>
+<span class="add">+</span>
+<span class="add">+    const cells = headerCells(el);</span>
+<span class="add">+    expect(cells).toHaveLength(9);</span>
+<span class="add">+    // Req 10: neither the leading selection column nor the trailing</span>
+<span class="add">+    // actions column carries a comparable value, so neither is clickable.</span>
+<span class="add">+    expect(cells[0].querySelector(&#x27;button&#x27;)).toBeNull();</span>
+<span class="add">+    expect(cells[8].querySelector(&#x27;button&#x27;)).toBeNull();</span>
+<span class="add">+    expect(cells[0].getAttribute(&#x27;aria-sort&#x27;)).toBeNull();</span>
+<span class="add">+    expect(cells[8].getAttribute(&#x27;aria-sort&#x27;)).toBeNull();</span>
+<span class="add">+    expect(el.querySelectorAll(&#x27;thead button&#x27;)).toHaveLength(7);</span>
+<span class="add">+    expect(cells.slice(1, 8).map((cell) =&gt; cell.textContent?.trim())).toEqual(SORTABLE_LABELS);</span>
+<span class="add">+</span>
+<span class="add">+    for (const label of SORTABLE_LABELS) {</span>
+<span class="add">+      await act(async () =&gt; {</span>
+<span class="add">+        headerButton(el, label).click();</span>
+<span class="add">+      });</span>
+<span class="add">+    }</span>
+<span class="add">+    // Each header must report its own field, in the shared</span>
+<span class="add">+    // ListingSortField vocabulary — not a label string or a neighbour&#x27;s</span>
+<span class="add">+    // field.</span>
+<span class="add">+    expect(clicked).toEqual([&#x27;title&#x27;, &#x27;source&#x27;, &#x27;status&#x27;, &#x27;askingPrice&#x27;, &#x27;expectedResale&#x27;, &#x27;difference&#x27;, &#x27;identifyParts&#x27;]);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;renders no direction arrow on any header while nothing is sorted&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount([makeListing()]);</span>
+<span class="add">+    expect(el.querySelectorAll(&#x27;thead [aria-label^=&quot;Sorted&quot;]&#x27;)).toHaveLength(0);</span>
+<span class="add">+    expect(headerCells(el).map((cell) =&gt; cell.getAttribute(&#x27;aria-sort&#x27;))).toEqual([</span>
+<span class="add">+      null, &#x27;none&#x27;, &#x27;none&#x27;, &#x27;none&#x27;, &#x27;none&#x27;, &#x27;none&#x27;, &#x27;none&#x27;, &#x27;none&#x27;, null,</span>
+<span class="add">+    ]);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;renders an ascending arrow on the active column only, and on no other header&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount([makeListing()], { sortBy: &#x27;askingPrice&#x27;, sortDirection: &#x27;asc&#x27; });</span>
+<span class="add">+</span>
+<span class="add">+    const arrows = Array.from(el.querySelectorAll(&#x27;thead [aria-label^=&quot;Sorted&quot;]&#x27;));</span>
+<span class="add">+    expect(arrows).toHaveLength(1);</span>
+<span class="add">+    expect(arrows[0].getAttribute(&#x27;aria-label&#x27;)).toBe(&#x27;Sorted ascending&#x27;);</span>
+<span class="add">+    // The one arrow is inside the Asking Price header, not merely somewhere</span>
+<span class="add">+    // in the row.</span>
+<span class="add">+    expect(headerButton(el, &#x27;Asking Price&#x27;).contains(arrows[0])).toBe(true);</span>
+<span class="add">+    expect(headerCells(el).map((cell) =&gt; cell.getAttribute(&#x27;aria-sort&#x27;))).toEqual([</span>
+<span class="add">+      null, &#x27;none&#x27;, &#x27;none&#x27;, &#x27;none&#x27;, &#x27;ascending&#x27;, &#x27;none&#x27;, &#x27;none&#x27;, &#x27;none&#x27;, null,</span>
+<span class="add">+    ]);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;renders a descending arrow — a different icon from the ascending one — when the active direction is desc&#x27;, async () =&gt; {</span>
+<span class="add">+    const ascending = await mount([makeListing()], { sortBy: &#x27;difference&#x27;, sortDirection: &#x27;asc&#x27; });</span>
+<span class="add">+    // The drawn glyph only — the svg&#x27;s child paths, excluding the</span>
+<span class="add">+    // aria-label on the svg itself, so the comparison below cannot pass on</span>
+<span class="add">+    // a differing label alone while both directions draw the same arrow.</span>
+<span class="add">+    const ascendingGlyph = ascending.querySelector(&#x27;thead [aria-label^=&quot;Sorted&quot;]&#x27;)!.innerHTML;</span>
+<span class="add">+</span>
+<span class="add">+    act(() =&gt; {</span>
+<span class="add">+      root?.unmount();</span>
+<span class="add">+    });</span>
+<span class="add">+    container?.remove();</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount([makeListing()], { sortBy: &#x27;difference&#x27;, sortDirection: &#x27;desc&#x27; });</span>
+<span class="add">+    const arrows = Array.from(el.querySelectorAll(&#x27;thead [aria-label^=&quot;Sorted&quot;]&#x27;));</span>
+<span class="add">+    expect(arrows).toHaveLength(1);</span>
+<span class="add">+    expect(arrows[0].getAttribute(&#x27;aria-label&#x27;)).toBe(&#x27;Sorted descending&#x27;);</span>
+<span class="add">+    expect(headerButton(el, &#x27;Difference&#x27;).contains(arrows[0])).toBe(true);</span>
+<span class="add">+    // The rendered icon itself differs, not just its label — a direction</span>
+<span class="add">+    // indicator that drew the same glyph both ways would indicate nothing.</span>
+<span class="add">+    expect(ascendingGlyph).not.toBe(&#x27;&#x27;);</span>
+<span class="add">+    expect(arrows[0].innerHTML).not.toBe(ascendingGlyph);</span>
+<span class="add">+    expect(headerCells(el).map((cell) =&gt; cell.getAttribute(&#x27;aria-sort&#x27;))).toEqual([</span>
+<span class="add">+      null, &#x27;none&#x27;, &#x27;none&#x27;, &#x27;none&#x27;, &#x27;none&#x27;, &#x27;none&#x27;, &#x27;descending&#x27;, &#x27;none&#x27;, null,</span>
+<span class="add">+    ]);</span>
+<span class="add">+  });</span>
+<span class="add">+});</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">exercises the page-level behavior — sort change resets to</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/listings-page.test.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -544,3 +544,137 @@ describe(&#x27;ListingsPage Add Listing create flow (Req 12)&#x27;, () =&gt; {</div><pre><span class="ctx">   }, 10_000);</span>
+<span class="ctx"> });</span>
+<span class="ctx"> </span>
+<span class="add">+</span>
+<span class="add">+// T3: sortable column headers (Req 2-4, 7, 8). ListingsPage owns the sort</span>
+<span class="add">+// state; the assertions below read the options object handed to</span>
+<span class="add">+// fetchListings, which is what actually determines the server-side order of</span>
+<span class="add">+// the whole filtered dataset — the rendered row order on a mocked page</span>
+<span class="add">+// would prove nothing about it.</span>
+<span class="add">+describe(&#x27;ListingsPage sortable columns (T3)&#x27;, () =&gt; {</span>
+<span class="add">+  const PAGE_SIZE = 20;</span>
+<span class="add">+</span>
+<span class="add">+  function lastFetchOptions(): { sortBy?: string; sortDirection?: string; offset?: number; status?: string; sourceId?: string } {</span>
+<span class="add">+    const calls = fetchListingsMock.mock.calls;</span>
+<span class="add">+    return calls[calls.length - 1][0] as { sortBy?: string; sortDirection?: string; offset?: number; status?: string; sourceId?: string };</span>
+<span class="add">+  }</span>
+<span class="add">+</span>
+<span class="add">+  // Clicks a column header and waits for the reload the sort change</span>
+<span class="add">+  // triggers, so the assertions read the request carrying the new sort</span>
+<span class="add">+  // rather than the previous one.</span>
+<span class="add">+  async function clickHeader(el: HTMLElement, label: string) {</span>
+<span class="add">+    const callsBefore = fetchListingsMock.mock.calls.length;</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      findButton(el, label).click();</span>
+<span class="add">+    });</span>
+<span class="add">+    await waitFor(() =&gt; fetchListingsMock.mock.calls.length &gt; callsBefore);</span>
+<span class="add">+  }</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;fetches with no sort params at all until a header is clicked (Req 9: the existing default order is untouched)&#x27;, async () =&gt; {</span>
+<span class="add">+    fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });</span>
+<span class="add">+    fetchListingIdsMock.mockResolvedValue([]);</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount();</span>
+<span class="add">+    await waitFor(() =&gt; el.querySelectorAll(&#x27;tbody tr&#x27;).length === 2);</span>
+<span class="add">+</span>
+<span class="add">+    expect(fetchListingsMock).toHaveBeenCalledTimes(1);</span>
+<span class="add">+    expect(lastFetchOptions().sortBy).toBeUndefined();</span>
+<span class="add">+    expect(lastFetchOptions().sortDirection).toBeUndefined();</span>
+<span class="add">+  }, 10_000);</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;clicking an inactive header sorts by that field ascending; clicking it again reverses direction without changing the field (Req 2-3)&#x27;, async () =&gt; {</span>
+<span class="add">+    fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });</span>
+<span class="add">+    fetchListingIdsMock.mockResolvedValue([]);</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount();</span>
+<span class="add">+    await waitFor(() =&gt; el.querySelectorAll(&#x27;tbody tr&#x27;).length === 2);</span>
+<span class="add">+</span>
+<span class="add">+    await clickHeader(el, &#x27;Asking Price&#x27;);</span>
+<span class="add">+    expect(lastFetchOptions().sortBy).toBe(&#x27;askingPrice&#x27;);</span>
+<span class="add">+    expect(lastFetchOptions().sortDirection).toBe(&#x27;asc&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    await clickHeader(el, &#x27;Asking Price&#x27;);</span>
+<span class="add">+    expect(lastFetchOptions().sortBy).toBe(&#x27;askingPrice&#x27;);</span>
+<span class="add">+    expect(lastFetchOptions().sortDirection).toBe(&#x27;desc&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    // A third click comes back to ascending rather than sticking on desc.</span>
+<span class="add">+    await clickHeader(el, &#x27;Asking Price&#x27;);</span>
+<span class="add">+    expect(lastFetchOptions().sortBy).toBe(&#x27;askingPrice&#x27;);</span>
+<span class="add">+    expect(lastFetchOptions().sortDirection).toBe(&#x27;asc&#x27;);</span>
+<span class="add">+  }, 10_000);</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;clicking a different header replaces the active field outright, restarting at ascending rather than combining or keeping the old direction (Req 2, 4)&#x27;, async () =&gt; {</span>
+<span class="add">+    fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });</span>
+<span class="add">+    fetchListingIdsMock.mockResolvedValue([]);</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount();</span>
+<span class="add">+    await waitFor(() =&gt; el.querySelectorAll(&#x27;tbody tr&#x27;).length === 2);</span>
+<span class="add">+</span>
+<span class="add">+    // Leave the first column active *descending*, so a replacement that</span>
+<span class="add">+    // carried the old direction over would be visible.</span>
+<span class="add">+    await clickHeader(el, &#x27;Title&#x27;);</span>
+<span class="add">+    await clickHeader(el, &#x27;Title&#x27;);</span>
+<span class="add">+    expect(lastFetchOptions().sortDirection).toBe(&#x27;desc&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    await clickHeader(el, &#x27;Difference&#x27;);</span>
+<span class="add">+    const options = lastFetchOptions();</span>
+<span class="add">+    expect(options.sortBy).toBe(&#x27;difference&#x27;);</span>
+<span class="add">+    expect(options.sortDirection).toBe(&#x27;asc&#x27;);</span>
+<span class="add">+    // Only one field is ever sorted by: the request carries a single</span>
+<span class="add">+    // sortBy, and the previously active column&#x27;s arrow is gone.</span>
+<span class="add">+    expect(Object.keys(options).filter((key) =&gt; key.startsWith(&#x27;sort&#x27;))).toEqual([&#x27;sortBy&#x27;, &#x27;sortDirection&#x27;]);</span>
+<span class="add">+    const titleHeader = findButton(el, &#x27;Title&#x27;).closest(&#x27;th&#x27;) as HTMLTableCellElement;</span>
+<span class="add">+    const differenceHeader = findButton(el, &#x27;Difference&#x27;).closest(&#x27;th&#x27;) as HTMLTableCellElement;</span>
+<span class="add">+    expect(titleHeader.getAttribute(&#x27;aria-sort&#x27;)).toBe(&#x27;none&#x27;);</span>
+<span class="add">+    expect(titleHeader.querySelector(&#x27;[aria-label^=&quot;Sorted&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+    expect(differenceHeader.getAttribute(&#x27;aria-sort&#x27;)).toBe(&#x27;ascending&#x27;);</span>
+<span class="add">+  }, 10_000);</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;resets to page 1 when the sort changes, instead of keeping the old offset into a now-differently-ordered dataset (Req 7)&#x27;, async () =&gt; {</span>
+<span class="add">+    const listings = Array.from({ length: 21 }, (_, i) =&gt; makeListing(`listing-${i}`, `Listing ${i}`, 100 + i));</span>
+<span class="add">+    fetchListingsMock.mockImplementation(({ limit, offset }: { limit: number; offset: number }) =&gt;</span>
+<span class="add">+      Promise.resolve({ listings: listings.slice(offset, offset + limit), total: listings.length }),</span>
+<span class="add">+    );</span>
+<span class="add">+    fetchListingIdsMock.mockResolvedValue([]);</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount();</span>
+<span class="add">+    await waitFor(() =&gt; el.querySelectorAll(&#x27;tbody tr&#x27;).length === PAGE_SIZE);</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      findButton(el, &#x27;Next&#x27;).click();</span>
+<span class="add">+    });</span>
+<span class="add">+    await waitFor(() =&gt; lastFetchOptions().offset === PAGE_SIZE);</span>
+<span class="add">+    expect(el.textContent).toContain(&#x27;Page 2 of 2 (21 total)&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    await clickHeader(el, &#x27;Status&#x27;);</span>
+<span class="add">+    expect(lastFetchOptions().sortBy).toBe(&#x27;status&#x27;);</span>
+<span class="add">+    expect(lastFetchOptions().offset).toBe(0);</span>
+<span class="add">+    expect(el.textContent).toContain(&#x27;Page 1 of 2 (21 total)&#x27;);</span>
+<span class="add">+  }, 10_000);</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;keeps the active sort when a filter changes — the two compose instead of clearing each other (Req 8)&#x27;, async () =&gt; {</span>
+<span class="add">+    fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });</span>
+<span class="add">+    fetchListingIdsMock.mockResolvedValue([]);</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount();</span>
+<span class="add">+    await waitFor(() =&gt; el.querySelectorAll(&#x27;tbody tr&#x27;).length === 2);</span>
+<span class="add">+</span>
+<span class="add">+    await clickHeader(el, &#x27;Expected Resale&#x27;);</span>
+<span class="add">+    await clickHeader(el, &#x27;Expected Resale&#x27;);</span>
+<span class="add">+    expect(lastFetchOptions().sortDirection).toBe(&#x27;desc&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    // The status select is the first of the two filter selects.</span>
+<span class="add">+    const statusSelect = el.querySelectorAll(&#x27;select&#x27;)[0] as HTMLSelectElement;</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      statusSelect.value = &#x27;accepted&#x27;;</span>
+<span class="add">+      statusSelect.dispatchEvent(new Event(&#x27;change&#x27;, { bubbles: true }));</span>
+<span class="add">+    });</span>
+<span class="add">+    await waitFor(() =&gt; lastFetchOptions().status === &#x27;accepted&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    const options = lastFetchOptions();</span>
+<span class="add">+    expect(options.sortBy).toBe(&#x27;expectedResale&#x27;);</span>
+<span class="add">+    expect(options.sortDirection).toBe(&#x27;desc&#x27;);</span>
+<span class="add">+    // ...and the header still shows it, not just the request.</span>
+<span class="add">+    const header = findButton(el, &#x27;Expected Resale&#x27;).closest(&#x27;th&#x27;) as HTMLTableCellElement;</span>
+<span class="add">+    expect(header.getAttribute(&#x27;aria-sort&#x27;)).toBe(&#x27;descending&#x27;);</span>
+<span class="add">+  }, 10_000);</span>
+<span class="add">+});</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">confirms `fetchListings` includes `sortBy`/`sortDirection` in</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/listings-api.test.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -1,6 +1,6 @@</div><pre><span class="ctx"> import { afterEach, describe, expect, it, vi } from &#x27;vitest&#x27;;</span>
+<span class="ctx"> import type { IdentifyPartsBulkResult } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="del">-import { fetchListingIds, enqueueBulkIdentifyParts } from &#x27;../src/features/listings/listings-api&#x27;;</span>
+<span class="add">+import { fetchListingIds, fetchListings, enqueueBulkIdentifyParts } from &#x27;../src/features/listings/listings-api&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> // Proves listings-api.ts&#x27;s two bulk-identify-parts wrappers (T4) send the</span>
+<span class="ctx"> // exact routes, verbs, query params and body the backend&#x27;s new endpoints</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -69,3 +69,50 @@ describe(&#x27;bulk identify-parts wrapper request shapes&#x27;, () =&gt; {</div><pre><span class="ctx">     expect(JSON.parse(init.body as string)).toEqual({ listingIds: [&#x27;listing-1&#x27;, &#x27;listing-2&#x27;, &#x27;listing-3&#x27;] });</span>
+<span class="ctx">   });</span>
+<span class="ctx"> });</span>
+<span class="add">+</span>
+<span class="add">+// T3: the sortable column headers drive `sortBy`/`sortDirection` query</span>
+<span class="add">+// params on GET /api/listings. The page/component tests stub this whole</span>
+<span class="add">+// module away, so nothing else would catch a param that never reaches the</span>
+<span class="add">+// URL (leaving the server on its default order while the header shows an</span>
+<span class="add">+// arrow) or one that is sent as `undefined` when no column is sorted.</span>
+<span class="add">+describe(&#x27;fetchListings sort query params&#x27;, () =&gt; {</span>
+<span class="add">+  afterEach(() =&gt; {</span>
+<span class="add">+    vi.unstubAllGlobals();</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  function stubListingsFetch() {</span>
+<span class="add">+    const fetchMock = vi.fn().mockResolvedValue(</span>
+<span class="add">+      new Response(JSON.stringify({ listings: [], total: 0 }), { status: 200, headers: { &#x27;content-type&#x27;: &#x27;application/json&#x27; } }),</span>
+<span class="add">+    );</span>
+<span class="add">+    vi.stubGlobal(&#x27;fetch&#x27;, fetchMock);</span>
+<span class="add">+    return fetchMock;</span>
+<span class="add">+  }</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;sends sortBy and sortDirection alongside the existing filter/pagination params&#x27;, async () =&gt; {</span>
+<span class="add">+    const fetchMock = stubListingsFetch();</span>
+<span class="add">+</span>
+<span class="add">+    await fetchListings({ status: &#x27;open&#x27;, sourceId: &#x27;source-1&#x27;, limit: 20, offset: 40, sortBy: &#x27;expectedResale&#x27;, sortDirection: &#x27;desc&#x27; });</span>
+<span class="add">+</span>
+<span class="add">+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];</span>
+<span class="add">+    expect(url).toBe(&#x27;http://localhost:3001/api/listings?status=open&amp;sourceId=source-1&amp;limit=20&amp;offset=40&amp;sortBy=expectedResale&amp;sortDirection=desc&#x27;);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;omits both sort params when no column is sorted, leaving the server on its default ordering&#x27;, async () =&gt; {</span>
+<span class="add">+    const fetchMock = stubListingsFetch();</span>
+<span class="add">+</span>
+<span class="add">+    await fetchListings({ limit: 20, offset: 0 });</span>
+<span class="add">+</span>
+<span class="add">+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];</span>
+<span class="add">+    expect(url).toBe(&#x27;http://localhost:3001/api/listings?limit=20&amp;offset=0&#x27;);</span>
+<span class="add">+    expect(url).not.toContain(&#x27;sort&#x27;);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;omits sortDirection on its own when only a field is given, rather than sending an empty value&#x27;, async () =&gt; {</span>
+<span class="add">+    const fetchMock = stubListingsFetch();</span>
+<span class="add">+</span>
+<span class="add">+    await fetchListings({ sortBy: &#x27;title&#x27; });</span>
+<span class="add">+</span>
+<span class="add">+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];</span>
+<span class="add">+    expect(url).toBe(&#x27;http://localhost:3001/api/listings?sortBy=title&#x27;);</span>
+<span class="add">+  });</span>
+<span class="add">+});</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">a necessary side effect of T3 — the &quot;Identify</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/bulk-identify-parts-ui.test.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -104,12 +104,15 @@ function findButton(el: HTMLElement, text: string): HTMLButtonElement {</div><pre><span class="ctx">   return button as HTMLButtonElement;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="del">-// Non-throwing counterpart to findButton: returns null instead of throwing,</span>
+<span class="del">-// so a test can assert a button is absent (e.g. the bulk action bar not</span>
+<span class="del">-// rendering while nothing is selected) without wrapping the lookup in its</span>
+<span class="del">-// own try/catch.</span>
+<span class="del">-function queryButton(el: HTMLElement, text: string): HTMLButtonElement | null {</span>
+<span class="del">-  const button = Array.from(el.querySelectorAll(&#x27;button&#x27;)).find((b) =&gt; b.textContent === text);</span>
+<span class="add">+// Non-throwing counterpart to findButton, returning null instead of</span>
+<span class="add">+// throwing so a test can assert the bulk action bar&#x27;s button is absent</span>
+<span class="add">+// while nothing is selected. Scoped to buttons outside the table header,</span>
+<span class="add">+// because the Listings table&#x27;s &quot;Identify Parts&quot; column header is itself a</span>
+<span class="add">+// button now (it sorts by that column) carrying the exact same label — an</span>
+<span class="add">+// unscoped lookup would find that always-present header button instead of</span>
+<span class="add">+// the bar&#x27;s own, selection-gated one.</span>
+<span class="add">+function queryBulkIdentifyPartsButton(el: HTMLElement): HTMLButtonElement | null {</span>
+<span class="add">+  const button = Array.from(el.querySelectorAll(&#x27;button&#x27;)).find((b) =&gt; b.textContent === &#x27;Identify Parts&#x27; &amp;&amp; b.closest(&#x27;thead&#x27;) === null);</span>
+<span class="ctx">   return (button as HTMLButtonElement | undefined) ?? null;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -245,7 +248,7 @@ describe(&#x27;ListingsPage selection wiring (Req 2/4/12)&#x27;, () =&gt; {</div><pre><span class="ctx">     await waitFor(() =&gt; el.querySelectorAll(&#x27;tbody tr&#x27;).length === PAGE_SIZE);</span>
+<span class="ctx"> </span>
+<span class="ctx">     // Req 5: no selection yet, so the fixed bar (and its button) isn&#x27;t rendered.</span>
+<span class="del">-    expect(queryButton(el, &#x27;Identify Parts&#x27;)).toBeNull();</span>
+<span class="add">+    expect(queryBulkIdentifyPartsButton(el)).toBeNull();</span>
+<span class="ctx">     expect(el.textContent).not.toContain(&#x27;selected&#x27;);</span>
+<span class="ctx"> </span>
+<span class="ctx">     await act(async () =&gt; {</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -254,7 +257,7 @@ describe(&#x27;ListingsPage selection wiring (Req 2/4/12)&#x27;, () =&gt; {</div><pre><span class="ctx">     });</span>
+<span class="ctx">     // Req 5: becomes non-empty -&gt; the bar appears with the exact count.</span>
+<span class="ctx">     expect(el.textContent).toContain(&#x27;2 selected&#x27;);</span>
+<span class="del">-    expect(queryButton(el, &#x27;Identify Parts&#x27;)).not.toBeNull();</span>
+<span class="add">+    expect(queryBulkIdentifyPartsButton(el)).not.toBeNull();</span>
+<span class="ctx"> </span>
+<span class="ctx">     const statusSelect = el.querySelector(&#x27;select&#x27;) as HTMLSelectElement;</span>
+<span class="ctx">     await act(async () =&gt; {</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -268,7 +271,7 @@ describe(&#x27;ListingsPage selection wiring (Req 2/4/12)&#x27;, () =&gt; {</div><pre><span class="ctx">     expect(el.textContent).toContain(&#x27;2 selected&#x27;);</span>
+<span class="ctx">     expect(checkbox(el, &#x27;Select Listing 0&#x27;).checked).toBe(true);</span>
+<span class="ctx">     expect(checkbox(el, &#x27;Select Listing 1&#x27;).checked).toBe(true);</span>
+<span class="del">-    expect(queryButton(el, &#x27;Identify Parts&#x27;)).not.toBeNull();</span>
+<span class="add">+    expect(queryBulkIdentifyPartsButton(el)).not.toBeNull();</span>
+<span class="ctx">   });</span>
+<span class="ctx"> </span>
+<span class="ctx">   it(&#x27;refetches the filtered id set when the filter changes, but not when the page changes (Req 2)&#x27;, async () =&gt; {</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -409,7 +412,7 @@ describe(&#x27;ListingsPage selection wiring (Req 2/4/12)&#x27;, () =&gt; {</div><pre><span class="ctx">     });</span>
+<span class="ctx"> </span>
+<span class="ctx">     // The bulk &quot;Identify Parts&quot; button appears.</span>
+<span class="del">-    const bulkButton = findButton(el, &#x27;Identify Parts&#x27;);</span>
+<span class="add">+    const bulkButton = queryBulkIdentifyPartsButton(el) as HTMLButtonElement;</span>
+<span class="ctx">     expect(bulkButton).toBeTruthy();</span>
+<span class="ctx"> </span>
+<span class="ctx">     // Click it, triggering the bulk enqueue request.</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+</main><script>
+function toggleSection(btn){
+  var body = btn.nextElementSibling;
+  body.hidden = !body.hidden;
+  btn.setAttribute('aria-expanded', String(!body.hidden));
+}
+function toggleFile(btn){
+  var body = btn.nextElementSibling;
+  body.hidden = !body.hidden;
+  btn.setAttribute('aria-expanded', String(!body.hidden));
+}
+</script>

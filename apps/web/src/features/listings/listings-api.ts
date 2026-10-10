@@ -6,6 +6,8 @@ import type {
   IdentifyPartsBulkResult,
   ListingDetail,
   ListingStatus,
+  ListingSortDirection,
+  ListingSortField,
   ListListingsResponse,
   ListListingIdsResponse,
   UpdateListingInput,
@@ -17,12 +19,20 @@ import { ApiError, apiClient } from '@/lib/api-client';
 // request/response typing in one place so listings-page.tsx and its
 // sub-components never hand-write a path string or `as` cast.
 
-/** Optional filters/pagination matching the GET /api/listings query support (Req 12, 15). */
+/**
+ * Optional filters/pagination matching the GET /api/listings query support
+ * (Req 12, 15), plus the optional sort field/direction the sortable column
+ * headers drive. Both sort fields are omitted entirely when no header has
+ * been clicked yet, which is what leaves the server on its default
+ * newest-first ordering.
+ */
 export interface FetchListingsOptions {
   status?: ListingStatus;
   sourceId?: string;
   limit?: number;
   offset?: number;
+  sortBy?: ListingSortField;
+  sortDirection?: ListingSortDirection;
 }
 
 /** Fetches one page of Listings (each annotated with its Req 3 comparison) plus the total matching count, for pagination (Req 15). */
@@ -32,6 +42,8 @@ export function fetchListings(options: FetchListingsOptions = {}): Promise<ListL
   if (options.sourceId) params.set('sourceId', options.sourceId);
   if (options.limit !== undefined) params.set('limit', String(options.limit));
   if (options.offset !== undefined) params.set('offset', String(options.offset));
+  if (options.sortBy) params.set('sortBy', options.sortBy);
+  if (options.sortDirection) params.set('sortDirection', options.sortDirection);
   const query = params.toString();
   return apiClient.get<ListListingsResponse>(`/api/listings${query.length > 0 ? `?${query}` : ''}`);
 }

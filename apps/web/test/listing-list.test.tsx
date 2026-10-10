@@ -13,7 +13,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { act, useState } from 'react';
-import type { CreateListingInput, ListingDetail, ListingSummary, Source } from '@pc-parts-flipper/shared';
+import type { CreateListingInput, ListingDetail, ListingSortDirection, ListingSortField, ListingSummary, Source } from '@pc-parts-flipper/shared';
 import { ListingList } from '../src/features/listings/listing-list';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -49,7 +49,17 @@ const sources: Source[] = [{ id: 'source-1', name: 'Test Source', platformType: 
 // instead of reimplementing it. Treats the clicked ListingSummary as if it
 // were the already-fetched ListingDetail (no Expected Parts) since the
 // fetch itself is ListingsPage's concern, not ListingList's.
-function Harness({ listings }: { listings: ListingSummary[] }) {
+function Harness({
+  listings,
+  sortBy,
+  sortDirection,
+  onSortChange = () => {},
+}: {
+  listings: ListingSummary[];
+  sortBy?: ListingSortField;
+  sortDirection?: ListingSortDirection;
+  onSortChange?: (field: ListingSortField) => void;
+}) {
   const [editingListingId, setEditingListingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -86,6 +96,9 @@ function Harness({ listings }: { listings: ListingSummary[] }) {
         })
       }
       onToggleAllFiltered={() => {}}
+      sortBy={sortBy}
+      sortDirection={sortDirection}
+      onSortChange={onSortChange}
     />
   );
 }
@@ -102,11 +115,17 @@ afterEach(() => {
   root = null;
 });
 
-async function mount(listings: ListingSummary[]): Promise<HTMLDivElement> {
+// Mounts the harness. `sort` carries the optional active-sort props (and a
+// click spy) the sortable-header tests need; the older tests pass none and
+// get the unsorted default.
+async function mount(
+  listings: ListingSummary[],
+  sort: { sortBy?: ListingSortField; sortDirection?: ListingSortDirection; onSortChange?: (field: ListingSortField) => void } = {},
+): Promise<HTMLDivElement> {
   container = document.createElement('div');
   await act(async () => {
     root = createRoot(container!);
-    root.render(<Harness listings={listings} />);
+    root.render(<Harness listings={listings} sortBy={sort.sortBy} sortDirection={sort.sortDirection} onSortChange={sort.onSortChange} />);
   });
   return container;
 }
@@ -284,3 +303,98 @@ describe('ListingList Accept/Reject gating and per-row in-flight disable (Req 4)
   });
 });
 
+
+// Sortable column headers (Req 1, 5, 10). ListingList holds no sort state
+// of its own — it renders whichever field/direction it is handed and
+// reports clicks upward — so these tests pin exactly that: which headers
+// are clickable, which field each one reports, and that the direction
+// arrow appears on the active column only.
+describe('ListingList sortable column headers', () => {
+  const SORTABLE_LABELS = ['Title', 'Source', 'Status', 'Asking Price', 'Expected Resale', 'Difference', 'Identify Parts'];
+
+  function headerCells(el: HTMLElement): HTMLTableCellElement[] {
+    return Array.from(el.querySelectorAll('thead th'));
+  }
+
+  function headerButton(el: HTMLElement, label: string): HTMLButtonElement {
+    const button = Array.from(el.querySelectorAll('thead button')).find((b) => b.textContent?.trim() === label);
+    if (!button) {
+      throw new Error(`No sortable header button found for "${label}"`);
+    }
+    return button as HTMLButtonElement;
+  }
+
+  it('makes exactly the 7 data-bearing headers clickable, each reporting its own sort field, and leaves the checkbox and actions columns plain', async () => {
+    const clicked: string[] = [];
+    const el = await mount([makeListing()], { onSortChange: (field) => clicked.push(field) });
+
+    const cells = headerCells(el);
+    expect(cells).toHaveLength(9);
+    // Req 10: neither the leading selection column nor the trailing
+    // actions column carries a comparable value, so neither is clickable.
+    expect(cells[0].querySelector('button')).toBeNull();
+    expect(cells[8].querySelector('button')).toBeNull();
+    expect(cells[0].getAttribute('aria-sort')).toBeNull();
+    expect(cells[8].getAttribute('aria-sort')).toBeNull();
+    expect(el.querySelectorAll('thead button')).toHaveLength(7);
+    expect(cells.slice(1, 8).map((cell) => cell.textContent?.trim())).toEqual(SORTABLE_LABELS);
+
+    for (const label of SORTABLE_LABELS) {
+      await act(async () => {
+        headerButton(el, label).click();
+      });
+    }
+    // Each header must report its own field, in the shared
+    // ListingSortField vocabulary — not a label string or a neighbour's
+    // field.
+    expect(clicked).toEqual(['title', 'source', 'status', 'askingPrice', 'expectedResale', 'difference', 'identifyParts']);
+  });
+
+  it('renders no direction arrow on any header while nothing is sorted', async () => {
+    const el = await mount([makeListing()]);
+    expect(el.querySelectorAll('thead [aria-label^="Sorted"]')).toHaveLength(0);
+    expect(headerCells(el).map((cell) => cell.getAttribute('aria-sort'))).toEqual([
+      null, 'none', 'none', 'none', 'none', 'none', 'none', 'none', null,
+    ]);
+  });
+
+  it('renders an ascending arrow on the active column only, and on no other header', async () => {
+    const el = await mount([makeListing()], { sortBy: 'askingPrice', sortDirection: 'asc' });
+
+    const arrows = Array.from(el.querySelectorAll('thead [aria-label^="Sorted"]'));
+    expect(arrows).toHaveLength(1);
+    expect(arrows[0].getAttribute('aria-label')).toBe('Sorted ascending');
+    // The one arrow is inside the Asking Price header, not merely somewhere
+    // in the row.
+    expect(headerButton(el, 'Asking Price').contains(arrows[0])).toBe(true);
+    expect(headerCells(el).map((cell) => cell.getAttribute('aria-sort'))).toEqual([
+      null, 'none', 'none', 'none', 'ascending', 'none', 'none', 'none', null,
+    ]);
+  });
+
+  it('renders a descending arrow — a different icon from the ascending one — when the active direction is desc', async () => {
+    const ascending = await mount([makeListing()], { sortBy: 'difference', sortDirection: 'asc' });
+    // The drawn glyph only — the svg's child paths, excluding the
+    // aria-label on the svg itself, so the comparison below cannot pass on
+    // a differing label alone while both directions draw the same arrow.
+    const ascendingGlyph = ascending.querySelector('thead [aria-label^="Sorted"]')!.innerHTML;
+
+    act(() => {
+      root?.unmount();
+    });
+    container?.remove();
+
+    const el = await mount([makeListing()], { sortBy: 'difference', sortDirection: 'desc' });
+    const arrows = Array.from(el.querySelectorAll('thead [aria-label^="Sorted"]'));
+    expect(arrows).toHaveLength(1);
+    expect(arrows[0].getAttribute('aria-label')).toBe('Sorted descending');
+    expect(headerButton(el, 'Difference').contains(arrows[0])).toBe(true);
+    // The rendered icon itself differs, not just its label — a direction
+    // indicator that drew the same glyph both ways would indicate nothing.
+    expect(ascendingGlyph).not.toBe('');
+    expect(arrows[0].innerHTML).not.toBe(ascendingGlyph);
+    expect(headerCells(el).map((cell) => cell.getAttribute('aria-sort'))).toEqual([
+      null, 'none', 'none', 'none', 'none', 'none', 'descending', 'none', null,
+    ]);
+  });
+});

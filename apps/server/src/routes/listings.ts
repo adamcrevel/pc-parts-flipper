@@ -20,6 +20,8 @@ import type {
   ExpectedPartInput,
   ListingComparison,
   ListingDetail,
+  ListingSortDirection,
+  ListingSortField,
   ListingStatus,
   ListingSummary,
   ListListingIdsResponse,
@@ -36,6 +38,7 @@ import {
   listExpectedPartsByListing,
   listListingIds,
   listListings,
+  listSources,
   promoteReferencePhotos,
   transitionOpenListing,
   updateListing,
@@ -66,6 +69,81 @@ async function toSummary(listing: Listing): Promise<ListingSummary> {
     comparison: computeComparison(listing, expectedParts),
     identifyPartsStatus: job ? { stage: job.stage, errorMessage: job.errorMessage } : null,
   };
+}
+
+/**
+ * Per-column sort-key extractors, one per `ListingSortField` (Req 1, 6).
+ * Each returns the value that column actually displays, never a raw stored
+ * proxy for it: `source` resolves the Source's *name* through the id->name
+ * table its caller passes (every other extractor ignores that argument),
+ * `expectedResale`/`difference` read the computed `ListingComparison`
+ * rather than any stored price, and `identifyParts` reads the latest job's
+ * stage, treating a Listing with no job at all as an empty stage so those
+ * rows group together at one end of the column instead of scattering.
+ * Declared as a Record keyed by the shared union, so a column added to
+ * `ListingSortField` later fails to compile until its extractor lands here.
+ */
+const SORT_KEYS: Record<ListingSortField, (listing: ListingSummary, sourceNamesById: Record<string, string>) => string | number> = {
+  title: (listing) => listing.title,
+  source: (listing, sourceNamesById) => sourceNamesById[listing.sourceId] ?? '',
+  status: (listing) => listing.status,
+  askingPrice: (listing) => listing.askingPrice,
+  expectedResale: (listing) => listing.comparison.totalExpectedResaleValue,
+  difference: (listing) => listing.comparison.difference,
+  identifyParts: (listing) => listing.identifyPartsStatus?.stage ?? '',
+};
+
+// The allow-list of accepted `sortBy` query values, derived from SORT_KEYS
+// itself so the two can never drift apart.
+const VALID_SORT_FIELDS = Object.keys(SORT_KEYS) as ListingSortField[];
+
+/**
+ * Builds one page of the Listings table ordered across the WHOLE filtered
+ * dataset rather than within the requested page (Req 1, 6, 8). The table is
+ * server-paginated, so a correct "cheapest first" has to reorder every
+ * matching Listing before the page is sliced out — sorting only the 20 rows
+ * a page happens to hold would be a different, wrong answer.
+ *
+ * Flow: count the filtered set, fetch all of it in one unpaginated
+ * `listListings` call (`limit: total` turns pagination off for this fetch),
+ * enrich every row through the same unchanged `toSummary` the unsorted path
+ * uses — which is what makes the computed comparison and the identify-parts
+ * stage available as real sort keys (Req 6) — resolve Source names only
+ * when actually sorting by Source, so no other column pays for that query,
+ * then sort, reverse for 'desc', and slice the requested page. `total`
+ * still reports the whole filtered count, so pagination controls are
+ * unaffected by sorting (Req 8).
+ *
+ * `Array.prototype.sort` is stable (ES2019+), so rows tied on the sort
+ * field keep the relative order `listListings` already gave them
+ * (`listing_date DESC, id ASC`) with no secondary sort key needed; the
+ * `reverse()` for 'desc' flips those ties too, which keeps 'desc' the exact
+ * mirror image of 'asc'.
+ */
+async function listSortedListingsPage(
+  filters: { status?: ListingStatus; sourceId?: string },
+  sortBy: ListingSortField,
+  sortDirection: ListingSortDirection,
+  limit: number,
+  offset: number,
+): Promise<ListListingsResponse> {
+  const total = await countListings(filters);
+  const listings = await listListings({ ...filters, limit: total, offset: 0 });
+  const summaries = await Promise.all(listings.map(toSummary));
+  const sourceNamesById: Record<string, string> = sortBy === 'source' ? Object.fromEntries((await listSources()).map((source) => [source.id, source.name])) : {};
+  const sortKeyOf = SORT_KEYS[sortBy];
+  summaries.sort((a, b) => {
+    const keyA = sortKeyOf(a, sourceNamesById);
+    const keyB = sortKeyOf(b, sourceNamesById);
+    // Text columns compare by locale, so a column of names orders the way a
+    // user reads it rather than by raw UTF-16 code unit; money/number
+    // columns subtract, so -15 sorts below 5 instead of lexically after it.
+    return typeof keyA === 'string' && typeof keyB === 'string' ? keyA.localeCompare(keyB) : Number(keyA) - Number(keyB);
+  });
+  if (sortDirection === 'desc') {
+    summaries.reverse();
+  }
+  return { listings: summaries.slice(offset, offset + limit), total };
 }
 
 // Attaches both the full Expected Parts set and the Req 3 comparison, for
@@ -187,11 +265,13 @@ export async function registerListingsRoutes<
   });
 
   server.get('/api/listings', async (request): Promise<ListListingsResponse> => {
-    const { status, sourceId, limit, offset } = request.query as {
+    const { status, sourceId, limit, offset, sortBy, sortDirection } = request.query as {
       status?: string;
       sourceId?: string;
       limit?: string;
       offset?: string;
+      sortBy?: string;
+      sortDirection?: string;
     };
     // An unrecognized status value is ignored (no filter applied) rather
     // than rejected — GET requests validate loosely, unlike the write path.
@@ -203,7 +283,22 @@ export async function registerListingsRoutes<
     // a second unpaginated fetch.
     const limitValue = limit !== undefined ? Number(limit) : 20;
     const offsetValue = offset !== undefined ? Number(offset) : 0;
-    logger.info({ route: 'GET /api/listings', status: statusFilter, sourceId: sourceIdFilter, limit: limitValue, offset: offsetValue }, 'Listing listings');
+    // Req 1: the click-to-sort column params, validated as loosely as
+    // `status` above — an unrecognized `sortBy` applies no sort at all, and
+    // any `sortDirection` other than 'desc' means ascending, the direction
+    // a freshly-clicked column starts in (Req 2).
+    const sortField = typeof sortBy === 'string' && VALID_SORT_FIELDS.includes(sortBy as ListingSortField) ? (sortBy as ListingSortField) : undefined;
+    const sortDirectionValue: ListingSortDirection = sortDirection === 'desc' ? 'desc' : 'asc';
+    logger.info(
+      { route: 'GET /api/listings', status: statusFilter, sourceId: sourceIdFilter, limit: limitValue, offset: offsetValue, sortBy: sortField, sortDirection: sortField !== undefined ? sortDirectionValue : undefined },
+      'Listing listings',
+    );
+    if (sortField !== undefined) {
+      return listSortedListingsPage({ status: statusFilter, sourceId: sourceIdFilter }, sortField, sortDirectionValue, limitValue, offsetValue);
+    }
+    // Req 9: with no sort requested this stays exactly the original path —
+    // SQL-level LIMIT/OFFSET over listListings' default listing_date DESC
+    // ordering, untouched by this feature.
     const [listings, total] = await Promise.all([
       listListings({ status: statusFilter, sourceId: sourceIdFilter, limit: limitValue, offset: offsetValue }),
       countListings({ status: statusFilter, sourceId: sourceIdFilter }),

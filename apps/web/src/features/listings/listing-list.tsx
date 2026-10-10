@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef } from 'react';
-import { Image } from 'lucide-react';
-import type { CreateListingInput, ListingDetail, ListingSummary, Source } from '@pc-parts-flipper/shared';
+import { ArrowDown, ArrowUp, Image } from 'lucide-react';
+import type { CreateListingInput, ListingDetail, ListingSortDirection, ListingSortField, ListingSummary, Source } from '@pc-parts-flipper/shared';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { ListingForm } from '@/features/listings/listing-form';
@@ -41,6 +41,15 @@ interface ListingListProps {
   selectedIds: Set<string>;
   onToggleOne: (id: string) => void;
   onToggleAllFiltered: () => void;
+  // The column currently sorted by and its direction, or `undefined` when
+  // nothing has been sorted yet (the server's default newest-first order).
+  // Only ever one field at a time — clicking a different header replaces it.
+  sortBy?: ListingSortField;
+  sortDirection?: ListingSortDirection;
+  // Clicking a sortable header's label asks the page above to make that
+  // field active (ascending) or, when it is already active, to flip its
+  // direction. This component holds no sort state of its own.
+  onSortChange: (field: ListingSortField) => void;
 }
 
 // One table body plus, for whichever row is open, an extra full-width row
@@ -48,6 +57,63 @@ interface ListingListProps {
 // rather than a separate top-of-page panel, so the form appears next to the
 // Listing it edits regardless of scroll position.
 const COLUMN_COUNT = 9;
+
+// Every sortable column, in the left-to-right order the table renders them:
+// the shared `ListingSortField` value sent to the server paired with the
+// header label shown to the user. The two non-comparable columns (the
+// leading selection checkbox and the trailing Accept/Reject actions) carry
+// no comparable value, so they have no entry here and stay plain `<th>`s.
+const SORTABLE_COLUMNS: { field: ListingSortField; label: string }[] = [
+  { field: 'title', label: 'Title' },
+  { field: 'source', label: 'Source' },
+  { field: 'status', label: 'Status' },
+  { field: 'askingPrice', label: 'Asking Price' },
+  { field: 'expectedResale', label: 'Expected Resale' },
+  { field: 'difference', label: 'Difference' },
+  { field: 'identifyParts', label: 'Identify Parts' },
+];
+
+/**
+ * One clickable column header. Its label is a button that reports the
+ * click up to the page (which owns the sort state and the refetch); the
+ * header renders a direction arrow — up for ascending, down for
+ * descending — only when its own field is the active one, so exactly one
+ * header in the table ever shows an indicator. `aria-sort` carries the same
+ * information for assistive tech, reading `none` on every inactive column.
+ */
+function SortableHeader({
+  field,
+  label,
+  sortBy,
+  sortDirection,
+  onSortChange,
+}: {
+  field: ListingSortField;
+  label: string;
+  sortBy?: ListingSortField;
+  sortDirection?: ListingSortDirection;
+  onSortChange: (field: ListingSortField) => void;
+}) {
+  const isActive = sortBy === field;
+  // A field can only ever be active ascending or descending; an active
+  // field with no direction yet reads as ascending, matching the page's own
+  // first-click behaviour.
+  const isDescending = isActive && sortDirection === 'desc';
+  const Arrow = isDescending ? ArrowDown : ArrowUp;
+
+  return (
+    <th className="px-4 py-2 font-medium" aria-sort={isActive ? (isDescending ? 'descending' : 'ascending') : 'none'}>
+      <button
+        type="button"
+        className="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground"
+        onClick={() => onSortChange(field)}
+      >
+        {label}
+        {isActive && <Arrow className="h-3.5 w-3.5 shrink-0" aria-label={`Sorted ${isDescending ? 'descending' : 'ascending'}`} />}
+      </button>
+    </th>
+  );
+}
 
 /**
  * Table of every Listing (Req 2), each row showing the Req 3 comparison,
@@ -74,6 +140,9 @@ export function ListingList({
   selectedIds,
   onToggleOne,
   onToggleAllFiltered,
+  sortBy,
+  sortDirection,
+  onSortChange,
 }: ListingListProps) {
   const headerCheckboxRef = useRef<HTMLInputElement>(null);
 
@@ -110,13 +179,16 @@ export function ListingList({
                 onChange={onToggleAllFiltered}
               />
             </th>
-            <th className="px-4 py-2 font-medium">Title</th>
-            <th className="px-4 py-2 font-medium">Source</th>
-            <th className="px-4 py-2 font-medium">Status</th>
-            <th className="px-4 py-2 font-medium">Asking Price</th>
-            <th className="px-4 py-2 font-medium">Expected Resale</th>
-            <th className="px-4 py-2 font-medium">Difference</th>
-            <th className="px-4 py-2 font-medium">Identify Parts</th>
+            {SORTABLE_COLUMNS.map((column) => (
+              <SortableHeader
+                key={column.field}
+                field={column.field}
+                label={column.label}
+                sortBy={sortBy}
+                sortDirection={sortDirection}
+                onSortChange={onSortChange}
+              />
+            ))}
             <th className="px-4 py-2 font-medium" />
           </tr>
         </thead>

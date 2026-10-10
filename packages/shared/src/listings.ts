@@ -112,6 +112,31 @@ export type ListingSummary = Listing & {
 /** `GET /api/listings/:id` shape: a Listing with its full Expected Parts set. */
 export type ListingDetail = ListingSummary & { expectedParts: ExpectedPart[] };
 
+/**
+ * The allow-list of columns a user can click-to-sort the Listings table by
+ * (Req 1-4, 10). One value per sortable column's real underlying value, not
+ * its display proxy — `'source'` sorts by the Source's resolved name,
+ * `'expectedResale'`/`'difference'` sort by `ListingComparison`'s computed
+ * numbers, not any raw stored field (Req 6). The table's two non-comparable
+ * columns (leading checkbox selection, trailing Accept/Reject actions) have
+ * no value here and so can never become the active sort field (Req 10).
+ */
+export type ListingSortField =
+  | 'title'
+  | 'source'
+  | 'status'
+  | 'askingPrice'
+  | 'expectedResale'
+  | 'difference'
+  | 'identifyParts';
+
+/**
+ * Sort order for whichever `ListingSortField` is currently active. Clicking
+ * an inactive column's header starts it `'asc'` (Req 2); clicking the
+ * already-active column's header again flips between the two (Req 3).
+ */
+export type ListingSortDirection = 'asc' | 'desc';
+
 
 /** `GET /api/listings` response: one page of Listing summaries plus the total count matching the filters, so apps/web can render pagination controls without an unbounded fetch (Req 12, 15). */
 export interface ListListingsResponse {

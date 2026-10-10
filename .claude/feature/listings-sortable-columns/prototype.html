@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>P0 Prototype — Sortable Listings table headers</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // Colors copied verbatim from apps/web/tailwind.config.js's `colors` block,
+  // resolved against apps/web/src/index.css's `:root` (light mode) HSL values
+  // — this is the exact palette the real table renders with today.
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          border: 'hsl(214.3 31.8% 91.4%)',
+          input: 'hsl(214.3 31.8% 91.4%)',
+          ring: 'hsl(222.2 84% 4.9%)',
+          background: 'hsl(0 0% 100%)',
+          foreground: 'hsl(222.2 84% 4.9%)',
+          primary: { DEFAULT: 'hsl(222.2 47.4% 11.2%)', foreground: 'hsl(210 40% 98%)' },
+          secondary: { DEFAULT: 'hsl(210 40% 96.1%)', foreground: 'hsl(222.2 47.4% 11.2%)' },
+          save: { DEFAULT: 'hsl(222.2 47.4% 11.2%)', foreground: 'hsl(210 40% 98%)' },
+          cancel: 'hsl(0 0% 100%)',
+          destructive: { DEFAULT: 'hsl(0 84.2% 60.2%)', foreground: 'hsl(210 40% 98%)' },
+          muted: { DEFAULT: 'hsl(210 40% 96.1%)', foreground: 'hsl(215.4 16.3% 46.9%)' },
+          surfaceContrast: 'hsl(215 20% 85%)',
+          accent: { DEFAULT: 'hsl(210 40% 96.1%)', foreground: 'hsl(222.2 47.4% 11.2%)' },
+          popover: { DEFAULT: 'hsl(0 0% 100%)', foreground: 'hsl(222.2 84% 4.9%)' },
+          card: { DEFAULT: 'hsl(0 0% 100%)', foreground: 'hsl(222.2 84% 4.9%)' },
+        },
+      },
+    },
+  };
+</script>
+<style>
+  body { background: #fafafa; }
+  .proto-shell { max-width: 1040px; }
+</style>
+</head>
+<body class="min-h-screen p-8 text-foreground">
+  <div class="proto-shell mx-auto space-y-6">
+
+    <header class="space-y-2">
+      <h1 class="text-lg font-semibold">P0 Prototype — Sortable Listings table headers</h1>
+      <p class="text-sm text-muted-foreground">
+        Exact markup/classes from <code class="rounded bg-muted px-1 py-0.5 text-xs">listing-list.tsx</code>'s
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">&lt;thead&gt;</code> and row cells (checkbox column,
+        title cell with its photo icon / <code class="rounded bg-muted px-1 py-0.5 text-xs">EbayScanBadge</code> /
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">NonWorkingBadge</code>, status, price cells,
+        <code class="rounded bg-muted px-1 py-0.5 text-xs">IdentifyPartsStatusBadge</code>, Accept/Reject buttons),
+        unchanged. The only new piece is each of the 7 data-bearing headers becoming a clickable button with a
+        lucide <code class="rounded bg-muted px-1 py-0.5 text-xs">ArrowUp</code>/<code class="rounded bg-muted px-1 py-0.5 text-xs">ArrowDown</code>
+        indicator (same icon set as the app's existing <code class="rounded bg-muted px-1 py-0.5 text-xs">Image</code>/<code class="rounded bg-muted px-1 py-0.5 text-xs">ChevronDown</code> icons) next to the active field's label.
+      </p>
+      <div class="rounded-md border border-dashed border-muted-foreground/40 bg-muted/40 p-3 text-xs text-muted-foreground">
+        <strong>Dashed box = prototype annotation only.</strong> Click any of Title / Source / Status / Asking
+        Price / Expected Resale / Difference / Identify Parts: an inactive header becomes the active sort field
+        ascending; clicking it again flips to descending; clicking a different header replaces the active field
+        outright (the old column's arrow disappears) — the 7 sample rows below actually reorder to demonstrate it.
+        The leading checkbox header and trailing actions header are inert, exactly like in the real table. Real
+        sorting (per the plan) runs server-side across the whole filtered dataset, not just a page — this prototype
+        only has 7 sample rows, so the reordering here is plain client-side JS over that small fixed array, standing
+        in for that real behavior.
+      </div>
+    </header>
+
+    <section class="space-y-3 rounded-lg border border-border p-4">
+      <div class="overflow-x-auto">
+        <table class="w-full border-collapse text-left text-sm">
+          <thead>
+            <tr class="border-b border-border text-muted-foreground">
+              <th class="w-8 px-4 py-2 font-medium">
+                <input type="checkbox" aria-label="Select all filtered listings" />
+              </th>
+              <th class="px-4 py-2 font-medium">
+                <button type="button" class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground" data-field="title" onclick="handleSort('title')">
+                  Title
+                  <span class="sort-icon inline-flex h-3.5 w-3.5 items-center justify-center"></span>
+                </button>
+              </th>
+              <th class="px-4 py-2 font-medium">
+                <button type="button" class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground" data-field="source" onclick="handleSort('source')">
+                  Source
+                  <span class="sort-icon inline-flex h-3.5 w-3.5 items-center justify-center"></span>
+                </button>
+              </th>
+              <th class="px-4 py-2 font-medium">
+                <button type="button" class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground" data-field="status" onclick="handleSort('status')">
+                  Status
+                  <span class="sort-icon inline-flex h-3.5 w-3.5 items-center justify-center"></span>
+                </button>
+              </th>
+              <th class="px-4 py-2 font-medium">
+                <button type="button" class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground" data-field="askingPrice" onclick="handleSort('askingPrice')">
+                  Asking Price
+                  <span class="sort-icon inline-flex h-3.5 w-3.5 items-center justify-center"></span>
+                </button>
+              </th>
+              <th class="px-4 py-2 font-medium">
+                <button type="button" class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground" data-field="expectedResale" onclick="handleSort('expectedResale')">
+                  Expected Resale
+                  <span class="sort-icon inline-flex h-3.5 w-3.5 items-center justify-center"></span>
+                </button>
+              </th>
+              <th class="px-4 py-2 font-medium">
+                <button type="button" class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground" data-field="difference" onclick="handleSort('difference')">
+                  Difference
+                  <span class="sort-icon inline-flex h-3.5 w-3.5 items-center justify-center"></span>
+                </button>
+              </th>
+              <th class="px-4 py-2 font-medium">
+                <button type="button" class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground" data-field="identifyParts" onclick="handleSort('identifyParts')">
+                  Identify Parts
+                  <span class="sort-icon inline-flex h-3.5 w-3.5 items-center justify-center"></span>
+                </button>
+              </th>
+              <th class="px-4 py-2 font-medium"></th>
+            </tr>
+          </thead>
+          <tbody id="listings-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // Lucide ArrowUp/ArrowDown, same stroke/viewBox convention as the app's
+    // other lucide-react icons (e.g. listing-list.tsx's `Image`,
+    // collapsible.tsx's `ChevronDown`) — paths copied from
+    // node_modules/lucide-react/dist/esm/icons/arrow-{up,down}.js.
+    const ARROW_UP =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>';
+    const ARROW_DOWN =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>';
+    // lucide-react's `Image` icon, used next to a title exactly as
+    // listing-list.tsx does for `listing.photoPaths.length > 0`.
+    const IMAGE_ICON =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Has photos"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+
+    // 7 realistic sample Listings standing in for a page of the real,
+    // server-sorted dataset (see plan.md Assumption A1/A2) — enough variety
+    // across every sortable field (string/number/derived) to show each
+    // column's ordering change visibly.
+    const listings = [
+      { id: 'L1', title: 'Dell OptiPlex 7050 SFF - i5-7500, 8GB', hasPhoto: true, ebay: true, nonWorking: false, source: 'Facebook Marketplace', status: 'open', askingPrice: 120.0, expectedResale: 210.0, difference: 90.0, identify: { stage: 'completed' } },
+      { id: 'L2', title: 'HP EliteDesk 800 G3 - broken PSU', hasPhoto: false, ebay: false, nonWorking: true, source: 'Craigslist', status: 'open', askingPrice: 45.0, expectedResale: 95.0, difference: 50.0, identify: { stage: 'failed', errorMessage: 'OpenAI request timed out after 30s' } },
+      { id: 'L3', title: 'Lenovo ThinkCentre M900 Tiny', hasPhoto: false, ebay: true, nonWorking: false, source: 'eBay', status: 'open', askingPrice: 65.0, expectedResale: 60.0, difference: -5.0, identify: { stage: 'sourcing_references' } },
+      { id: 'L4', title: 'Custom Build - Ryzen 5 3600 + RTX 2060', hasPhoto: false, ebay: false, nonWorking: false, source: 'OfferUp', status: 'accepted', askingPrice: 300.0, expectedResale: 520.0, difference: 220.0, identify: { stage: 'completed' } },
+      { id: 'L5', title: 'Gateway DX4860 - no POST', hasPhoto: false, ebay: false, nonWorking: false, source: 'Craigslist', status: 'rejected', askingPrice: 20.0, expectedResale: 15.0, difference: -5.0, identify: null },
+      { id: 'L6', title: 'Dell Precision T3620 Workstation', hasPhoto: true, ebay: false, nonWorking: false, source: 'Facebook Marketplace', status: 'open', askingPrice: 150.0, expectedResale: 310.0, difference: 160.0, identify: null },
+      { id: 'L7', title: 'Acer Aspire TC - AMD A8, non-working', hasPhoto: false, ebay: false, nonWorking: true, source: 'OfferUp', status: 'open', askingPrice: 25.0, expectedResale: 40.0, difference: 15.0, identify: { stage: 'completed' } },
+    ];
+
+    // `field: null` is the unsorted default (Req 9) — row order below is
+    // exactly `listings`' own order, standing in for the real table's
+    // default `listing_date DESC` ordering until a header is first clicked.
+    let sortState = { field: null, direction: 'asc' };
+
+    const SORTABLE_FIELDS = ['title', 'source', 'status', 'askingPrice', 'expectedResale', 'difference', 'identifyParts'];
+
+    // IdentifyPartsStatusBadge, reproduced 1:1 (same four states/classes/text)
+    // from identify-parts-status-badge.tsx.
+    function identifyBadgeHtml(identify) {
+      if (identify === null) {
+        return '<span class="text-xs text-muted-foreground">\u2014</span>';
+      }
+      if (identify.stage === 'completed') {
+        return '<span class="inline-flex items-center rounded-full border border-teal-600/40 bg-teal-600/10 px-2 py-0.5 text-xs font-medium text-teal-700">Complete</span>';
+      }
+      if (identify.stage === 'failed') {
+        return '<span class="inline-flex cursor-help items-center rounded-full border border-destructive/50 bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive" title="' + identify.errorMessage + '">Failed</span>';
+      }
+      const IN_PROGRESS_LABELS = { queued: 'Waiting to run\u2026', identifying: 'In progress', sourcing_references: 'In progress', comparing: 'In progress' };
+      return (
+        '<span class="inline-flex items-center gap-1.5 rounded-full border border-sky-600/40 bg-sky-600/10 px-2 py-0.5 text-xs font-medium text-sky-700">' +
+        '<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-600"></span>' +
+        IN_PROGRESS_LABELS[identify.stage] +
+        '</span>'
+      );
+    }
+
+    // One <tr> exactly matching listing-list.tsx's row markup/classes for a
+    // non-open (not mid-edit) row.
+    function rowHtml(listing) {
+      const diffClass = listing.difference >= 0 ? 'text-emerald-600' : 'text-destructive';
+      const photoIcon = listing.hasPhoto ? IMAGE_ICON : '';
+      const ebayBadge = listing.ebay
+        ? '<span class="inline-flex items-center rounded-full border border-emerald-600/40 bg-emerald-600/10 px-2 py-0.5 text-xs font-medium text-emerald-700">Found via eBay scan</span>'
+        : '';
+      const nonWorkingBadge = listing.nonWorking
+        ? '<span class="inline-flex items-center rounded-full border border-amber-600/40 bg-amber-600/10 px-2 py-0.5 text-xs font-medium text-amber-700">Non-working</span>'
+        : '';
+      const actions =
+        listing.status === 'open'
+          ? '<div class="flex justify-end gap-2">' +
+            '<button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs">Accept</button>' +
+            '<button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 h-8 rounded-md px-3 text-xs">Reject</button>' +
+            '</div>'
+          : '';
+      return (
+        '<tr class="border-b border-border last:border-0">' +
+        '<td class="px-4 py-3"><input type="checkbox" aria-label="Select ' + listing.title + '" /></td>' +
+        '<td class="px-4 py-3 font-medium"><div class="flex items-center gap-1.5">' +
+        '<button type="button" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 text-primary underline-offset-4 hover:underline h-auto whitespace-normal p-0 text-left font-medium">' + listing.title + '</button>' +
+        photoIcon + ebayBadge + nonWorkingBadge +
+        '</div></td>' +
+        '<td class="px-4 py-3">' + listing.source + '</td>' +
+        '<td class="px-4 py-3 capitalize">' + listing.status + '</td>' +
+        '<td class="px-4 py-3">$' + listing.askingPrice.toFixed(2) + '</td>' +
+        '<td class="px-4 py-3">$' + listing.expectedResale.toFixed(2) + '</td>' +
+        '<td class="px-4 py-3 font-medium ' + diffClass + '">$' + listing.difference.toFixed(2) + '</td>' +
+        '<td class="px-4 py-3">' + identifyBadgeHtml(listing.identify) + '</td>' +
+        '<td class="whitespace-nowrap px-4 py-3 text-right">' + actions + '</td>' +
+        '</tr>'
+      );
+    }
+
+    // Req 6: Source sorts by its displayed name, Expected Resale/Difference
+    // by their real computed values — never by an id or unrelated proxy.
+    // Req 1-3 assumption A3: a Listing with no identify-parts job sorts as
+    // if its stage were '' (empty string), grouping every such row together.
+    function getSortValue(listing, field) {
+      switch (field) {
+        case 'title':
+          return listing.title.toLowerCase();
+        case 'source':
+          return listing.source.toLowerCase();
+        case 'status':
+          return listing.status;
+        case 'askingPrice':
+          return listing.askingPrice;
+        case 'expectedResale':
+          return listing.expectedResale;
+        case 'difference':
+          return listing.difference;
+        case 'identifyParts':
+          return listing.identify === null ? '' : listing.identify.stage;
+        default:
+          return '';
+      }
+    }
+
+    function sortedListings() {
+      if (sortState.field === null) {
+        return listings;
+      }
+      const field = sortState.field;
+      const dir = sortState.direction === 'asc' ? 1 : -1;
+      // `.slice()` + `Array.prototype.sort`'s ES2019+ stability guarantee:
+      // rows tied on `field` keep their relative order from `listings`,
+      // matching the real feature's tie-breaking (plan.md Assumption A4).
+      return listings.slice().sort((a, b) => {
+        const av = getSortValue(a, field);
+        const bv = getSortValue(b, field);
+        if (av < bv) return -1 * dir;
+        if (av > bv) return 1 * dir;
+        return 0;
+      });
+    }
+
+    function renderRows() {
+      document.getElementById('listings-tbody').innerHTML = sortedListings().map(rowHtml).join('');
+    }
+
+    // Req 5: the active column's header gets a visible arrow + darker text;
+    // every other header has neither — so only one column ever reads as
+    // "active" at a time.
+    function updateHeaderIndicators() {
+      SORTABLE_FIELDS.forEach((field) => {
+        const btn = document.querySelector('button[data-field="' + field + '"]');
+        const icon = btn.querySelector('.sort-icon');
+        if (field === sortState.field) {
+          btn.classList.add('text-foreground');
+          icon.innerHTML = sortState.direction === 'asc' ? ARROW_UP : ARROW_DOWN;
+        } else {
+          btn.classList.remove('text-foreground');
+          icon.innerHTML = '';
+        }
+      });
+    }
+
+    // Req 2-4: clicking the already-active column flips asc<->desc;
+    // clicking any other column replaces the active field outright, always
+    // starting ascending — the two sort fields never combine.
+    function handleSort(field) {
+      if (sortState.field === field) {
+        sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortState.field = field;
+        sortState.direction = 'asc';
+      }
+      updateHeaderIndicators();
+      renderRows();
+    }
+
+    renderRows();
+  </script>
+</body>
+</html>

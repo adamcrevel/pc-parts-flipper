@@ -1,0 +1,2 @@
+REFRESH_HANDLE=867fced113ae376421e9e58a1bbdf6f7
+URL=https://gist.githack.com/adamcrevel/867fced113ae376421e9e58a1bbdf6f7/raw/prototype.html

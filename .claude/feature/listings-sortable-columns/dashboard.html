@@ -1,0 +1,303 @@
+<title>Feature</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--radius:8px;
+--autorefresh-bg:rgba(31,95,79,.14);--refresh-bg:rgba(42,95,143,.14);--refresh-ink:#2a5f8f}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74;
+--autorefresh-bg:rgba(79,181,154,.18);--refresh-bg:rgba(111,168,220,.18);--refresh-ink:#8fc1ef}}
+*{box-sizing:border-box;overflow-wrap:break-word}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+/* Grid tracks default to fitting their content's full, unbroken width -- a single
+   long token (a file path, a backtick-quoted identifier) anywhere in a panel would
+   otherwise stretch the whole page past max-width, no matter how long the gap or how
+   small every other panel is. min-width:0 is what lets a grid item shrink below that
+   and actually wrap instead. Confirmed live: this is what was making every real plan
+   (which is full of exactly these long tokens) render many times wider than the
+   viewport, independent of the DOCTYPE/viewport fix. */
+main{max-width:1300px;margin:0 auto;padding:24px;display:grid;gap:20px}
+main>*{min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);
+border-radius:var(--radius);padding:20px 22px}
+h1{margin:0 0 4px;font-size:21px;letter-spacing:-.01em}
+h2{margin:22px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+h2:first-of-type{margin-top:14px}
+.panel>p{line-height:1.65;margin:0 0 4px}
+.totals{display:flex;gap:32px;flex-wrap:wrap;margin:12px 0}
+.total .n{font-size:26px;font-variant-numeric:tabular-nums}
+.total .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+details{margin-top:8px}summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;
+border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--good);border-color:var(--good);color:var(--panel)}
+.scroll{overflow-x:auto}
+/* table-layout:auto (the default) sizes a column from its content's own natural
+   width -- for a nowrap+ellipsis cell, that is the FULL unwrapped text, which is
+   exactly the width ellipsis is meant to avoid ever reaching. It is a well-known
+   gap in the auto algorithm, not a quirk of this page: the standard fix is
+   table-layout:fixed, with every narrow column given an explicit width so the
+   description column (the one left unset) absorbs the rest and actually holds
+   .desc to it. Confirmed live: without this, a single real task description
+   dragged the whole table into a wide horizontal scrollbar regardless of how
+   short every other column's content was. */
+table{width:100%;border-collapse:collapse;font-size:14px;table-layout:fixed}
+/* The status column's own text ("In progress &middot; running long.") is real
+   prose, not a single short token -- 28px forced it to wrap, and the page's own
+   global overflow-wrap:break-word (needed elsewhere, see main>* above) then broke
+   it mid-word instead of at a space. Wide enough for the longest badge on two
+   lines, with normal word-wrapping restored just for this column. */
+th:first-child,td:first-child{width:112px;overflow-wrap:normal}
+th:nth-child(2),td:nth-child(2){width:52px}
+th:nth-child(4),td:nth-child(4){width:160px}
+th:nth-child(5),td:nth-child(5){width:300px}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.good .dot,.dot.good{background:var(--good)}.bad .dot,.dot.bad{background:var(--bad)}
+.neutral .dot,.dot.neutral{background:var(--muted)}
+.sub td{border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);padding-top:0}
+/* .desc is a <span> -- inline by default, and width/overflow/text-overflow are all
+   spec-ignored on a plain inline box, so none of this ever actually truncated
+   anything on its own. display:block (now that its <td> has a real fixed width to
+   fill, from table-layout:fixed above) is what makes the rest of this rule do
+   anything at all. */
+.desc{display:block;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.desc.open{white-space:normal;overflow:visible}
+.more{font:inherit;font-size:11px;border:none;background:none;color:var(--muted);cursor:pointer}
+.tag{display:inline-block;padding:0 6px;margin-right:4px;border:1px solid var(--line);
+border-radius:999px;font-size:11px;font-variant-numeric:tabular-nums}
+.banner{border-left:3px solid var(--bad);padding:10px 14px;background:var(--panel);
+border-radius:var(--radius);margin-bottom:14px}
+.fail{background:rgba(163,49,42,.09);padding:6px 9px;border-radius:6px;margin-top:6px}
+ul,ol{margin:8px 0;padding-left:24px}
+li{margin:8px 0;line-height:1.6}
+/* Requirements and Assumptions are both "one short id, one longer text" --
+   the same shape a table row has, so they get the same row-grid treatment
+   the task table already uses (a border between rows, an aligned label
+   column), instead of reading as a looser bulleted paragraph. Plain bullet
+   lists (Findings, UAT checks) keep the plainer rule above. The id badge
+   reuses .tag -- the exact same pill the task table's own id column uses now
+   -- so a reader learns one visual language for "this is an id" instead of
+   three different ones. */
+.items{list-style:none;margin:8px 0;padding:0;display:grid;gap:0}
+.items li{margin:0;display:grid;grid-template-columns:34px 1fr;gap:10px;
+padding:10px 2px;border-bottom:1px solid var(--line);line-height:1.6}
+.items li:last-child{border-bottom:none}
+/* A grid item's own display:inline-block is not enough to stop it stretching
+   to fill its whole cell -- CSS Grid stretches an item's box to its area by
+   default regardless, so the pill's border was being drawn around the full
+   34px-by-row-height cell instead of snugly around "A1". justify/align-self
+   opt back out of that stretch. */
+.items li>:first-child{justify-self:start;align-self:start}
+.note{font-size:12px;color:var(--muted)}
+.btn{display:inline-block;padding:8px 16px;margin:2px 0;border-radius:8px;
+background:var(--good);color:var(--panel);text-decoration:none;font-size:13px;font-weight:600}
+.btn:hover{opacity:.85}
+/* Same shape for both so they read as a pair of related controls; a different
+   background on each is the only thing telling them apart at a glance -- a toggle
+   and an immediate action should not look identical. */
+.ghost-btn{font:inherit;font-size:12px;padding:4px 12px;border-radius:999px;
+border:none;cursor:pointer}
+.ghost-btn.autorefresh{background:var(--autorefresh-bg);color:var(--good)}
+.ghost-btn.refresh-now{background:var(--refresh-bg);color:var(--refresh-ink)}
+.ghost-btn:hover{opacity:.8}
+.refresh-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+pre{font-family:inherit;white-space:pre-wrap;word-break:break-word;margin:0;line-height:1.65}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9em;
+background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+/* A retrospective's own markdown headings nest two levels below this section's own
+   h2, so "What happened" reads as a sub-heading of "Retrospective", never a peer of
+   it or of another panel's h2 entirely. */
+.prose h3{margin:18px 0 8px;font-size:15px}
+.prose h4,.prose h5,.prose h6{margin:14px 0 6px;font-size:14px;color:var(--muted)}
+.prose p{margin:8px 0;line-height:1.65}
+/* A bullet whose own text opens with a bold phrase is using it as the item's own
+   title, not as mid-sentence emphasis -- block-level + its own line is what actually
+   separates the two instead of letting the body run on immediately after it. */
+.prose .bullet-title{display:block;margin-bottom:2px}
+.prose .bullet-body{display:block}
+</style>
+<main>
+<section class="panel">
+<h1>Feature</h1>
+<p class="note">Status done &middot; cycle 0 of 3</p>
+<p class="note refresh-controls" data-feature-done><button type="button" id="autorefresh" class="ghost-btn autorefresh" aria-pressed="false">Auto refresh off</button> <button type="button" id="refresh-now" class="ghost-btn refresh-now">Refresh now</button> &middot; <span data-refresh-in>5m 0s</span><span data-refresh-off-note hidden>Auto-refresh is off.</span></p>
+<h2>Goal</h2><p>The Listings page&#x27;s table (<code>ListingList</code>/<code>listings-page.tsx</code>) gains click-to-sort column headers.
+Clicking a column header&#x27;s label sorts the table by that field; clicking the same header again
+reverses direction; clicking a different header replaces the active sort field entirely (never
+combines two fields). Confirmed with the user: sorting applies across the **whole filtered
+dataset**, not just the 20 rows on the current page — the table is server-paginated, so a correct
+&quot;cheapest first&quot; or &quot;oldest first&quot; sort has to reorder every matching Listing, not just whichever
+page happens to be open, the same way the existing status/Source filters already operate across
+the whole dataset rather than the current page.
+
+Of the table&#x27;s 9 columns, 7 carry a real, comparable value and become sortable: Title, Source,
+Status, Asking Price, Expected Resale, Difference, Identify Parts. The leading checkbox-selection
+column and the trailing Accept/Reject actions column carry no comparable field and stay unsortable.
+Two of the seven (Expected Resale, Difference) are values computed server-side per Listing (a sum
+over that Listing&#x27;s Expected Parts, confirmed by reading <code>routes/listings.ts</code>&#x27;s <code>computeComparison</code>)
+rather than plain stored columns, and Source&#x27;s displayed value is its *name*, looked up from
+<code>sourceId</code> — all three need their real resolved value as the sort key, not a raw id or an
+unrelated proxy (Requirement 6).</p>
+<h2>Requirements</h2><ul class="items"><li><span class="tag">1</span><span>Each of the 7 data-bearing column headers (Title, Source, Status, Asking Price, Expected
+   Resale, Difference, Identify Parts) is clickable and sorts the table by that field.</span></li><li><span class="tag">2</span><span>Clicking a column header that is not the currently active sort field makes it the active sort
+   field, ascending.</span></li><li><span class="tag">3</span><span>Clicking the currently active sort column&#x27;s header again reverses its direction (ascending -&gt;
+   descending, descending -&gt; ascending).</span></li><li><span class="tag">4</span><span>Only one field is ever sorted by at a time. Clicking a different column replaces the active
+   sort field outright (starting ascending, per Requirement 2) — it never combines with whatever
+   was active before.</span></li><li><span class="tag">5</span><span>The currently active sort column and its direction are visually indicated on that column&#x27;s own
+   header (e.g. a directional arrow), distinct from every other header.</span></li><li><span class="tag">6</span><span>Sorting a column whose displayed value is derived, not a raw stored field, sorts by that real
+   displayed value: Source sorts by the Source&#x27;s name (not its internal id); Expected Resale and
+   Difference sort by their actual computed numeric values (not, e.g., Asking Price as a stand-in).</span></li><li><span class="tag">7</span><span>Changing the active sort field or its direction resets the current page back to 1, the same
+   way changing a status/Source filter already does today.</span></li><li><span class="tag">8</span><span>Sorting composes with the existing status/Source filters and with pagination: the sorted,
+   filtered dataset is what gets paginated. Changing a filter does not silently clear or reset
+   whichever sort is currently active.</span></li><li><span class="tag">9</span><span>With no sort ever applied (a fresh page load, before any header has been clicked), the table&#x27;s
+   row order is unchanged from today&#x27;s default (newest <code>listingDate</code> first) — this feature adds a
+   new ordering option, it does not change the existing default.</span></li><li><span class="tag">10</span><span>The leading checkbox-selection column and the trailing Accept/Reject actions column are not
+    sortable — neither carries a value that could be compared.</span></li></ul>
+<p><a class="btn" href="https://gist.githack.com/adamcrevel/867fced113ae376421e9e58a1bbdf6f7/raw/prototype.html" target="_blank" rel="noopener noreferrer">Prototype</a></p>
+<div class="totals">
+<div class="total"><div class="n" data-since="2026-10-10T06:31:12Z">&mdash;</div><div class="l">total time</div></div>
+<div class="total"><div class="n">1,491,506</div><div class="l">total tokens</div></div>
+</div>
+<details><summary>Where that token figure comes from</summary><p class="note">input 0 + output 20,692 + cache-write 704,200 + cache-read 766,614, across 100 turns</p><p class="note">Most of a long conversation's token count is cache-read: the accumulated context is resent on every turn and billed at a fraction of the normal rate. A high total reflects the turn count over time, not necessarily a large bill.</p></details>
+<h2>Retrospective</h2><div class="prose"><h4>What happened</h4>
+<ul>
+<li>This was a clean, single-cycle feature: Cycle 0 only (<code>Cycle: 0 / 3</code>), Trigger: initial, UAT passed on the first attempt. No <code>must_fix</code> review finding ever blocked a task — R2 and R3 each returned a <code>FAIL</code> line but both were on the same non-project cyclomatic-complexity rule (score 12 on <code>GET /api/listings</code>&#x27;s handler and on <code>ListingsPage</code>), and <code>feature-validate-lead</code> overruled both as non-blocking (A5), so no rework task was ever added. No assumption was corrected through the dashboard after the fact — A1–A5 all read as decisions made once and never revisited.</li>
+<li>Builder-phase durations were close to estimate on the server side and ran slightly over on one task: T1 (shared types) took ~19 min against an expected 15; T2 (server-side sort) took ~47 min against an expected 40 — both modest overruns, not escalations. T3 (client wiring) shows a <code>completed_at</code> of <code>08:01:59Z</code>, identical to T2&#x27;s <code>completed_at</code>, even though T3&#x27;s own <code>started_at</code> (<code>07:54:41Z</code>) is ~7 minutes before that — i.e. the plan&#x27;s timestamps say T3 finished in ~7 minutes against a 35-minute estimate, which is implausible for the scope described (3 files, new prop threading, new tests). This reads as a timestamp-recording artifact (both tasks&#x27; completion logged at the same moment the orchestrator next updated the plan) rather than T3 genuinely finishing that fast.</li>
+<li>All six review/test tasks (R1, TE1, R2, TE2, R3, TE3) share the identical <code>started_at</code> (<code>08:03:51Z</code>) and <code>completed_at</code> (<code>08:23:12Z</code>) — a 19-minute window applied uniformly across six tasks that ran, per their digests, substantively different amounts of work (TE2 independently re-ran real seed data and added a mutation-proven test; R1 only inspected one type-only file). This is confirmed as a real recording gap, not just a coincidence: commit <code>3ab0eae</code> (&quot;fix: restore 5 plan.md rows (R1/TE1/R2/R3/TE3) missing their trailing table-closing pipe&quot;) shows these five rows were written in one batch edit that initially broke the markdown table and needed a dedicated fixup commit — the batch-write is what produced the identical timestamps.</li>
+<li><code>TE2</code>&#x27;s <code>actual_tokens</code> (62,000) is 2.6x–10.9x every other review/test task in this feature (R1: 5,700; TE1: 16,000; R2: 9,600; R3: 24,000; TE3: 20,000; U0: 26,000), despite TE2&#x27;s own <code>expected_minutes</code> (15) being identical to R2/R3/TE3&#x27;s. TE2&#x27;s digest explains the cost: it &quot;independently re-ran the real Source/comparison seed data (not just trusted the comments)&quot; and found and closed one real gap (direction reversal never tested against a genuine tie). That is real, justified work, not waste — but it means the task&#x27;s token cost was driven by its content, not its nominal size class, and the plan&#x27;s flat 15-minute estimate for all four review/test tasks undersold TE2 specifically.</li>
+<li>R3&#x27;s digest flags, as a non-blocking note, that <code>apps/web/test/bulk-identify-parts-ui.test.tsx</code> is a real consequence of T3 (it needed a scoping fix because the new header button now shares the &quot;Identify Parts&quot; label with an existing button) but was never listed in T3&#x27;s <code>files_touched</code> column. The plan&#x27;s own task table under-reports T3&#x27;s true blast radius; only review caught it.</li>
+<li>The same non-project ESLint <code>complexity</code> rule has now produced a non-blocking <code>FAIL</code> on four consecutive features in this project (per A5&#x27;s own citation: consolidate-listings-views, listing-open-link-source-readonly, part-price-estimation, and now this one), always overruled the same way, never once changing an outcome.</li>
+</ul>
+<h4>Proposals</h4>
+<ul>
+<li>Fix the plan-tooling&#x27;s timestamp recording so batched review/test task rows get real per-task <code>started_at</code>/<code>completed_at</code> values instead of the single moment the orchestrator next wrote the table — otherwise duration data for R*/TE* tasks (as seen here, and likely in other features) is unusable for exactly this kind of retrospective.</li>
+<li>Add a lint/pre-commit check on <code>plan.md</code>&#x27;s task table (e.g. verifying every row has the same pipe count as the header) so a malformed row needs its own fixup commit (<code>3ab0eae</code>) only once, not again in a future feature.</li>
+<li>Stop reviewers from invoking the un-wired ESLint <code>complexity</code> rule at all. It has now fired on four features in a row (R2/R3 here, plus three prior features per A5) and been overruled every time with the identical reasoning. Either wire a real complexity budget into <code>eslint.config.mjs</code> with an actual threshold the team intends to enforce, or instruct <code>feature-reviewer</code> to drop this check entirely — the current state spends review tokens producing a <code>FAIL</code> line that is never actionable.</li>
+<li>When a builder task&#x27;s description implies a cross-cutting UI change (here: a header <code>&lt;th&gt;</code> becoming a <code>&lt;button&gt;</code> with the same visible label as an existing button elsewhere on the page), add &quot;grep for existing tests selecting by this label/role&quot; as an explicit sub-step in the task, so the task&#x27;s own <code>files_touched</code> captures incidental test fixes like <code>bulk-identify-parts-ui.test.tsx</code> up front instead of relying on the reviewer to catch the gap.</li>
+<li>When sizing review/test tasks that call for independently re-deriving ground truth from seed data (as TE2&#x27;s prompt explicitly asked for), size that one task&#x27;s <code>expected_minutes</code>/budget apart from its sibling review/test tasks rather than giving all four a flat 15 minutes — TE2&#x27;s 10x token cost relative to R1 here was a predictable consequence of its prompt, not a surprise.</li>
+</ul>
+<p class="note">This report cost approximately 11,900 tokens (self-reported estimate) / not available (measured — the caller measures actual token usage from the dispatch tag; a sub-agent&#x27;s own transcript search returns the parent session&#x27;s whole conversation, not this run in isolation). Not counted in the feature&#x27;s own total — this analysis happened after the feature was already done.</p></div>
+</section>
+<nav class="tabs">
+<button data-cycle-tab="0" aria-selected="true" onclick="showCycle(0)">Cycle 0</button>
+</nav>
+<section class="panel" data-cycle-panel="0">
+<h2>Cycle 0</h2>
+<p><strong>Trigger.</strong> initial</p>
+<p><span class="good"><span class="dot"></span>UAT passed.</span></p>
+<ul><li>Started apps/server in the worktree on an isolated port (3091) against the worktree&#x27;s own, initially-empty DuckDB file, distinct from the main checkout&#x27;s running instance.</li><li>Confirmed the worktree&#x27;s database started empty before seeding, proving genuine isolation from production data.</li><li>Started apps/web on an isolated port (5183) pointed at the UAT server, confirmed reachable in a real Chromium browser.</li><li>Seeded 5 Sources and 24 Listings (spanning 2 pages) with deliberately scrambled values per field, so every field&#x27;s real sort order is independently verifiable.</li><li>Req 1 (Title): both directions match independently computed ground truth.</li><li>Req 1 (Source): both directions match ground truth.</li><li>Req 1 (Status): both directions match ground truth.</li><li>Req 1 (Asking Price): both directions match ground truth.</li><li>Req 1 (Expected Resale): both directions match ground truth.</li><li>Req 1 (Difference): both directions match ground truth.</li><li>Req 1 (Identify Parts): both directions match ground truth.</li><li>Req 1 (clickability): all 7 headers render as exactly one button each and visibly reorder the table when clicked.</li><li>Req 2: clicking an inactive header sets it active ascending with the correct aria-sort, confirmed for all 7 headers.</li><li>Req 3: re-clicking the active header flips to descending, reorders again, flips the arrow and aria-sort.</li><li>Req 4: clicking a different header replaces the sort outright (new field, ascending) rather than combining with or inheriting the previous field&#x27;s direction.</li><li>Req 4 (no combination possible): confirmed structurally — the component holds exactly one sortBy/sortDirection pair, never an array.</li><li>Req 5: after each of the 7 headers is clicked, only that header shows an arrow and a non-none aria-sort; all 6 others show neither (42 individual header-state checks).</li><li>Req 5 (previous header cleared): the previously-active header&#x27;s arrow and aria-sort both clear the instant a different header becomes active.</li><li>Req 6 (Source by name, not id): the Source-sorted order differs from an id-based order, and the resolved Source names themselves are genuinely alphabetical.</li><li>Req 6 (Expected Resale real value): the expectedResale-sorted order&#x27;s own computed values are genuinely non-decreasing, and differ from the askingPrice-sorted order.</li><li>Req 6 (Difference real value): the difference-sorted order&#x27;s own computed values are genuinely non-decreasing, and differ from both other numeric orders.</li><li>Req 7: clicking a header while on page 2 sends offset=0 and the UI reverts to page 1.</li><li>Req 8 (filter+sort compose): a filtered+sorted request returns only the filtered rows, genuinely sorted, not just one or the other.</li><li>Req 8 (filter does not clear sort): changing a filter while a sort is active keeps the same sortBy/sortDirection on the next request and the header&#x27;s arrow stays visible.</li><li>Req 9 (unsorted default unchanged): the no-sort-param response exactly matches an independently computed listing_date DESC/id ASC order, matching the page&#x27;s own initial, no-click state.</li><li>Req 10 (checkbox column not sortable): no button, no aria-sort, confirmed in source and live DOM.</li><li>Req 10 (actions column not sortable): no button, no aria-sort, confirmed in source and live DOM.</li><li>Req 10 (column count sanity): exactly 9 header cells rendered (1 checkbox + 7 sortable + 1 actions).</li><li>Cross-page-boundary correctness: for all 7 fields in both directions, concatenating the live page-1 and page-2 results exactly equals the independently computed full-dataset ground truth — proving correct order across the boundary, not just within each page.</li><li>Standing check (cited from validate-lead&#x27;s PASS digest, not re-run): 900/900 tests passing (656 server + 234 web + 10 shared), BaselineTests 878, +22, no shrinkage; lint clean.</li><li>Standing check (doc comments): all new public exports (ListingSortField, ListingSortDirection, SORT_KEYS, listSortedListingsPage, SortableHeader) carry substantial header/block comments.</li><li>Standing check (import boundary): zero apps/web imports of apps/server.</li><li>Standing check (no schema change): schema.ts does not appear in this feature&#x27;s changed-file list at all.</li><li>Cleanup: both UAT dev servers stopped, seeded database and throwaway scripts removed from the worktree — independently re-confirmed by the orchestrator.</li></ul>
+<p class="note">11 task(s). Estimated 205 min. Actual tokens 0, estimated 163,300. This never includes the driving conversation's own tokens, which cannot honestly be split by cycle.
+<div class="scroll"><table><thead><tr><th></th><th>Id</th><th>Description</th><th>Duration (Estimate)</th><th>Started At (Estimate)</th></tr></thead><tbody><tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">P0</span></td><td><span class="desc">Prototype for the sortable column headers (Req 1-6, 10): clickable header, direction toggle, single-active-field replacement, active-column arrow indicator.</span></td><td><span data-since="2026-10-10T06:39:08Z" data-until="2026-10-10T06:47:43Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-10T06:39:08Z">&mdash;</span> (<span data-at="2026-10-10T06:39:08Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">prototype &middot; <span class="tag">UI</span> &middot; Est tokens — &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T1</span></td><td><span class="desc">Shared sort types (Req 1-4). <code>packages/shared/src/listings.ts</code>: new exported <code>export type ListingSortField = &#x27;title&#x27; | &#x27;source&#x27; | &#x27;status&#x27; | &#x27;askingPrice&#x27; | &#x27;expectedResale&#x27; | &#x27;difference&#x27; | &#x27;identifyParts&#x27;;</code> and <code>export type ListingSortDirection = &#x27;asc&#x27; | &#x27;desc&#x27;;</code> — the full allow-list of sortable fields (Req 10&#x27;s two excluded columns are deliberately absent from this union) plus the two-value direction. No other shared type changes: <code>ListListingsResponse</code>/<code>ListingSummary</code>&#x27;s response shape is unchanged — only the request side (query params, added in T2/T3) is new. Both new types get doc comments explaining what each value maps to on the table and why the two non-comparable columns are excluded.</span></td><td><span data-since="2026-10-10T07:00:41Z" data-until="2026-10-10T07:20:00Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-10T07:00:41Z">&mdash;</span> (<span data-at="2026-10-10T06:59:41Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens — &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T2</span></td><td><span class="desc">Server-side sort support for <code>GET /api/listings</code> (Req 1, 6, 7, 8, 9). <code>apps/server/src/routes/listings.ts</code>: parse new optional <code>sortBy</code>/<code>sortDirection</code> query params, validated against T1&#x27;s <code>ListingSortField</code>/<code>ListingSortDirection</code> unions (an unrecognized value is ignored — no sort applied — matching this handler&#x27;s existing loose-GET-validation convention for <code>status</code>). When <code>sortBy</code> is absent, behavior is byte-for-byte unchanged from today (the existing <code>listListings</code>/<code>countListings</code> SQL-level <code>LIMIT</code>/<code>OFFSET</code> pagination path, default <code>ORDER BY listing_date DESC, id ASC</code>) — Req 9. When <code>sortBy</code> is present: fetch <code>total</code> via the existing <code>countListings</code> call, then fetch *every* matching Listing in one call via the existing <code>listListings({ status, sourceId, limit: total, offset: 0 })</code> (reusing it exactly as-is, no signature change — passing <code>total</code> as <code>limit</code> turns off real pagination for this one fetch), enrich every row via the existing, unchanged <code>toSummary</code>, resolve the Source id -&gt; name map via the existing <code>listSources()</code> query only when <code>sortBy === &#x27;source&#x27;</code> (skipped otherwise, no wasted query), sort the full enriched <code>ListingSummary[]</code> array with a comparator switched on <code>sortBy</code> (title: <code>localeCompare</code>; source: resolved name via the map, <code>localeCompare</code>; status: <code>localeCompare</code>; askingPrice/expectedResale/difference: numeric subtraction on <code>askingPrice</code>/<code>comparison.totalExpectedResaleValue</code>/<code>comparison.difference</code>; identifyParts: <code>localeCompare</code> on <code>identifyPartsStatus?.stage ?? &#x27;&#x27;</code>, so a Listing with no job at all sorts as if its stage were the empty string), reversed when <code>sortDirection === &#x27;desc&#x27;</code> (default <code>&#x27;asc&#x27;</code> when <code>sortBy</code> is given without a direction), then slice <code>[offsetValue, offsetValue + limitValue]</code> for the actual page returned. JS&#x27;s <code>Array.prototype.sort</code> is stable (ES2019+), so ties within one sort field keep their pre-sort relative order (<code>listListings</code>&#x27;s own <code>listing_date DESC, id ASC</code>) without needing an explicit secondary sort key — document this reasoning in a comment rather than leaving it implicit. Add tests to <code>apps/server/test/listings.test.ts</code> covering each of the 7 sort fields (including the Source-name and computed-comparison cases specifically, Req 6), direction reversal, an unrecognized <code>sortBy</code> being ignored, and that omitting <code>sortBy</code> entirely reproduces today&#x27;s exact default-order response.</span></td><td><span data-since="2026-10-10T07:14:41Z" data-until="2026-10-10T08:01:59Z">&mdash;</span> (40 min)</td><td><span data-at="2026-10-10T07:14:41Z">&mdash;</span> (<span data-at="2026-10-10T07:14:41Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens — &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T3</span></td><td><span class="desc">Client wiring and sortable header UI (Req 1-5, 7, 8, 10). <code>apps/web/src/features/listings/listings-api.ts</code>: <code>FetchListingsOptions</code> gains <code>sortBy?: ListingSortField</code> / <code>sortDirection?: ListingSortDirection</code>; <code>fetchListings</code> includes both in the query string when present, matching the existing <code>status</code>/<code>sourceId</code>/<code>limit</code>/<code>offset</code> pattern exactly. <code>apps/web/src/routes/listings-page.tsx</code>: new <code>sortBy</code>/<code>sortDirection</code> state (both start <code>undefined</code> — Req 9&#x27;s unsorted default), included in <code>loadListings</code>&#x27;s <code>fetchListings</code> call and its dependency array (so the polling-while-pending effect and the filter-driven reload both carry the current sort); a new <code>handleSortChange(field: ListingSortField)</code> handler — if <code>field</code> is already the active <code>sortBy</code>, flips <code>sortDirection</code>; otherwise sets <code>sortBy</code> to <code>field</code> and <code>sortDirection</code> to <code>&#x27;asc&#x27;</code> (Req 2-4) — and resets <code>page</code> to 1 either way (Req 7), mirroring <code>handleFiltersChange</code>&#x27;s own existing <code>setPage(1)</code> call. Changing <code>filters</code> must not reset <code>sortBy</code>/<code>sortDirection</code> (Req 8) — confirm by reading <code>handleFiltersChange</code> doesn&#x27;t touch them. <code>apps/web/src/features/listings/listing-list.tsx</code>: the 7 sortable <code>&lt;th&gt;</code> cells (Req 10&#x27;s 2 excluded ones stay plain) become clickable buttons calling a new <code>onSortChange: (field: ListingSortField) =&gt; void</code> prop threaded down from the page, each rendering a small directional arrow (e.g. an existing lucide icon already imported elsewhere in this codebase, matching this table&#x27;s own <code>Image</code> icon usage) only when that column is the active <code>sortBy</code>, pointing per the active <code>sortDirection</code> (Req 5). Add/extend tests in a <code>listing-list.test.tsx</code> (new, if one does not already exist — check first) or the page&#x27;s own existing test file covering: clicking an inactive header sets it active+ascending; clicking the active header flips direction; clicking a different header replaces the field entirely rather than combining; the arrow indicator renders only on the active column; a filter change does not clear an active sort.</span></td><td><span data-since="2026-10-10T07:54:41Z" data-until="2026-10-10T08:01:59Z">&mdash;</span> (35 min)</td><td><span data-at="2026-10-10T07:54:41Z">&mdash;</span> (<span data-at="2026-10-10T07:54:41Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; <span class="tag">UI</span> &middot; Est tokens — &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R1</span></td><td><span class="desc">Review T1 (shared sort types in <code>packages/shared/src/listings.ts</code>) against Req 1, 4, 10 as scoped to this file: <code>ListingSortField</code>/<code>ListingSortDirection</code> name exactly the 7 sortable columns and no others, the union&#x27;s scalar (non-array) shape is what makes &quot;only one field ever sorted&quot; structurally true, and the 2 non-comparable columns (checkbox-select, actions) are deliberately absent. Also check the Standing Checks&#x27; doc-comment requirement for both new exported types. PASS: <code>ListingSortField</code> is exactly the 7 data-bearing columns, <code>ListingSortDirection</code> is exactly <code>asc</code>/<code>desc</code>, neither excluded column appears, both types carry full doc comments, and no other shared type was touched by this commit.</span></td><td><span data-since="2026-10-10T08:03:51Z" data-until="2026-10-10T08:23:12Z">&mdash;</span> (10 min)</td><td><span data-at="2026-10-10T08:03:51Z">&mdash;</span> (<span data-at="2026-10-10T08:03:51Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 5700 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE1</span></td><td><span class="desc">Test T1 (shared sort types in <code>packages/shared/src/listings.ts</code>). Confirm (via typecheck/compile-level checks, since this file is type-only) that <code>ListingSortField</code> contains exactly <code>title | source | status | askingPrice | expectedResale | difference | identifyParts</code>, that <code>ListingSortDirection</code> is exactly <code>asc | desc</code>, and that downstream consumers (T2&#x27;s <code>SORT_KEYS</code> Record, T3&#x27;s <code>SORTABLE_COLUMNS</code>) fail to compile if a field is added to or removed from the union without a matching update — i.e. the exhaustiveness guarantee actually holds. PASS: shared package builds clean; both unions verified exact; mutation-proved removing a field breaks both T2&#x27;s Record and T3&#x27;s array (TS2353/TS2322); adding an unused field is only caught by T2&#x27;s Record, not T3&#x27;s plain array — a structural TS asymmetry, not a defect, since both are in sync today.</span></td><td><span data-since="2026-10-10T08:03:51Z" data-until="2026-10-10T08:23:12Z">&mdash;</span> (10 min)</td><td><span data-at="2026-10-10T08:03:51Z">&mdash;</span> (<span data-at="2026-10-10T08:03:51Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 16000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="bad"><span class="dot"></span>Complete &middot; found a FAIL.</span></td><td><span class="tag">R2</span></td><td><span class="desc">Review T2 (<code>apps/server/src/routes/listings.ts</code>, <code>apps/server/test/listings.test.ts</code>) against Req 1, 6, 8 (the filtered-dataset-is-what-gets-paginated clause), 9 as scoped to this file. Specifically confirm: the <code>sortBy</code>-absent path (lines ~296-306) is genuinely byte-for-byte identical in actual DB query/response shape to the pre-feature code (diff against commit f872984); <code>source</code> sorts by the resolved Source *name* via <code>listSources()</code>, never <code>sourceId</code>; <code>expectedResale</code>/<code>difference</code> sort by <code>comparison.totalExpectedResaleValue</code>/<code>comparison.difference</code>, never a raw stored field; direction reversal (<code>summaries.reverse()</code> for <code>&#x27;desc&#x27;</code>) is correct and keeps stability ties mirrored; sorting happens across the whole filtered dataset (via <code>limit: total</code>) before the page is sliced, never just the fetched page; an unrecognized <code>sortBy</code> falls through to the unsorted path unchanged. FAIL: all 7 behavioral checks (a)-(g) confirmed correct by direct diff/reading, including byte-for-byte unsorted-path equality and Source-name/computed-value sort keys. Sole finding: GET /api/listings&#x27; handler complexity measures 12 under a reviewer-invoked, non-project ESLint <code>complexity</code> rule (not wired into <code>eslint.config.mjs</code>, no Standing Check names one) — overruled by feature-validate-lead as a non-blocking style recommendation, not a must_fix, consistent with this project&#x27;s repeated precedent (consolidate-listings-views, listing-open-link-source-readonly, part-price-estimation) that an unconfigured complexity metric is never must_fix without a concrete correctness/safety defect attached to it.</span></td><td><span data-since="2026-10-10T08:03:51Z" data-until="2026-10-10T08:23:12Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-10T08:03:51Z">&mdash;</span> (<span data-at="2026-10-10T08:03:51Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 9600 &middot; Actual tokens null</td></tr>
+<tr><td colspan="5"><p class="fail">all 7 behavioral checks (a)-(g) confirmed correct by direct diff/reading, including byte-for-byte unsorted-path equality and Source-name/computed-value sort keys. Sole finding: GET /api/listings&#x27; handler complexity measures 12 under a reviewer-invoked, non-project ESLint <code>complexity</code> rule (not wired into <code>eslint.config.mjs</code>, no Standing Check names one) — overruled by feature-validate-lead as a non-blocking style recommendation, not a must_fix, consistent with this project&#x27;s repeated precedent (consolidate-listings-views, listing-open-link-source-readonly, part-price-estimation) that an unconfigured complexity metric is never must_fix without a concrete correctness/safety defect attached to it.</p></td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE2</span></td><td><span class="desc">Test T2 (<code>apps/server/src/routes/listings.ts</code>). Run the existing <code>apps/server/test/listings.test.ts</code> sort suite and confirm every case genuinely exercises its claimed behavior (not just passing by coincidence): the Source-name test&#x27;s Source names must not share the id-based or creation-order order; the computed-column tests&#x27; values must disagree with every other column&#x27;s order; the stable-tie test must land on a real tie. Add any case missing: in particular, confirm a request with <code>sortDirection</code> but no <code>sortBy</code> is still byte-for-byte the unsorted default response, and confirm <code>total</code> from a sorted request matches <code>total</code> from the equivalent unsorted request. PASS: 10/10 sort tests pass; independently re-ran the real Source/comparison seed data (not just trusted the comments) and confirmed genuinely distinct orderings; found and closed one real gap (direction reversal never tested against a genuine tie) with one new mutation-proven test.</span></td><td><span data-since="2026-10-10T08:03:51Z" data-until="2026-10-10T08:23:12Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-10T08:03:51Z">&mdash;</span> (<span data-at="2026-10-10T08:03:51Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 62000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="bad"><span class="dot"></span>Complete &middot; found a FAIL.</span></td><td><span class="tag">R3</span></td><td><span class="desc">Review T3 (<code>apps/web/src/features/listings/listings-api.ts</code>, <code>listings-page.tsx</code>, <code>listing-list.tsx</code>) against Req 1-5, 7, 8 (the filter-change-does-not-clear-sort clause), 9 (client sends no <code>sortBy</code>/<code>sortDirection</code> by default), 10 as scoped to this file. Specifically confirm: <code>handleSortChange</code> starts a newly-clicked field ascending and flips direction (asc&lt;-&gt;desc) on a re-click of the active field, never combining two fields; <code>setPage(1)</code> fires on every sort change; <code>handleFiltersChange</code> never touches <code>sortBy</code>/<code>sortDirection</code>; <code>SortableHeader</code>&#x27;s arrow renders only on the active column, pointing per direction, with correct <code>aria-sort</code>; the checkbox and actions <code>&lt;th&gt;</code> cells are never wrapped in <code>SortableHeader</code>. Also confirm the <code>apps/web/test/bulk-identify-parts-ui.test.tsx</code> changes (scoping <code>queryButton</code> to exclude <code>thead</code>) are a correct, necessary consequence of the new header button sharing the &quot;Identify Parts&quot; label, and note that this file is a real consequence of T3 not listed in T3&#x27;s <code>files_touched</code>. FAIL: all 5 behavioral checks (a)-(e) confirmed correct, and the bulk-identify-parts-ui.test.tsx thead-scoping fix confirmed correct and necessary. Sole blocking finding: ListingsPage&#x27;s complexity measures 12 under the same non-project rule as R2, but — unlike T2 — unchanged from its pre-T3 value (confirmed by running the identical check against f872984), i.e. pre-existing debt T3 did not introduce; overruled by feature-validate-lead for the same reason as R2. Two minor, non-blocking notes: bulk-identify-parts-ui.test.tsx is a real T3 consequence missing from T3&#x27;s <code>files_touched</code>; one new test assertion (the <code>options</code> sort-key-filter check) is structurally tautological given the production call site&#x27;s static object shape.</span></td><td><span data-since="2026-10-10T08:03:51Z" data-until="2026-10-10T08:23:12Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-10T08:03:51Z">&mdash;</span> (<span data-at="2026-10-10T08:03:51Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 24000 &middot; Actual tokens null</td></tr>
+<tr><td colspan="5"><p class="fail">all 5 behavioral checks (a)-(e) confirmed correct, and the bulk-identify-parts-ui.test.tsx thead-scoping fix confirmed correct and necessary. Sole blocking finding: ListingsPage&#x27;s complexity measures 12 under the same non-project rule as R2, but — unlike T2 — unchanged from its pre-T3 value (confirmed by running the identical check against f872984), i.e. pre-existing debt T3 did not introduce; overruled by feature-validate-lead for the same reason as R2. Two minor, non-blocking notes: bulk-identify-parts-ui.test.tsx is a real T3 consequence missing from T3&#x27;s <code>files_touched</code>; one new test assertion (the <code>options</code> sort-key-filter check) is structurally tautological given the production call site&#x27;s static object shape.</p></td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE3</span></td><td><span class="desc">Test T3 (<code>apps/web/src/features/listings/listings-api.ts</code>, <code>listings-page.tsx</code>, <code>listing-list.tsx</code>). Run <code>apps/web/test/listing-list.test.tsx</code>, <code>apps/web/test/listings-page.test.tsx</code>, <code>apps/web/test/listings-api.test.ts</code>, and <code>apps/web/test/bulk-identify-parts-ui.test.tsx</code>, confirming each sort-related case genuinely exercises its claimed behavior: page-reset-on-sort-change actually reads <code>offset: 0</code> in the next fetch call, not just the visible page number; sort-survives-filter-change actually reads the unchanged <code>sortBy</code>/<code>sortDirection</code> in the post-filter-change fetch call, not just the header&#x27;s arrow. Add any missing case. PASS: all 38 targeted tests (4 files) pass; confirmed both Req 7/Req 8 assertions already read the real fetch-call parameters, not just rendered text, and mutation-proved both by breaking each behavior in turn and confirming the right test — and only that test — failed; no gap found, nothing added.</span></td><td><span data-since="2026-10-10T08:03:51Z" data-until="2026-10-10T08:23:12Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-10T08:03:51Z">&mdash;</span> (<span data-at="2026-10-10T08:03:51Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 20000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">U0</span></td><td><span class="desc">UAT pass over the whole feature (Req 1-10): start the app in the worktree, open the Listings page, click each of the 7 sortable headers and confirm the table reorders correctly by that field&#x27;s real value (Source by name, Expected Resale/Difference by their computed amounts), confirm clicking the active header reverses direction with the arrow flipping, confirm clicking a different header replaces the sort outright (old arrow disappears, never combines), confirm the checkbox and actions columns never become clickable, confirm a sort change resets to page 1 and a filter change does not clear an active sort, confirm sorting is correct across page boundaries (not just the visible page).</span></td><td><span data-since="2026-10-10T08:36:56Z" data-until="2026-10-10T09:00:31Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-10T08:36:56Z">&mdash;</span> (<span data-at="2026-10-10T08:36:56Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">uat &middot; <span class="tag">UI</span> &middot; Est tokens 26000 &middot; Actual tokens null</td></tr></tbody></table></div>
+<h2>Assumptions</h2><ul class="items"><li><span class="tag">A1</span><span>Confirmed directly with the user — sorting applies across the whole filtered</span></li><li><span class="tag">A2</span><span>When <code>sortBy</code> is active, T2 fetches every matching Listing in one unpaginated</span></li><li><span class="tag">A3</span><span>A Listing with no identify-parts job at all (<code>identifyPartsStatus: null</code>) sorts,</span></li><li><span class="tag">A4</span><span>Ties within one sort field (e.g. two Listings with the same Status) keep their</span></li><li><span class="tag">A5</span><span>R2 and R3 each flagged a FAIL on cyclomatic complexity (GET /api/listings&#x27;</span></li></ul>
+</section>
+</main><script>
+// REFRESH_MS and LOADED_AT drive the scheduled reload, the on-page countdown, and
+// the auto-refresh toggle below, so none of them can ever disagree with each other.
+var REFRESH_MS=300000, LOADED_AT=Date.now();
+var AUTOREFRESH_KEY='feature-dashboard-autorefresh';
+var reloadTimer=null;
+
+function armReload(){
+  if(reloadTimer) clearTimeout(reloadTimer);
+  reloadTimer=setTimeout(function(){location.reload();}, REFRESH_MS-(Date.now()-LOADED_AT));
+}
+function disarmReload(){
+  if(reloadTimer){clearTimeout(reloadTimer);reloadTimer=null;}
+}
+function storedAutorefreshPref(){
+  try{return localStorage.getItem(AUTOREFRESH_KEY);}catch(e){return null;}
+}
+function setAutorefreshUI(button,on){
+  button.textContent='Auto refresh '+(on?'on':'off');
+  button.setAttribute('aria-pressed',String(on));
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){el.hidden=!on;});
+  document.querySelectorAll('[data-refresh-off-note]').forEach(function(el){el.hidden=on;});
+}
+
+// Durations count up client-side, so an in-progress row does not freeze between
+// publishes, and every timestamp reads in the viewer's own zone rather than one
+// chosen when the page was written.
+function fmt(ms){var s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),
+m=Math.floor(s%3600/60);return h?h+'h '+m+'m':m+'m';}
+function fmtCountdown(ms){var s=Math.max(0,Math.round(ms/1000)),
+m=Math.floor(s/60);return m+'m '+(s%60)+'s';}
+var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtAt(d){
+  var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'pm':'am';
+  h=h%12;if(h===0)h=12;
+  var mm=m<10?'0'+m:m;
+  return MONTHS[d.getMonth()]+' '+d.getDate()+', '+h+':'+mm+ap;
+}
+function tick(){
+  var now=Date.now();
+  document.querySelectorAll('[data-since]').forEach(function(el){
+    var until=el.dataset.until?Date.parse(el.dataset.until):now;
+    el.textContent=fmt(until-Date.parse(el.dataset.since));});
+  document.querySelectorAll('[data-at]').forEach(function(el){
+    el.textContent=fmtAt(new Date(el.dataset.at));});
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){
+    el.textContent=fmtCountdown(REFRESH_MS-(now-LOADED_AT));});
+}
+tick(); setInterval(tick,1000);
+
+// Auto-refresh defaults off once the feature is done (data-feature-done, set by the
+// page itself) and on otherwise, unless this browser already recorded its own choice.
+(function(){
+  var button=document.getElementById('autorefresh');
+  if(!button) return;
+  var stored=storedAutorefreshPref();
+  var defaultOn=!document.querySelector('[data-feature-done]');
+  var isOn=stored===null?defaultOn:stored==='on';
+  setAutorefreshUI(button,isOn);
+  if(isOn) armReload();
+  button.addEventListener('click',function(){
+    var on=button.getAttribute('aria-pressed')!=='true';
+    try{localStorage.setItem(AUTOREFRESH_KEY,on?'on':'off');}catch(e){}
+    setAutorefreshUI(button,on);
+    if(on){LOADED_AT=Date.now();armReload();}else{disarmReload();}
+  });
+  var refreshNow=document.getElementById('refresh-now');
+  if(refreshNow) refreshNow.addEventListener('click',function(){location.reload();});
+})();
+
+// A description gets an expand control only when it truly does not fit.
+document.querySelectorAll('.desc').forEach(function(el){
+  if(el.scrollWidth<=el.clientWidth) return;
+  var b=document.createElement('button');b.className='more';b.textContent='more';
+  b.onclick=function(){el.classList.toggle('open');
+    b.textContent=el.classList.contains('open')?'less':'more';};
+  el.parentNode.appendChild(b);});
+
+function showCycle(n){
+  document.querySelectorAll('[data-cycle-panel]').forEach(function(p){
+    p.hidden=(p.dataset.cyclePanel!==String(n));});
+  document.querySelectorAll('[data-cycle-tab]').forEach(function(t){
+    t.setAttribute('aria-selected',t.dataset.cycleTab===String(n));});
+}
+</script>
