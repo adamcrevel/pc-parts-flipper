@@ -1,10 +1,11 @@
 # Feature: listings-sortable-columns
 
-Status: building
+Status: done
 Cycle: 0 / 3
 FeatureStarted: 2026-10-10T06:31:12Z
-OrchestrationTokensActual: 1459694
-OrchestrationTokensBreakdown: input 0 + output 17,767 + cache-write 694,975 + cache-read 746,952, across 85 turns
+FeatureCompletedAt: 2026-10-10T09:01:37Z
+OrchestrationTokensActual: 1491506
+OrchestrationTokensBreakdown: input 0 + output 20,692 + cache-write 704,200 + cache-read 766,614, across 100 turns
 Prototype: https://gist.githack.com/adamcrevel/867fced113ae376421e9e58a1bbdf6f7/raw/prototype.html
 BaselineTests: 878
 BaselineSuite: pass
