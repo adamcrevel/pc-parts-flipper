@@ -3,8 +3,8 @@
 Status: building
 Cycle: 0 / 3
 FeatureStarted: 2026-10-10T02:26:00Z
-OrchestrationTokensActual: 90728
-OrchestrationTokensBreakdown: input 0 + output 9,775 + cache-write 24,085 + cache-read 56,868, across 68 turns
+OrchestrationTokensActual: 198348
+OrchestrationTokensBreakdown: input 0 + output 16,519 + cache-write 65,140 + cache-read 116,689, across 99 turns
 Prototype: https://gist.githack.com/adamcrevel/5cb68275a04f3fbe4081861db9021d39/raw/prototype.html
 BaselineTests: 871
 BaselineSuite: pass
@@ -64,6 +64,7 @@ clicked or a new Listing is being created), two changes to the existing field la
 | T1 | Add the "Open Link" button and the read-only Source behavior (Req 1-7). `apps/web/src/features/listings/listing-fields.tsx`: restructure the Listing URL field's wrapper into a flex row containing a new `Button` (imported from `@/components/ui/button`, `type="button"`, `variant="outline"`, `size="sm"`, text "Open Link") immediately to the left of the existing `<input id="listing-url">`, which keeps its current `value`/`onChange`/className/label/error-message exactly as today. The button opens `listingUrl` in a new tab/window: when `listingUrl.trim()` is non-empty, render it via the `Button`'s existing `asChild` prop wrapping an `<a href={listingUrl} target="_blank" rel="noreferrer">` (the exact `target`/`rel` pair `ebay-scan-badge.tsx` already uses for the same purpose in this codebase); when empty, render a plain disabled `<button>` (no `asChild`, `disabled`) so there is no dead/no-op link target (Req 4). `ListingFieldsProps` gains `sourceReadOnly: boolean`; the existing `<select id="listing-source">` gets `disabled={sourceReadOnly}` added (Req 5) — value/onChange/options list otherwise unchanged. `apps/web/src/features/listings/listing-form.tsx`: pass `sourceReadOnly={Boolean(saved)}` into `<ListingFields>` — `saved` is the same state this file already uses to gate the Photos-upload section (`saved ? <PhotoUpload .../> : ...`), so a brand-new, not-yet-saved Listing (Req 6) and an existing/already-saved one (Req 5) are distinguished the exact same way the rest of this component already does, not a new concept. Add/extend tests in `apps/web/test/listing-form.test.tsx` (reusing its existing `mount`/`mockSource`/`mockListingDetail` helpers): the Source select is enabled with no `initialValue` (create) and disabled with one (edit); the Open Link button is absent/disabled when `listingUrl` is empty and, when non-empty, renders as a real anchor whose `href` matches the field's current value and carries `target="_blank"`/`rel="noreferrer"`; the Listing URL input's own value/onChange/validation-error rendering is unchanged (a plain regression check, not new behavior). | builder | | complete | 0 | | 2026-10-10T03:11:56Z | 2026-10-10T03:29:00Z | 25 | 2026-10-10T03:11:03Z | 6300 | 24605 | yes | apps/web/src/features/listings/listing-fields.tsx, apps/web/src/features/listings/listing-form.tsx, apps/web/test/listing-form.test.tsx |
 | R1 | Review the "Open Link" button and read-only Source behavior (Req 1-7) in `apps/web/src/features/listings/listing-fields.tsx` and `apps/web/src/features/listings/listing-form.tsx`. FAIL: reviewer flagged ListingForm's pre-existing cyclomatic complexity (13, eslint `complexity` threshold 10) as a must_fix because the diff's one added line falls inside that function; validate-lead overruled this (pre-existing debt, confirmed unchanged by T1's own diff, not a correctness/safety issue) — see validation digest. | reviewer | T1 | complete | 0 | | 2026-10-10T03:40:30Z | 2026-10-10T04:20:42Z | 15 | 2026-10-10T03:40:30Z | 31000 | 183347 | no | |
 | TE1 | Test the "Open Link" button and read-only Source behavior (Req 1-7) in `apps/web/src/features/listings/listing-fields.tsx`, `apps/web/src/features/listings/listing-form.tsx`, and `apps/web/test/listing-form.test.tsx`. | tester | T1 | complete | 0 | | 2026-10-10T03:40:30Z | 2026-10-10T04:20:42Z | 15 | 2026-10-10T03:40:30Z | 32500 | 116358 | no | |
+| U0 | UAT pass over the whole feature (Req 1-7): start the app in the worktree, open the Listings page, create a new Listing and confirm Source stays enabled/no Open Link needed with no URL yet, save it, reopen it for edit and confirm Source is now disabled showing its chosen value, enter a Listing URL, confirm Open Link appears enabled immediately to its left and actually opens that URL in a new tab when clicked, confirm every other field/button on the form still behaves exactly as before. | uat | T1;R1;TE1 | in_progress | 0 | | 2026-10-10T04:43:45Z | | 20 | 2026-10-10T04:43:45Z | | | yes | |
 
 ## Assumptions
 
@@ -88,4 +89,4 @@ clicked or a new Listing is being created), two changes to the existing field la
 
 ### Cycle 0
 Trigger: initial
-UAT: not_run
+UAT: running
