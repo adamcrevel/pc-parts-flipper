@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { CreateListingInput, ListingDetail, ListingSummary, Source } from '@pc-parts-flipper/shared';
+import type { CreateListingInput, ListingDetail, ListingSortDirection, ListingSortField, ListingSummary, Source } from '@pc-parts-flipper/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoadingSpinner } from '@/components/loading-spinner';
@@ -37,6 +37,12 @@ export function ListingsPage() {
   const [sources, setSources] = useState<Source[] | null>(null);
   const [filters, setFilters] = useState<ListingsQueueFilterValue>({ status: '', sourceId: '' });
   const [page, setPage] = useState(1);
+  // The column the table is sorted by and its direction, or `undefined` for
+  // both until a header is clicked: no sort param is sent then, which is
+  // what leaves the server on its existing default (newest listingDate
+  // first) ordering. Only one field is ever active at a time.
+  const [sortBy, setSortBy] = useState<ListingSortField | undefined>(undefined);
+  const [sortDirection, setSortDirection] = useState<ListingSortDirection | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [acceptedMessage, setAcceptedMessage] = useState<{ text: string; purchaseId: string } | null>(null);
@@ -82,6 +88,8 @@ export function ListingsPage() {
         sourceId: filters.sourceId || undefined,
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
+        sortBy,
+        sortDirection,
       });
       // An accept/reject action can shrink the filtered result set enough
       // that the current page no longer exists (e.g. the last row on the
@@ -100,7 +108,7 @@ export function ListingsPage() {
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'Failed to load listings.');
     }
-  }, [filters, page]);
+  }, [filters, page, sortBy, sortDirection]);
 
   useEffect(() => {
     void loadListings();
@@ -185,6 +193,25 @@ export function ListingsPage() {
     setFilters(next);
     // A changed filter can shrink the result set below the current offset,
     // so every filter change resets to page 1 rather than keeping it.
+    setPage(1);
+  }
+
+  // Clicking a sortable column header. Clicking the column that is already
+  // active only reverses its direction; clicking any other column replaces
+  // the active field outright, starting ascending — so exactly one field is
+  // ever sorted by, never a combination. Either way the sorted order is
+  // computed server-side across the whole filtered dataset, so the result's
+  // first page is a different set of rows than before: reset to page 1, the
+  // same way a filter change does. Note this deliberately leaves `filters`
+  // alone, just as handleFiltersChange leaves the sort alone — the two
+  // compose rather than clearing each other.
+  function handleSortChange(field: ListingSortField) {
+    if (sortBy === field) {
+      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      setSortDirection('asc');
+    }
     setPage(1);
   }
 
@@ -319,6 +346,9 @@ export function ListingsPage() {
                 allFilteredIds={allFilteredIds}
                 selectedIds={selectedIds}
                 onToggleOne={handleToggleOne}
+                sortBy={sortBy}
+                sortDirection={sortDirection}
+                onSortChange={handleSortChange}
                 onToggleAllFiltered={handleToggleAllFiltered}
               />
               <PaginationControls page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />

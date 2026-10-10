@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { IdentifyPartsBulkResult } from '@pc-parts-flipper/shared';
-import { fetchListingIds, enqueueBulkIdentifyParts } from '../src/features/listings/listings-api';
+import { fetchListingIds, fetchListings, enqueueBulkIdentifyParts } from '../src/features/listings/listings-api';
 
 // Proves listings-api.ts's two bulk-identify-parts wrappers (T4) send the
 // exact routes, verbs, query params and body the backend's new endpoints
@@ -67,5 +67,52 @@ describe('bulk identify-parts wrapper request shapes', () => {
     expect(url).toBe('http://localhost:3001/api/listings/identify-parts/bulk');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body as string)).toEqual({ listingIds: ['listing-1', 'listing-2', 'listing-3'] });
+  });
+});
+
+// T3: the sortable column headers drive `sortBy`/`sortDirection` query
+// params on GET /api/listings. The page/component tests stub this whole
+// module away, so nothing else would catch a param that never reaches the
+// URL (leaving the server on its default order while the header shows an
+// arrow) or one that is sent as `undefined` when no column is sorted.
+describe('fetchListings sort query params', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubListingsFetch() {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ listings: [], total: 0 }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('sends sortBy and sortDirection alongside the existing filter/pagination params', async () => {
+    const fetchMock = stubListingsFetch();
+
+    await fetchListings({ status: 'open', sourceId: 'source-1', limit: 20, offset: 40, sortBy: 'expectedResale', sortDirection: 'desc' });
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://localhost:3001/api/listings?status=open&sourceId=source-1&limit=20&offset=40&sortBy=expectedResale&sortDirection=desc');
+  });
+
+  it('omits both sort params when no column is sorted, leaving the server on its default ordering', async () => {
+    const fetchMock = stubListingsFetch();
+
+    await fetchListings({ limit: 20, offset: 0 });
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://localhost:3001/api/listings?limit=20&offset=0');
+    expect(url).not.toContain('sort');
+  });
+
+  it('omits sortDirection on its own when only a field is given, rather than sending an empty value', async () => {
+    const fetchMock = stubListingsFetch();
+
+    await fetchListings({ sortBy: 'title' });
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://localhost:3001/api/listings?sortBy=title');
   });
 });

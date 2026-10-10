@@ -544,3 +544,137 @@ describe('ListingsPage Add Listing create flow (Req 12)', () => {
   }, 10_000);
 });
 
+
+// T3: sortable column headers (Req 2-4, 7, 8). ListingsPage owns the sort
+// state; the assertions below read the options object handed to
+// fetchListings, which is what actually determines the server-side order of
+// the whole filtered dataset — the rendered row order on a mocked page
+// would prove nothing about it.
+describe('ListingsPage sortable columns (T3)', () => {
+  const PAGE_SIZE = 20;
+
+  function lastFetchOptions(): { sortBy?: string; sortDirection?: string; offset?: number; status?: string; sourceId?: string } {
+    const calls = fetchListingsMock.mock.calls;
+    return calls[calls.length - 1][0] as { sortBy?: string; sortDirection?: string; offset?: number; status?: string; sourceId?: string };
+  }
+
+  // Clicks a column header and waits for the reload the sort change
+  // triggers, so the assertions read the request carrying the new sort
+  // rather than the previous one.
+  async function clickHeader(el: HTMLElement, label: string) {
+    const callsBefore = fetchListingsMock.mock.calls.length;
+    await act(async () => {
+      findButton(el, label).click();
+    });
+    await waitFor(() => fetchListingsMock.mock.calls.length > callsBefore);
+  }
+
+  it('fetches with no sort params at all until a header is clicked (Req 9: the existing default order is untouched)', async () => {
+    fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 2);
+
+    expect(fetchListingsMock).toHaveBeenCalledTimes(1);
+    expect(lastFetchOptions().sortBy).toBeUndefined();
+    expect(lastFetchOptions().sortDirection).toBeUndefined();
+  }, 10_000);
+
+  it('clicking an inactive header sorts by that field ascending; clicking it again reverses direction without changing the field (Req 2-3)', async () => {
+    fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 2);
+
+    await clickHeader(el, 'Asking Price');
+    expect(lastFetchOptions().sortBy).toBe('askingPrice');
+    expect(lastFetchOptions().sortDirection).toBe('asc');
+
+    await clickHeader(el, 'Asking Price');
+    expect(lastFetchOptions().sortBy).toBe('askingPrice');
+    expect(lastFetchOptions().sortDirection).toBe('desc');
+
+    // A third click comes back to ascending rather than sticking on desc.
+    await clickHeader(el, 'Asking Price');
+    expect(lastFetchOptions().sortBy).toBe('askingPrice');
+    expect(lastFetchOptions().sortDirection).toBe('asc');
+  }, 10_000);
+
+  it('clicking a different header replaces the active field outright, restarting at ascending rather than combining or keeping the old direction (Req 2, 4)', async () => {
+    fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 2);
+
+    // Leave the first column active *descending*, so a replacement that
+    // carried the old direction over would be visible.
+    await clickHeader(el, 'Title');
+    await clickHeader(el, 'Title');
+    expect(lastFetchOptions().sortDirection).toBe('desc');
+
+    await clickHeader(el, 'Difference');
+    const options = lastFetchOptions();
+    expect(options.sortBy).toBe('difference');
+    expect(options.sortDirection).toBe('asc');
+    // Only one field is ever sorted by: the request carries a single
+    // sortBy, and the previously active column's arrow is gone.
+    expect(Object.keys(options).filter((key) => key.startsWith('sort'))).toEqual(['sortBy', 'sortDirection']);
+    const titleHeader = findButton(el, 'Title').closest('th') as HTMLTableCellElement;
+    const differenceHeader = findButton(el, 'Difference').closest('th') as HTMLTableCellElement;
+    expect(titleHeader.getAttribute('aria-sort')).toBe('none');
+    expect(titleHeader.querySelector('[aria-label^="Sorted"]')).toBeNull();
+    expect(differenceHeader.getAttribute('aria-sort')).toBe('ascending');
+  }, 10_000);
+
+  it('resets to page 1 when the sort changes, instead of keeping the old offset into a now-differently-ordered dataset (Req 7)', async () => {
+    const listings = Array.from({ length: 21 }, (_, i) => makeListing(`listing-${i}`, `Listing ${i}`, 100 + i));
+    fetchListingsMock.mockImplementation(({ limit, offset }: { limit: number; offset: number }) =>
+      Promise.resolve({ listings: listings.slice(offset, offset + limit), total: listings.length }),
+    );
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === PAGE_SIZE);
+
+    await act(async () => {
+      findButton(el, 'Next').click();
+    });
+    await waitFor(() => lastFetchOptions().offset === PAGE_SIZE);
+    expect(el.textContent).toContain('Page 2 of 2 (21 total)');
+
+    await clickHeader(el, 'Status');
+    expect(lastFetchOptions().sortBy).toBe('status');
+    expect(lastFetchOptions().offset).toBe(0);
+    expect(el.textContent).toContain('Page 1 of 2 (21 total)');
+  }, 10_000);
+
+  it('keeps the active sort when a filter changes — the two compose instead of clearing each other (Req 8)', async () => {
+    fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 2);
+
+    await clickHeader(el, 'Expected Resale');
+    await clickHeader(el, 'Expected Resale');
+    expect(lastFetchOptions().sortDirection).toBe('desc');
+
+    // The status select is the first of the two filter selects.
+    const statusSelect = el.querySelectorAll('select')[0] as HTMLSelectElement;
+    await act(async () => {
+      statusSelect.value = 'accepted';
+      statusSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await waitFor(() => lastFetchOptions().status === 'accepted');
+
+    const options = lastFetchOptions();
+    expect(options.sortBy).toBe('expectedResale');
+    expect(options.sortDirection).toBe('desc');
+    // ...and the header still shows it, not just the request.
+    const header = findButton(el, 'Expected Resale').closest('th') as HTMLTableCellElement;
+    expect(header.getAttribute('aria-sort')).toBe('descending');
+  }, 10_000);
+});

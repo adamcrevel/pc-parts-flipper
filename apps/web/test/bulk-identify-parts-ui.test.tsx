@@ -104,12 +104,15 @@ function findButton(el: HTMLElement, text: string): HTMLButtonElement {
   return button as HTMLButtonElement;
 }
 
-// Non-throwing counterpart to findButton: returns null instead of throwing,
-// so a test can assert a button is absent (e.g. the bulk action bar not
-// rendering while nothing is selected) without wrapping the lookup in its
-// own try/catch.
-function queryButton(el: HTMLElement, text: string): HTMLButtonElement | null {
-  const button = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === text);
+// Non-throwing counterpart to findButton, returning null instead of
+// throwing so a test can assert the bulk action bar's button is absent
+// while nothing is selected. Scoped to buttons outside the table header,
+// because the Listings table's "Identify Parts" column header is itself a
+// button now (it sorts by that column) carrying the exact same label — an
+// unscoped lookup would find that always-present header button instead of
+// the bar's own, selection-gated one.
+function queryBulkIdentifyPartsButton(el: HTMLElement): HTMLButtonElement | null {
+  const button = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === 'Identify Parts' && b.closest('thead') === null);
   return (button as HTMLButtonElement | undefined) ?? null;
 }
 
@@ -245,7 +248,7 @@ describe('ListingsPage selection wiring (Req 2/4/12)', () => {
     await waitFor(() => el.querySelectorAll('tbody tr').length === PAGE_SIZE);
 
     // Req 5: no selection yet, so the fixed bar (and its button) isn't rendered.
-    expect(queryButton(el, 'Identify Parts')).toBeNull();
+    expect(queryBulkIdentifyPartsButton(el)).toBeNull();
     expect(el.textContent).not.toContain('selected');
 
     await act(async () => {
@@ -254,7 +257,7 @@ describe('ListingsPage selection wiring (Req 2/4/12)', () => {
     });
     // Req 5: becomes non-empty -> the bar appears with the exact count.
     expect(el.textContent).toContain('2 selected');
-    expect(queryButton(el, 'Identify Parts')).not.toBeNull();
+    expect(queryBulkIdentifyPartsButton(el)).not.toBeNull();
 
     const statusSelect = el.querySelector('select') as HTMLSelectElement;
     await act(async () => {
@@ -268,7 +271,7 @@ describe('ListingsPage selection wiring (Req 2/4/12)', () => {
     expect(el.textContent).toContain('2 selected');
     expect(checkbox(el, 'Select Listing 0').checked).toBe(true);
     expect(checkbox(el, 'Select Listing 1').checked).toBe(true);
-    expect(queryButton(el, 'Identify Parts')).not.toBeNull();
+    expect(queryBulkIdentifyPartsButton(el)).not.toBeNull();
   });
 
   it('refetches the filtered id set when the filter changes, but not when the page changes (Req 2)', async () => {
@@ -409,7 +412,7 @@ describe('ListingsPage selection wiring (Req 2/4/12)', () => {
     });
 
     // The bulk "Identify Parts" button appears.
-    const bulkButton = findButton(el, 'Identify Parts');
+    const bulkButton = queryBulkIdentifyPartsButton(el) as HTMLButtonElement;
     expect(bulkButton).toBeTruthy();
 
     // Click it, triggering the bulk enqueue request.
