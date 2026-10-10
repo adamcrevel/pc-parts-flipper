@@ -664,6 +664,19 @@ describe('Reference photo promotion hook — DB-verified (T2)', () => {
       expect(await seedTitleOrder('&sortBy=status')).toEqual([seedTitles.apple, seedTitles.banana, seedTitles.date, seedTitles.cherry]);
     });
 
+    it('reverses a tied sort field exactly, mirroring which tied row lands first, not just the 3-way status order (Req 3)', async () => {
+      // None of the other direction-reversal tests (title/source/
+      // askingPrice/difference) contain a genuine tie, so none of them can
+      // tell a correct summaries.reverse() apart from an alternative
+      // implementation that re-sorts with a flipped comparator instead —
+      // that alternative would leave a stable tie's relative order
+      // (banana-then-date) untouched in both directions, since
+      // Array.prototype.sort's stability guarantee preserves input order
+      // for equal keys regardless of comparator sign. Only reverse()
+      // actually swaps the tied pair too, producing date-then-banana here.
+      expect(await seedTitleOrder('&sortBy=status&sortDirection=desc')).toEqual([seedTitles.cherry, seedTitles.date, seedTitles.banana, seedTitles.apple]);
+    });
+
     it('sorts by askingPrice numerically in both directions (Req 1)', async () => {
       const ascending = [seedTitles.apple, seedTitles.date, seedTitles.banana, seedTitles.cherry];
       expect(await seedTitleOrder('&sortBy=askingPrice')).toEqual(ascending);
