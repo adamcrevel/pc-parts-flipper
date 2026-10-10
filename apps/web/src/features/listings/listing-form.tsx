@@ -194,6 +194,7 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
           onListingDateChange={(value) => setField('listingDate', value)}
           acquisitionFees={fields.acquisitionFees}
           onAcquisitionFeesChange={(value) => setField('acquisitionFees', value)}
+          sourceReadOnly={Boolean(saved)}
           fieldErrors={fieldErrors}
         />
       </CollapsibleSection>

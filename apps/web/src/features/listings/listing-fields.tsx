@@ -1,4 +1,5 @@
 import type { Source } from '@pc-parts-flipper/shared';
+import { Button } from '@/components/ui/button';
 import type { ListingFieldErrors } from '@/features/listings/validate-listing';
 
 interface ListingFieldsProps {
@@ -17,6 +18,12 @@ interface ListingFieldsProps {
   onListingDateChange: (value: string) => void;
   acquisitionFees: string;
   onAcquisitionFeesChange: (value: string) => void;
+  // True once the Listing has been saved at least once (ListingForm passes
+  // `Boolean(saved)`). A Listing's Source is fixed at creation time — the
+  // scan/import pipeline keys off it — so editing an existing row disables
+  // the picker (Req 5) while a brand-new, not-yet-saved row leaves it open
+  // (Req 6).
+  sourceReadOnly: boolean;
   fieldErrors: ListingFieldErrors;
 }
 
@@ -42,6 +49,7 @@ export function ListingFields({
   onListingDateChange,
   acquisitionFees,
   onAcquisitionFeesChange,
+  sourceReadOnly,
   fieldErrors,
 }: ListingFieldsProps) {
   return (
@@ -59,7 +67,13 @@ export function ListingFields({
           <label htmlFor="listing-source" className="text-sm font-medium">
             Source
           </label>
-          <select id="listing-source" value={sourceId} onChange={(e) => onSourceIdChange(e.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+          <select
+            id="listing-source"
+            value={sourceId}
+            onChange={(e) => onSourceIdChange(e.target.value)}
+            disabled={sourceReadOnly}
+            className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+          >
             <option value="">Select a source…</option>
             {sources.map((source) => (
               <option key={source.id} value={source.id}>
@@ -88,7 +102,30 @@ export function ListingFields({
         <label htmlFor="listing-url" className="text-sm font-medium">
           Listing URL
         </label>
-        <input id="listing-url" value={listingUrl} onChange={(e) => onListingUrlChange(e.target.value)} className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm" />
+        <div className="flex gap-2">
+          {/* The field is free text (no format validation beyond "required"
+              in validate-listing.ts), so a blank/whitespace-only value has
+              no URL to open — rendered as a disabled plain button (Req 4)
+              rather than `asChild` over an `<a>` with an empty/missing
+              href, which would be a dead link target. */}
+          {listingUrl.trim() ? (
+            <Button type="button" variant="outline" size="sm" asChild>
+              <a href={listingUrl} target="_blank" rel="noreferrer">
+                Open Link
+              </a>
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" size="sm" disabled>
+              Open Link
+            </Button>
+          )}
+          <input
+            id="listing-url"
+            value={listingUrl}
+            onChange={(e) => onListingUrlChange(e.target.value)}
+            className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+          />
+        </div>
         {fieldErrors.listingUrl && <p className="text-sm text-destructive">{fieldErrors.listingUrl}</p>}
       </div>
 
