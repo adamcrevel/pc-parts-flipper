@@ -5,7 +5,7 @@ Cycle: 0 / 3
 FeatureStarted: 2026-10-10T02:26:00Z
 OrchestrationTokensActual: 71092
 OrchestrationTokensBreakdown: input 0 + output 8,079 + cache-write 20,420 + cache-read 42,593, across 46 turns
-Prototype: .claude/feature/listing-open-link-source-readonly/prototype.html
+Prototype: https://gist.githack.com/adamcrevel/5cb68275a04f3fbe4081861db9021d39/raw/prototype.html
 BaselineTests: 871
 BaselineSuite: pass
 
