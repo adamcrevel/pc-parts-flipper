@@ -615,7 +615,7 @@ describe('ListingsPage sortable columns (T3)', () => {
     await clickHeader(el, 'Title');
     expect(lastFetchOptions().sortDirection).toBe('desc');
 
-    await clickHeader(el, 'Difference');
+    await clickHeader(el, 'Expected Profit');
     const options = lastFetchOptions();
     expect(options.sortBy).toBe('difference');
     expect(options.sortDirection).toBe('asc');
@@ -623,7 +623,7 @@ describe('ListingsPage sortable columns (T3)', () => {
     // sortBy, and the previously active column's arrow is gone.
     expect(Object.keys(options).filter((key) => key.startsWith('sort'))).toEqual(['sortBy', 'sortDirection']);
     const titleHeader = findButton(el, 'Title').closest('th') as HTMLTableCellElement;
-    const differenceHeader = findButton(el, 'Difference').closest('th') as HTMLTableCellElement;
+    const differenceHeader = findButton(el, 'Expected Profit').closest('th') as HTMLTableCellElement;
     expect(titleHeader.getAttribute('aria-sort')).toBe('none');
     expect(titleHeader.querySelector('[aria-label^="Sorted"]')).toBeNull();
     expect(differenceHeader.getAttribute('aria-sort')).toBe('ascending');
@@ -676,5 +676,79 @@ describe('ListingsPage sortable columns (T3)', () => {
     // ...and the header still shows it, not just the request.
     const header = findButton(el, 'Expected Resale').closest('th') as HTMLTableCellElement;
     expect(header.getAttribute('aria-sort')).toBe('descending');
+  }, 10_000);
+});
+
+// Req 6-8: the host page's own loading-state wiring — shows the indicator
+// and disables the sort headers for a user-triggered refetch, but never
+// for the silent Req 12 background poll.
+describe('ListingsPage loading state (Req 6-8)', () => {
+  it('shows the loading indicator and disables the sort headers while a sort-triggered fetch is pending, then clears both once it resolves', async () => {
+    fetchListingsMock.mockResolvedValueOnce({ listings: [listingA, listingB], total: 2 });
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 2);
+    expect(el.querySelector('[role="status"]')).toBeNull();
+
+    const { promise, resolve } = Promise.withResolvers<{ listings: ListingSummary[]; total: number }>();
+    fetchListingsMock.mockReturnValueOnce(promise);
+
+    const callsBefore = fetchListingsMock.mock.calls.length;
+    await act(async () => {
+      findButton(el, 'Title').click();
+    });
+    await waitFor(() => fetchListingsMock.mock.calls.length > callsBefore);
+
+    expect(el.querySelector('[role="status"]')).not.toBeNull();
+    expect(findButton(el, 'Title').disabled).toBe(true);
+
+    await act(async () => {
+      resolve({ listings: [listingA, listingB], total: 2 });
+      await promise;
+    });
+    await waitFor(() => el.querySelector('[role="status"]') === null);
+
+    expect(el.querySelector('[role="status"]')).toBeNull();
+    expect(findButton(el, 'Title').disabled).toBe(false);
+  }, 10_000);
+
+  it('does not show the loading indicator or disable the headers for the silent Req 12 polling reload', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchListingsMock.mockResolvedValueOnce({
+        listings: [{ ...listingA, identifyPartsStatus: { stage: 'identifying', errorMessage: null } }],
+        total: 1,
+      });
+      fetchListingIdsMock.mockResolvedValue([listingA.id]);
+
+      const el = await mount();
+      expect(fetchListingsMock).toHaveBeenCalledTimes(1);
+      expect(el.querySelector('[role="status"]')).toBeNull();
+
+      // Hold the poll's own fetch open, so the assertions below land
+      // while it's actually pending — a mutation that made the poll
+      // non-silent would show the indicator/disable the header during
+      // exactly this window; checking only after it resolves (near
+      // instantly, under fake timers) would never observe that.
+      const { promise, resolve } = Promise.withResolvers<{ listings: ListingSummary[]; total: number }>();
+      fetchListingsMock.mockReturnValueOnce(promise);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+
+      expect(fetchListingsMock).toHaveBeenCalledTimes(2);
+      expect(el.querySelector('[role="status"]')).toBeNull();
+      expect(findButton(el, 'Title').disabled).toBe(false);
+
+      await act(async () => {
+        resolve({ listings: [{ ...listingA, identifyPartsStatus: { stage: 'completed', errorMessage: null } }], total: 1 });
+        await promise;
+      });
+      expect(el.querySelector('[role="status"]')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   }, 10_000);
 });

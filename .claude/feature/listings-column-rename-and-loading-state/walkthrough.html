@@ -1,0 +1,1376 @@
+<title>Walkthrough</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--add-bg:rgba(31,95,79,.10);--del-bg:rgba(163,49,42,.10);--radius:8px}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74;
+--add-bg:rgba(79,181,154,.14);--del-bg:rgba(224,123,116,.14)}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+h1{margin:0 0 8px;font-size:20px;letter-spacing:-.01em}
+.overview-text{margin:0;font-size:15px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.card-head,.file-head{width:100%;display:flex;justify-content:space-between;align-items:center;
+gap:12px;font:inherit;text-align:left;background:none;border:none;color:var(--ink);cursor:pointer;
+padding:14px 18px}
+.card-head{font-weight:600}
+.card-head .meta{font-size:12px;color:var(--muted);font-weight:400}
+.card-body{padding:0 18px 16px;display:grid;gap:12px}
+.summary{margin:0;font-size:14px}
+.note{font-size:12px;color:var(--muted);margin:2px 0}
+.flow{overflow-x:auto}
+.flow-svg{display:block}
+.flow-box{fill:var(--bg);stroke:var(--line)}
+.flow-box-text{width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;
+justify-content:center;align-items:center;gap:4px;padding:8px 12px;text-align:center;
+font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.flow-label{font-size:12px;font-weight:600;color:var(--ink);line-height:1.25;margin:0;
+display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+text-overflow:ellipsis;word-break:break-word}
+.flow-note{font-size:10.5px;color:var(--muted);line-height:1.3;margin:0;
+display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+text-overflow:ellipsis;word-break:break-word}
+.flow-arrow{stroke:var(--muted);stroke-width:1.5}
+.flow-arrowhead{fill:var(--muted)}
+.files{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.file-group{padding:10px 4px 12px}
+.file-group:not(:last-child){border-bottom:1px solid var(--line)}
+.file-note{margin:0 0 8px;font-size:13px}
+.file-rows{list-style:none;margin:0;padding:0}
+.file{border-top:1px solid var(--line)}
+.file:first-child{border-top:none}
+.file-head{padding:10px 4px;font-size:13px}
+.file-head .path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.tag{display:inline-block;padding:0 6px;border:1px solid var(--line);border-radius:999px;
+font-size:11px;color:var(--muted)}
+.file-body{padding:0 4px 12px;display:grid;gap:8px}
+.hunk{overflow-x:auto;border:1px solid var(--line);border-radius:6px}
+.hunk-head{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);
+padding:5px 9px;border-bottom:1px solid var(--line)}
+.hunk pre{margin:0;padding:6px 9px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+white-space:pre}
+.hunk pre span{display:block;padding:0 4px}
+.hunk pre .add{background:var(--add-bg);color:var(--good)}
+.hunk pre .del{background:var(--del-bg);color:var(--bad)}
+</style>
+<main>
+<section class="panel overview">
+<h1>Walkthrough</h1>
+<p class="overview-text">The Listings table gets three plain-language column renames and a clearer &quot;Pricing Status&quot; badge that now always says something, instead of showing a pill only in the unpriced case. Separately, clicking a sortable header (or changing a filter or page) now visibly dims the table and disables every header until the new data arrives, so a user can&#x27;t accidentally double-click and queue a second request — while the existing silent background poll for identify-parts status keeps working exactly as before, with no new flicker.</p>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Column renames</span><span class="meta">3 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">Three column headers get clearer, user-facing names. Only the label changes — the sort</p>
+<p class="note">Tasks: T1</p>
+<ul class="files"><li class="file-group">
+<p class="file-note">`SORTABLE_COLUMNS`&#x27;s three labels change (&quot;Difference&quot; -&gt; &quot;Expected Profit&quot;, &quot;Identify Parts&quot; -&gt; &quot;Sourcing Status&quot;, &quot;Unpriced&quot; -&gt; &quot;Pricing Status&quot;); the underlying `field` identifiers are untouched.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/features/listings/listing-list.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Column renames, Pricing Status badge, Loading state during a refetch) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -7,7 +7,7 @@ import { ListingForm } from &#x27;@/features/listings/listing-form&#x27;;</div><pre><span class="ctx"> import { EbayScanBadge } from &#x27;@/features/listings/ebay-scan-badge&#x27;;</span>
+<span class="ctx"> import { NonWorkingBadge } from &#x27;@/features/listings/non-working-badge&#x27;;</span>
+<span class="ctx"> import { IdentifyPartsStatusBadge } from &#x27;@/features/listings/identify-parts-status-badge&#x27;;</span>
+<span class="del">-import { UnpricedPartsBadge } from &#x27;@/features/listings/unpriced-parts-badge&#x27;;</span>
+<span class="add">+import { PricingStatusBadge } from &#x27;@/features/listings/pricing-status-badge&#x27;;</span>
+<span class="ctx"> import { cn } from &#x27;@/lib/utils&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> interface ListingListProps {</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -51,6 +51,12 @@ interface ListingListProps {</div><pre><span class="ctx">   // field active (ascending) or, when it is already active, to flip its</span>
+<span class="ctx">   // direction. This component holds no sort state of its own.</span>
+<span class="ctx">   onSortChange: (field: ListingSortField) =&gt; void;</span>
+<span class="add">+  // Req 8: true while the page above has a listings fetch in flight that</span>
+<span class="add">+  // should visibly block interaction with the currently-displayed (now</span>
+<span class="add">+  // stale) rows — every sortable header disables its click handler and the</span>
+<span class="add">+  // whole table reads as inert, while the rows themselves stay visible</span>
+<span class="add">+  // underneath rather than being replaced by a full-page spinner.</span>
+<span class="add">+  isLoading?: boolean;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="ctx"> // One table body plus, for whichever row is open, an extra full-width row</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -70,9 +76,9 @@ const SORTABLE_COLUMNS: { field: ListingSortField; label: string }[] = [</div><pre><span class="ctx">   { field: &#x27;status&#x27;, label: &#x27;Status&#x27; },</span>
+<span class="ctx">   { field: &#x27;askingPrice&#x27;, label: &#x27;Asking Price&#x27; },</span>
+<span class="ctx">   { field: &#x27;expectedResale&#x27;, label: &#x27;Expected Resale&#x27; },</span>
+<span class="del">-  { field: &#x27;difference&#x27;, label: &#x27;Difference&#x27; },</span>
+<span class="del">-  { field: &#x27;identifyParts&#x27;, label: &#x27;Identify Parts&#x27; },</span>
+<span class="del">-  { field: &#x27;unpriced&#x27;, label: &#x27;Unpriced&#x27; },</span>
+<span class="add">+  { field: &#x27;difference&#x27;, label: &#x27;Expected Profit&#x27; },</span>
+<span class="add">+  { field: &#x27;identifyParts&#x27;, label: &#x27;Sourcing Status&#x27; },</span>
+<span class="add">+  { field: &#x27;unpriced&#x27;, label: &#x27;Pricing Status&#x27; },</span>
+<span class="ctx"> ];</span>
+<span class="ctx"> </span>
+<span class="ctx"> /**</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -82,6 +88,9 @@ const SORTABLE_COLUMNS: { field: ListingSortField; label: string }[] = [</div><pre><span class="ctx">  * descending — only when its own field is the active one, so exactly one</span>
+<span class="ctx">  * header in the table ever shows an indicator. `aria-sort` carries the same</span>
+<span class="ctx">  * information for assistive tech, reading `none` on every inactive column.</span>
+<span class="add">+ * Req 8: `isLoading` disables the button while a fetch for the table&#x27;s own</span>
+<span class="add">+ * rows is in flight, so a click can&#x27;t queue a second sort change against</span>
+<span class="add">+ * data that&#x27;s already stale and about to be replaced.</span>
+<span class="ctx">  */</span>
+<span class="ctx"> function SortableHeader({</span>
+<span class="ctx">   field,</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -89,12 +98,14 @@ function SortableHeader({</div><pre><span class="ctx">   sortBy,</span>
+<span class="ctx">   sortDirection,</span>
+<span class="ctx">   onSortChange,</span>
+<span class="add">+  isLoading,</span>
+<span class="ctx"> }: {</span>
+<span class="ctx">   field: ListingSortField;</span>
+<span class="ctx">   label: string;</span>
+<span class="ctx">   sortBy?: ListingSortField;</span>
+<span class="ctx">   sortDirection?: ListingSortDirection;</span>
+<span class="ctx">   onSortChange: (field: ListingSortField) =&gt; void;</span>
+<span class="add">+  isLoading?: boolean;</span>
+<span class="ctx"> }) {</span>
+<span class="ctx">   const isActive = sortBy === field;</span>
+<span class="ctx">   // A field can only ever be active ascending or descending; an active</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -107,8 +118,9 @@ function SortableHeader({</div><pre><span class="ctx">     &lt;th className=&quot;px-4 py-2 font-medium&quot; aria-sort={isActive ? (isDescending ? &#x27;descending&#x27; : &#x27;ascending&#x27;) : &#x27;none&#x27;}&gt;</span>
+<span class="ctx">       &lt;button</span>
+<span class="ctx">         type=&quot;button&quot;</span>
+<span class="del">-        className=&quot;inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground&quot;</span>
+<span class="add">+        className=&quot;inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50&quot;</span>
+<span class="ctx">         onClick={() =&gt; onSortChange(field)}</span>
+<span class="add">+        disabled={isLoading}</span>
+<span class="ctx">       &gt;</span>
+<span class="ctx">         {label}</span>
+<span class="ctx">         {isActive &amp;&amp; &lt;Arrow className=&quot;h-3.5 w-3.5 shrink-0&quot; aria-label={`Sorted ${isDescending ? &#x27;descending&#x27; : &#x27;ascending&#x27;}`} /&gt;}</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -145,6 +157,7 @@ export function ListingList({</div><pre><span class="ctx">   sortBy,</span>
+<span class="ctx">   sortDirection,</span>
+<span class="ctx">   onSortChange,</span>
+<span class="add">+  isLoading,</span>
+<span class="ctx"> }: ListingListProps) {</span>
+<span class="ctx">   const headerCheckboxRef = useRef&lt;HTMLInputElement&gt;(null);</span>
+<span class="ctx"> </span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -169,7 +182,14 @@ export function ListingList({</div><pre><span class="ctx"> </span>
+<span class="ctx">   return (</span>
+<span class="ctx">     &lt;div className=&quot;overflow-x-auto&quot;&gt;</span>
+<span class="del">-      &lt;table className=&quot;w-full border-collapse text-left text-sm&quot;&gt;</span>
+<span class="add">+      {isLoading &amp;&amp; (</span>
+<span class="add">+        &lt;div className=&quot;mb-2 flex items-center gap-2 text-sm text-muted-foreground&quot; role=&quot;status&quot;&gt;</span>
+<span class="add">+          {/* Decorative spinner glyph, matching LoadingSpinner&#x27;s own markup; the text label carries the accessible status */}</span>
+<span class="add">+          &lt;span className=&quot;h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent&quot; aria-hidden=&quot;true&quot; /&gt;</span>
+<span class="add">+          &lt;span&gt;Loading…&lt;/span&gt;</span>
+<span class="add">+        &lt;/div&gt;</span>
+<span class="add">+      )}</span>
+<span class="add">+      &lt;table className={cn(&#x27;w-full border-collapse text-left text-sm&#x27;, isLoading &amp;&amp; &#x27;pointer-events-none opacity-60&#x27;)}&gt;</span>
+<span class="ctx">         &lt;thead&gt;</span>
+<span class="ctx">           &lt;tr className=&quot;border-b border-border text-muted-foreground&quot;&gt;</span>
+<span class="ctx">             &lt;th className=&quot;w-8 px-4 py-2 font-medium&quot;&gt;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -189,6 +209,7 @@ export function ListingList({</div><pre><span class="ctx">                 sortBy={sortBy}</span>
+<span class="ctx">                 sortDirection={sortDirection}</span>
+<span class="ctx">                 onSortChange={onSortChange}</span>
+<span class="add">+                isLoading={isLoading}</span>
+<span class="ctx">               /&gt;</span>
+<span class="ctx">             ))}</span>
+<span class="ctx">             &lt;th className=&quot;px-4 py-2 font-medium&quot; /&gt;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -234,7 +255,7 @@ export function ListingList({</div><pre><span class="ctx">                     &lt;IdentifyPartsStatusBadge status={listing.identifyPartsStatus} /&gt;</span>
+<span class="ctx">                   &lt;/td&gt;</span>
+<span class="ctx">                   &lt;td className=&quot;px-4 py-3&quot;&gt;</span>
+<span class="del">-                    &lt;UnpricedPartsBadge hasUnpricedParts={listing.hasUnpricedParts} /&gt;</span>
+<span class="add">+                    &lt;PricingStatusBadge hasUnpricedParts={listing.hasUnpricedParts} /&gt;</span>
+<span class="ctx">                   &lt;/td&gt;</span>
+<span class="ctx">                   &lt;td className=&quot;whitespace-nowrap px-4 py-3 text-right&quot;&gt;</span>
+<span class="ctx">                     {listing.status === &#x27;open&#x27; &amp;&amp; (</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">header-label assertions and click targets updated to match the new names.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/listing-list.test.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Column renames, Pricing Status badge, Loading state during a refetch) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -59,11 +59,13 @@ function Harness({</div><pre><span class="ctx">   sortBy,</span>
+<span class="ctx">   sortDirection,</span>
+<span class="ctx">   onSortChange = () =&gt; {},</span>
+<span class="add">+  isLoading,</span>
+<span class="ctx"> }: {</span>
+<span class="ctx">   listings: ListingSummary[];</span>
+<span class="ctx">   sortBy?: ListingSortField;</span>
+<span class="ctx">   sortDirection?: ListingSortDirection;</span>
+<span class="ctx">   onSortChange?: (field: ListingSortField) =&gt; void;</span>
+<span class="add">+  isLoading?: boolean;</span>
+<span class="ctx"> }) {</span>
+<span class="ctx">   const [editingListingId, setEditingListingId] = useState&lt;string | null&gt;(null);</span>
+<span class="ctx">   const [selectedIds, setSelectedIds] = useState&lt;Set&lt;string&gt;&gt;(new Set());</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -104,6 +106,7 @@ function Harness({</div><pre><span class="ctx">       sortBy={sortBy}</span>
+<span class="ctx">       sortDirection={sortDirection}</span>
+<span class="ctx">       onSortChange={onSortChange}</span>
+<span class="add">+      isLoading={isLoading}</span>
+<span class="ctx">     /&gt;</span>
+<span class="ctx">   );</span>
+<span class="ctx"> }</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -121,16 +124,17 @@ afterEach(() =&gt; {</div><pre><span class="ctx"> });</span>
+<span class="ctx"> </span>
+<span class="ctx"> // Mounts the harness. `sort` carries the optional active-sort props (and a</span>
+<span class="del">-// click spy) the sortable-header tests need; the older tests pass none and</span>
+<span class="del">-// get the unsorted default.</span>
+<span class="add">+// click spy) the sortable-header tests need, plus the Req 6-8 `isLoading`</span>
+<span class="add">+// flag the loading-state tests need; the older tests pass none and get the</span>
+<span class="add">+// unsorted, not-loading default.</span>
+<span class="ctx"> async function mount(</span>
+<span class="ctx">   listings: ListingSummary[],</span>
+<span class="del">-  sort: { sortBy?: ListingSortField; sortDirection?: ListingSortDirection; onSortChange?: (field: ListingSortField) =&gt; void } = {},</span>
+<span class="add">+  sort: { sortBy?: ListingSortField; sortDirection?: ListingSortDirection; onSortChange?: (field: ListingSortField) =&gt; void; isLoading?: boolean } = {},</span>
+<span class="ctx"> ): Promise&lt;HTMLDivElement&gt; {</span>
+<span class="ctx">   container = document.createElement(&#x27;div&#x27;);</span>
+<span class="ctx">   await act(async () =&gt; {</span>
+<span class="ctx">     root = createRoot(container!);</span>
+<span class="del">-    root.render(&lt;Harness listings={listings} sortBy={sort.sortBy} sortDirection={sort.sortDirection} onSortChange={sort.onSortChange} /&gt;);</span>
+<span class="add">+    root.render(&lt;Harness listings={listings} sortBy={sort.sortBy} sortDirection={sort.sortDirection} onSortChange={sort.onSortChange} isLoading={sort.isLoading} /&gt;);</span>
+<span class="ctx">   });</span>
+<span class="ctx">   return container;</span>
+<span class="ctx"> }</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -153,6 +157,18 @@ function findListingRow(el: HTMLElement, title: string): HTMLTableRowElement {</div><pre><span class="ctx">   return row as HTMLTableRowElement;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="add">+function headerCells(el: HTMLElement): HTMLTableCellElement[] {</span>
+<span class="add">+  return Array.from(el.querySelectorAll(&#x27;thead th&#x27;));</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+function headerButton(el: HTMLElement, label: string): HTMLButtonElement {</span>
+<span class="add">+  const button = Array.from(el.querySelectorAll(&#x27;thead button&#x27;)).find((b) =&gt; b.textContent?.trim() === label);</span>
+<span class="add">+  if (!button) {</span>
+<span class="add">+    throw new Error(`No sortable header button found for &quot;${label}&quot;`);</span>
+<span class="add">+  }</span>
+<span class="add">+  return button as HTMLButtonElement;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="ctx"> describe(&#x27;ListingList title click -&gt; inline edit row&#x27;, () =&gt; {</span>
+<span class="ctx">   it(&#x27;has no trailing Edit button column — the title itself is the click trigger&#x27;, async () =&gt; {</span>
+<span class="ctx">     const el = await mount([makeListing()]);</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -315,19 +331,7 @@ describe(&#x27;ListingList Accept/Reject gating and per-row in-flight disable (Req 4)</div><pre><span class="ctx"> // are clickable, which field each one reports, and that the direction</span>
+<span class="ctx"> // arrow appears on the active column only.</span>
+<span class="ctx"> describe(&#x27;ListingList sortable column headers&#x27;, () =&gt; {</span>
+<span class="del">-  const SORTABLE_LABELS = [&#x27;Title&#x27;, &#x27;Source&#x27;, &#x27;Status&#x27;, &#x27;Asking Price&#x27;, &#x27;Expected Resale&#x27;, &#x27;Difference&#x27;, &#x27;Identify Parts&#x27;, &#x27;Unpriced&#x27;];</span>
+<span class="del">-</span>
+<span class="del">-  function headerCells(el: HTMLElement): HTMLTableCellElement[] {</span>
+<span class="del">-    return Array.from(el.querySelectorAll(&#x27;thead th&#x27;));</span>
+<span class="del">-  }</span>
+<span class="del">-</span>
+<span class="del">-  function headerButton(el: HTMLElement, label: string): HTMLButtonElement {</span>
+<span class="del">-    const button = Array.from(el.querySelectorAll(&#x27;thead button&#x27;)).find((b) =&gt; b.textContent?.trim() === label);</span>
+<span class="del">-    if (!button) {</span>
+<span class="del">-      throw new Error(`No sortable header button found for &quot;${label}&quot;`);</span>
+<span class="del">-    }</span>
+<span class="del">-    return button as HTMLButtonElement;</span>
+<span class="del">-  }</span>
+<span class="add">+  const SORTABLE_LABELS = [&#x27;Title&#x27;, &#x27;Source&#x27;, &#x27;Status&#x27;, &#x27;Asking Price&#x27;, &#x27;Expected Resale&#x27;, &#x27;Expected Profit&#x27;, &#x27;Sourcing Status&#x27;, &#x27;Pricing Status&#x27;];</span>
+<span class="ctx"> </span>
+<span class="ctx">   it(&#x27;makes exactly the 8 data-bearing headers clickable, each reporting its own sort field, and leaves the checkbox and actions columns plain&#x27;, async () =&gt; {</span>
+<span class="ctx">     const clicked: string[] = [];</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -393,7 +397,7 @@ describe(&#x27;ListingList sortable column headers&#x27;, () =&gt; {</div><pre><span class="ctx">     const arrows = Array.from(el.querySelectorAll(&#x27;thead [aria-label^=&quot;Sorted&quot;]&#x27;));</span>
+<span class="ctx">     expect(arrows).toHaveLength(1);</span>
+<span class="ctx">     expect(arrows[0].getAttribute(&#x27;aria-label&#x27;)).toBe(&#x27;Sorted descending&#x27;);</span>
+<span class="del">-    expect(headerButton(el, &#x27;Difference&#x27;).contains(arrows[0])).toBe(true);</span>
+<span class="add">+    expect(headerButton(el, &#x27;Expected Profit&#x27;).contains(arrows[0])).toBe(true);</span>
+<span class="ctx">     // The rendered icon itself differs, not just its label — a direction</span>
+<span class="ctx">     // indicator that drew the same glyph both ways would indicate nothing.</span>
+<span class="ctx">     expect(ascendingGlyph).not.toBe(&#x27;&#x27;);</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -403,45 +407,87 @@ describe(&#x27;ListingList sortable column headers&#x27;, () =&gt; {</div><pre><span class="ctx">     ]);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> </span>
+<span class="del">-  // Req 8, 9: clicking the new Unpriced header reports &#x27;unpriced&#x27; to the</span>
+<span class="del">-  // page exactly like every other header — no direction is attached to the</span>
+<span class="del">-  // click itself (that&#x27;s the page&#x27;s own first-click-is-ascending logic,</span>
+<span class="del">-  // already covered above for the other 7 columns and not re-tested here),</span>
+<span class="del">-  // this pins only that the new column&#x27;s own click wiring is correct.</span>
+<span class="del">-  it(&#x27;clicking the Unpriced header while inactive reports sortBy &quot;unpriced&quot; and nothing else&#x27;, async () =&gt; {</span>
+<span class="add">+  // Req 3, 9: clicking the renamed Pricing Status header still reports the</span>
+<span class="add">+  // unchanged &#x27;unpriced&#x27; sort field to the page — no direction is attached</span>
+<span class="add">+  // to the click itself (that&#x27;s the page&#x27;s own first-click-is-ascending</span>
+<span class="add">+  // logic, already covered above for the other 7 columns and not</span>
+<span class="add">+  // re-tested here), this pins only that the renamed column&#x27;s own click</span>
+<span class="add">+  // wiring is correct.</span>
+<span class="add">+  it(&#x27;clicking the Pricing Status header while inactive reports sortBy &quot;unpriced&quot; and nothing else&#x27;, async () =&gt; {</span>
+<span class="ctx">     const clicked: string[] = [];</span>
+<span class="ctx">     const el = await mount([makeListing()], { onSortChange: (field) =&gt; clicked.push(field) });</span>
+<span class="ctx"> </span>
+<span class="ctx">     await act(async () =&gt; {</span>
+<span class="del">-      headerButton(el, &#x27;Unpriced&#x27;).click();</span>
+<span class="add">+      headerButton(el, &#x27;Pricing Status&#x27;).click();</span>
+<span class="ctx">     });</span>
+<span class="ctx"> </span>
+<span class="ctx">     expect(clicked).toEqual([&#x27;unpriced&#x27;]);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> });</span>
+<span class="ctx"> </span>
+<span class="del">-// The new Unpriced column&#x27;s badge cell (Req 8). The column sits</span>
+<span class="del">-// immediately after Identify Parts and before the trailing Accept/Reject</span>
+<span class="del">-// actions column, so in each row&#x27;s &lt;td&gt; list (checkbox, title, source,</span>
+<span class="del">-// status, askingPrice, expectedResale, difference, identifyParts,</span>
+<span class="del">-// unpriced, actions) it is always index 8 — pinned here as a literal, not</span>
+<span class="del">-// derived from SORTABLE_COLUMNS, so a header/body position drift between</span>
+<span class="del">-// the two would actually fail this test rather than silently agree with</span>
+<span class="del">-// itself.</span>
+<span class="del">-describe(&#x27;ListingList Unpriced column badge (Req 8)&#x27;, () =&gt; {</span>
+<span class="del">-  const UNPRICED_CELL_INDEX = 8;</span>
+<span class="del">-</span>
+<span class="del">-  it(&#x27;renders the &quot;Unpriced&quot; badge text for a listing with at least one unpriced part, and renders nothing for one with none&#x27;, async () =&gt; {</span>
+<span class="del">-    const unpriced = makeListing({ id: &#x27;listing-unpriced&#x27;, title: &#x27;Unpriced Listing&#x27;, hasUnpricedParts: true });</span>
+<span class="del">-    const priced = makeListing({ id: &#x27;listing-priced&#x27;, title: &#x27;Priced Listing&#x27;, hasUnpricedParts: false });</span>
+<span class="del">-    const el = await mount([unpriced, priced]);</span>
+<span class="del">-</span>
+<span class="del">-    const unpricedRow = findListingRow(el, &#x27;Unpriced Listing&#x27;);</span>
+<span class="del">-    const pricedRow = findListingRow(el, &#x27;Priced Listing&#x27;);</span>
+<span class="del">-</span>
+<span class="del">-    expect(unpricedRow.cells[UNPRICED_CELL_INDEX].textContent?.trim()).toBe(&#x27;Unpriced&#x27;);</span>
+<span class="del">-    expect(unpricedRow.cells[UNPRICED_CELL_INDEX].querySelector(&#x27;span&#x27;)).not.toBeNull();</span>
+<span class="del">-    expect(pricedRow.cells[UNPRICED_CELL_INDEX].textContent?.trim()).toBe(&#x27;&#x27;);</span>
+<span class="del">-    expect(pricedRow.cells[UNPRICED_CELL_INDEX].querySelector(&#x27;span&#x27;)).toBeNull();</span>
+<span class="add">+// The renamed Pricing Status column&#x27;s badge cell (Req 3-4). The column</span>
+<span class="add">+// sits immediately after Sourcing Status and before the trailing</span>
+<span class="add">+// Accept/Reject actions column, so in each row&#x27;s &lt;td&gt; list (checkbox,</span>
+<span class="add">+// title, source, status, askingPrice, expectedResale, difference,</span>
+<span class="add">+// identifyParts, unpriced, actions) it is always index 8 — pinned here as</span>
+<span class="add">+// a literal, not derived from SORTABLE_COLUMNS, so a header/body position</span>
+<span class="add">+// drift between the two would actually fail this test rather than</span>
+<span class="add">+// silently agree with itself.</span>
+<span class="add">+describe(&#x27;ListingList Pricing Status column badge (Req 3-4)&#x27;, () =&gt; {</span>
+<span class="add">+  const PRICING_STATUS_CELL_INDEX = 8;</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;renders &quot;Partially Priced&quot; for a listing with at least one unpriced part, and &quot;Fully Priced&quot; for one with none — never blank&#x27;, async () =&gt; {</span>
+<span class="add">+    const partial = makeListing({ id: &#x27;listing-partial&#x27;, title: &#x27;Partial Listing&#x27;, hasUnpricedParts: true });</span>
+<span class="add">+    const full = makeListing({ id: &#x27;listing-full&#x27;, title: &#x27;Full Listing&#x27;, hasUnpricedParts: false });</span>
+<span class="add">+    const el = await mount([partial, full]);</span>
+<span class="add">+</span>
+<span class="add">+    const partialRow = findListingRow(el, &#x27;Partial Listing&#x27;);</span>
+<span class="add">+    const fullRow = findListingRow(el, &#x27;Full Listing&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    expect(partialRow.cells[PRICING_STATUS_CELL_INDEX].textContent?.trim()).toBe(&#x27;Partially Priced&#x27;);</span>
+<span class="add">+    expect(partialRow.cells[PRICING_STATUS_CELL_INDEX].querySelector(&#x27;span&#x27;)).not.toBeNull();</span>
+<span class="add">+    expect(fullRow.cells[PRICING_STATUS_CELL_INDEX].textContent?.trim()).toBe(&#x27;Fully Priced&#x27;);</span>
+<span class="add">+    expect(fullRow.cells[PRICING_STATUS_CELL_INDEX].querySelector(&#x27;span&#x27;)).not.toBeNull();</span>
+<span class="add">+  });</span>
+<span class="add">+});</span>
+<span class="add">+</span>
+<span class="add">+// Req 6-8: the table&#x27;s own loading state, set by the host page while a</span>
+<span class="add">+// user-triggered refetch is in flight — pins that ListingList disables</span>
+<span class="add">+// every sortable header&#x27;s actual `disabled` attribute (not just its</span>
+<span class="add">+// styling), shows the status indicator, and keeps the existing rows</span>
+<span class="add">+// mounted underneath (never unmounted/replaced) whenever `isLoading` is</span>
+<span class="add">+// true, and does none of that when it is false/undefined.</span>
+<span class="add">+describe(&#x27;ListingList loading state (Req 6-8)&#x27;, () =&gt; {</span>
+<span class="add">+  it(&#x27;disables every sortable header and suppresses its click while isLoading is true&#x27;, async () =&gt; {</span>
+<span class="add">+    const clicked: string[] = [];</span>
+<span class="add">+    const el = await mount([makeListing()], { isLoading: true, onSortChange: (field) =&gt; clicked.push(field) });</span>
+<span class="add">+</span>
+<span class="add">+    const button = headerButton(el, &#x27;Title&#x27;);</span>
+<span class="add">+    expect(button.disabled).toBe(true);</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      button.click();</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    expect(clicked).toEqual([]);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;renders the role=&quot;status&quot; loading indicator only while isLoading is true, not when it is false&#x27;, async () =&gt; {</span>
+<span class="add">+    const loading = await mount([makeListing()], { isLoading: true });</span>
+<span class="add">+    expect(loading.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).not.toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    act(() =&gt; {</span>
+<span class="add">+      root?.unmount();</span>
+<span class="add">+    });</span>
+<span class="add">+    container?.remove();</span>
+<span class="add">+</span>
+<span class="add">+    const notLoading = await mount([makeListing()], { isLoading: false });</span>
+<span class="add">+    expect(notLoading.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;keeps the existing row mounted in the table (not unmounted/replaced) while isLoading is true&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount([makeListing({ title: &#x27;Stale Listing&#x27; })], { isLoading: true });</span>
+<span class="add">+    expect(findListingRow(el, &#x27;Stale Listing&#x27;)).toBeDefined();</span>
+<span class="add">+    expect(el.querySelectorAll(&#x27;tbody tr&#x27;).length).toBe(1);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> });</span></pre></div></div></li>
+<li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/listings-page.test.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Column renames, Loading state during a refetch) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -615,7 +615,7 @@ describe(&#x27;ListingsPage sortable columns (T3)&#x27;, () =&gt; {</div><pre><span class="ctx">     await clickHeader(el, &#x27;Title&#x27;);</span>
+<span class="ctx">     expect(lastFetchOptions().sortDirection).toBe(&#x27;desc&#x27;);</span>
+<span class="ctx"> </span>
+<span class="del">-    await clickHeader(el, &#x27;Difference&#x27;);</span>
+<span class="add">+    await clickHeader(el, &#x27;Expected Profit&#x27;);</span>
+<span class="ctx">     const options = lastFetchOptions();</span>
+<span class="ctx">     expect(options.sortBy).toBe(&#x27;difference&#x27;);</span>
+<span class="ctx">     expect(options.sortDirection).toBe(&#x27;asc&#x27;);</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -623,7 +623,7 @@ describe(&#x27;ListingsPage sortable columns (T3)&#x27;, () =&gt; {</div><pre><span class="ctx">     // sortBy, and the previously active column&#x27;s arrow is gone.</span>
+<span class="ctx">     expect(Object.keys(options).filter((key) =&gt; key.startsWith(&#x27;sort&#x27;))).toEqual([&#x27;sortBy&#x27;, &#x27;sortDirection&#x27;]);</span>
+<span class="ctx">     const titleHeader = findButton(el, &#x27;Title&#x27;).closest(&#x27;th&#x27;) as HTMLTableCellElement;</span>
+<span class="del">-    const differenceHeader = findButton(el, &#x27;Difference&#x27;).closest(&#x27;th&#x27;) as HTMLTableCellElement;</span>
+<span class="add">+    const differenceHeader = findButton(el, &#x27;Expected Profit&#x27;).closest(&#x27;th&#x27;) as HTMLTableCellElement;</span>
+<span class="ctx">     expect(titleHeader.getAttribute(&#x27;aria-sort&#x27;)).toBe(&#x27;none&#x27;);</span>
+<span class="ctx">     expect(titleHeader.querySelector(&#x27;[aria-label^=&quot;Sorted&quot;]&#x27;)).toBeNull();</span>
+<span class="ctx">     expect(differenceHeader.getAttribute(&#x27;aria-sort&#x27;)).toBe(&#x27;ascending&#x27;);</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -678,3 +678,77 @@ describe(&#x27;ListingsPage sortable columns (T3)&#x27;, () =&gt; {</div><pre><span class="ctx">     expect(header.getAttribute(&#x27;aria-sort&#x27;)).toBe(&#x27;descending&#x27;);</span>
+<span class="ctx">   }, 10_000);</span>
+<span class="ctx"> });</span>
+<span class="add">+</span>
+<span class="add">+// Req 6-8: the host page&#x27;s own loading-state wiring — shows the indicator</span>
+<span class="add">+// and disables the sort headers for a user-triggered refetch, but never</span>
+<span class="add">+// for the silent Req 12 background poll.</span>
+<span class="add">+describe(&#x27;ListingsPage loading state (Req 6-8)&#x27;, () =&gt; {</span>
+<span class="add">+  it(&#x27;shows the loading indicator and disables the sort headers while a sort-triggered fetch is pending, then clears both once it resolves&#x27;, async () =&gt; {</span>
+<span class="add">+    fetchListingsMock.mockResolvedValueOnce({ listings: [listingA, listingB], total: 2 });</span>
+<span class="add">+    fetchListingIdsMock.mockResolvedValue([]);</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount();</span>
+<span class="add">+    await waitFor(() =&gt; el.querySelectorAll(&#x27;tbody tr&#x27;).length === 2);</span>
+<span class="add">+    expect(el.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    const { promise, resolve } = Promise.withResolvers&lt;{ listings: ListingSummary[]; total: number }&gt;();</span>
+<span class="add">+    fetchListingsMock.mockReturnValueOnce(promise);</span>
+<span class="add">+</span>
+<span class="add">+    const callsBefore = fetchListingsMock.mock.calls.length;</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      findButton(el, &#x27;Title&#x27;).click();</span>
+<span class="add">+    });</span>
+<span class="add">+    await waitFor(() =&gt; fetchListingsMock.mock.calls.length &gt; callsBefore);</span>
+<span class="add">+</span>
+<span class="add">+    expect(el.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).not.toBeNull();</span>
+<span class="add">+    expect(findButton(el, &#x27;Title&#x27;).disabled).toBe(true);</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      resolve({ listings: [listingA, listingB], total: 2 });</span>
+<span class="add">+      await promise;</span>
+<span class="add">+    });</span>
+<span class="add">+    await waitFor(() =&gt; el.querySelector(&#x27;[role=&quot;status&quot;]&#x27;) === null);</span>
+<span class="add">+</span>
+<span class="add">+    expect(el.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+    expect(findButton(el, &#x27;Title&#x27;).disabled).toBe(false);</span>
+<span class="add">+  }, 10_000);</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;does not show the loading indicator or disable the headers for the silent Req 12 polling reload&#x27;, async () =&gt; {</span>
+<span class="add">+    vi.useFakeTimers();</span>
+<span class="add">+    try {</span>
+<span class="add">+      fetchListingsMock.mockResolvedValueOnce({</span>
+<span class="add">+        listings: [{ ...listingA, identifyPartsStatus: { stage: &#x27;identifying&#x27;, errorMessage: null } }],</span>
+<span class="add">+        total: 1,</span>
+<span class="add">+      });</span>
+<span class="add">+      fetchListingIdsMock.mockResolvedValue([listingA.id]);</span>
+<span class="add">+</span>
+<span class="add">+      const el = await mount();</span>
+<span class="add">+      expect(fetchListingsMock).toHaveBeenCalledTimes(1);</span>
+<span class="add">+      expect(el.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+      // Hold the poll&#x27;s own fetch open, so the assertions below land</span>
+<span class="add">+      // while it&#x27;s actually pending — a mutation that made the poll</span>
+<span class="add">+      // non-silent would show the indicator/disable the header during</span>
+<span class="add">+      // exactly this window; checking only after it resolves (near</span>
+<span class="add">+      // instantly, under fake timers) would never observe that.</span>
+<span class="add">+      const { promise, resolve } = Promise.withResolvers&lt;{ listings: ListingSummary[]; total: number }&gt;();</span>
+<span class="add">+      fetchListingsMock.mockReturnValueOnce(promise);</span>
+<span class="add">+</span>
+<span class="add">+      await act(async () =&gt; {</span>
+<span class="add">+        await vi.advanceTimersByTimeAsync(2000);</span>
+<span class="add">+      });</span>
+<span class="add">+</span>
+<span class="add">+      expect(fetchListingsMock).toHaveBeenCalledTimes(2);</span>
+<span class="add">+      expect(el.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+      expect(findButton(el, &#x27;Title&#x27;).disabled).toBe(false);</span>
+<span class="add">+</span>
+<span class="add">+      await act(async () =&gt; {</span>
+<span class="add">+        resolve({ listings: [{ ...listingA, identifyPartsStatus: { stage: &#x27;completed&#x27;, errorMessage: null } }], total: 1 });</span>
+<span class="add">+        await promise;</span>
+<span class="add">+      });</span>
+<span class="add">+      expect(el.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+    } finally {</span>
+<span class="add">+      vi.useRealTimers();</span>
+<span class="add">+    }</span>
+<span class="add">+  }, 10_000);</span>
+<span class="add">+});</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Pricing Status badge</span><span class="meta">4 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">The old &quot;Unpriced&quot; badge only appeared for listings with an unpriced part and rendered</p>
+<p class="note">Tasks: T1</p>
+<div class="flow"><svg viewBox="0 0 442 108" role="img" aria-label="data flow" class="flow-svg">
+<rect x="8" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="8" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">hasUnpricedParts</div><div class="flow-note">true -&gt; &quot;Partially Priced&quot; (red)</div></div></foreignObject>
+<line x1="198" y1="54" x2="238" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="244" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="244" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">hasUnpricedParts</div><div class="flow-note">false -&gt; &quot;Fully Priced&quot; (teal)</div></div></foreignObject>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" class="flow-arrowhead"/></marker></defs>
+</svg></div>
+<ul class="files"><li class="file-group">
+<p class="file-note">deleted — renamed into pricing-status-badge.tsx below.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/features/listings/unpriced-parts-badge.tsx</span><span class="tag">deleted</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -1,32 +0,0 @@</div><pre><span class="del">-import { cn } from &#x27;@/lib/utils&#x27;;</span>
+<span class="del">-</span>
+<span class="del">-interface UnpricedPartsBadgeProps {</span>
+<span class="del">-  hasUnpricedParts: boolean;</span>
+<span class="del">-  className?: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="del">-/**</span>
+<span class="del">- * Small pill marking a Listing that has at least one identified part with no</span>
+<span class="del">- * resale price set (listing.hasUnpricedParts). Displayed in the listings</span>
+<span class="del">- * queue table. Uses destructive (red) styling to distinguish it visually</span>
+<span class="del">- * from NonWorkingBadge (amber), EbayScanBadge (emerald), and</span>
+<span class="del">- * AiSuggestedBadge (violet) — each badge conveys a separate concern, so they</span>
+<span class="del">- * must read as distinct signals on the same screen. Renders nothing when</span>
+<span class="del">- * the listing has no unpriced parts.</span>
+<span class="del">- */</span>
+<span class="del">-export function UnpricedPartsBadge({ hasUnpricedParts, className }: UnpricedPartsBadgeProps) {</span>
+<span class="del">-  if (!hasUnpricedParts) {</span>
+<span class="del">-    return null;</span>
+<span class="del">-  }</span>
+<span class="del">-</span>
+<span class="del">-  return (</span>
+<span class="del">-    &lt;span</span>
+<span class="del">-      className={cn(</span>
+<span class="del">-        &#x27;inline-flex items-center rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive&#x27;,</span>
+<span class="del">-        className,</span>
+<span class="del">-      )}</span>
+<span class="del">-    &gt;</span>
+<span class="del">-      Unpriced</span>
+<span class="del">-    &lt;/span&gt;</span>
+<span class="del">-  );</span>
+<span class="del">-}</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">new component `PricingStatusBadge`, replacing `UnpricedPartsBadge`; always renders a pill, never `null`.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/features/listings/pricing-status-badge.tsx</span><span class="tag">added</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -0,0 +1,42 @@</div><pre><span class="add">+import { cn } from &#x27;@/lib/utils&#x27;;</span>
+<span class="add">+</span>
+<span class="add">+interface PricingStatusBadgeProps {</span>
+<span class="add">+  hasUnpricedParts: boolean;</span>
+<span class="add">+  className?: string;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+/**</span>
+<span class="add">+ * Pill marking a Listing&#x27;s pricing state in the &quot;Pricing Status&quot; column of</span>
+<span class="add">+ * the listings queue table, keyed on listing.hasUnpricedParts. Always</span>
+<span class="add">+ * renders — unlike the badges it sits beside (EbayScanBadge, NonWorkingBadge,</span>
+<span class="add">+ * AiSuggestedBadge) it is never absent, just one of two states: &quot;Partially</span>
+<span class="add">+ * Priced&quot; (destructive/red, matching the old &quot;Unpriced&quot; pill&#x27;s styling) when</span>
+<span class="add">+ * at least one identified part has no resale price set, or &quot;Fully Priced&quot;</span>
+<span class="add">+ * (teal, matching IdentifyPartsStatusBadge&#x27;s &quot;completed&quot;-stage pill) once</span>
+<span class="add">+ * every identified part has a price.</span>
+<span class="add">+ */</span>
+<span class="add">+export function PricingStatusBadge({ hasUnpricedParts, className }: PricingStatusBadgeProps) {</span>
+<span class="add">+  if (hasUnpricedParts) {</span>
+<span class="add">+    return (</span>
+<span class="add">+      &lt;span</span>
+<span class="add">+        className={cn(</span>
+<span class="add">+          &#x27;inline-flex items-center rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive&#x27;,</span>
+<span class="add">+          className,</span>
+<span class="add">+        )}</span>
+<span class="add">+      &gt;</span>
+<span class="add">+        Partially Priced</span>
+<span class="add">+      &lt;/span&gt;</span>
+<span class="add">+    );</span>
+<span class="add">+  }</span>
+<span class="add">+</span>
+<span class="add">+  return (</span>
+<span class="add">+    &lt;span</span>
+<span class="add">+      className={cn(</span>
+<span class="add">+        &#x27;inline-flex items-center rounded-full border border-teal-600/40 bg-teal-600/10 px-2 py-0.5 text-xs font-medium text-teal-700&#x27;,</span>
+<span class="add">+        className,</span>
+<span class="add">+      )}</span>
+<span class="add">+    &gt;</span>
+<span class="add">+      Fully Priced</span>
+<span class="add">+    &lt;/span&gt;</span>
+<span class="add">+  );</span>
+<span class="add">+}</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">imports and renders `PricingStatusBadge` in place of `UnpricedPartsBadge`.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/features/listings/listing-list.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Column renames, Pricing Status badge, Loading state during a refetch) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -7,7 +7,7 @@ import { ListingForm } from &#x27;@/features/listings/listing-form&#x27;;</div><pre><span class="ctx"> import { EbayScanBadge } from &#x27;@/features/listings/ebay-scan-badge&#x27;;</span>
+<span class="ctx"> import { NonWorkingBadge } from &#x27;@/features/listings/non-working-badge&#x27;;</span>
+<span class="ctx"> import { IdentifyPartsStatusBadge } from &#x27;@/features/listings/identify-parts-status-badge&#x27;;</span>
+<span class="del">-import { UnpricedPartsBadge } from &#x27;@/features/listings/unpriced-parts-badge&#x27;;</span>
+<span class="add">+import { PricingStatusBadge } from &#x27;@/features/listings/pricing-status-badge&#x27;;</span>
+<span class="ctx"> import { cn } from &#x27;@/lib/utils&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> interface ListingListProps {</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -51,6 +51,12 @@ interface ListingListProps {</div><pre><span class="ctx">   // field active (ascending) or, when it is already active, to flip its</span>
+<span class="ctx">   // direction. This component holds no sort state of its own.</span>
+<span class="ctx">   onSortChange: (field: ListingSortField) =&gt; void;</span>
+<span class="add">+  // Req 8: true while the page above has a listings fetch in flight that</span>
+<span class="add">+  // should visibly block interaction with the currently-displayed (now</span>
+<span class="add">+  // stale) rows — every sortable header disables its click handler and the</span>
+<span class="add">+  // whole table reads as inert, while the rows themselves stay visible</span>
+<span class="add">+  // underneath rather than being replaced by a full-page spinner.</span>
+<span class="add">+  isLoading?: boolean;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="ctx"> // One table body plus, for whichever row is open, an extra full-width row</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -70,9 +76,9 @@ const SORTABLE_COLUMNS: { field: ListingSortField; label: string }[] = [</div><pre><span class="ctx">   { field: &#x27;status&#x27;, label: &#x27;Status&#x27; },</span>
+<span class="ctx">   { field: &#x27;askingPrice&#x27;, label: &#x27;Asking Price&#x27; },</span>
+<span class="ctx">   { field: &#x27;expectedResale&#x27;, label: &#x27;Expected Resale&#x27; },</span>
+<span class="del">-  { field: &#x27;difference&#x27;, label: &#x27;Difference&#x27; },</span>
+<span class="del">-  { field: &#x27;identifyParts&#x27;, label: &#x27;Identify Parts&#x27; },</span>
+<span class="del">-  { field: &#x27;unpriced&#x27;, label: &#x27;Unpriced&#x27; },</span>
+<span class="add">+  { field: &#x27;difference&#x27;, label: &#x27;Expected Profit&#x27; },</span>
+<span class="add">+  { field: &#x27;identifyParts&#x27;, label: &#x27;Sourcing Status&#x27; },</span>
+<span class="add">+  { field: &#x27;unpriced&#x27;, label: &#x27;Pricing Status&#x27; },</span>
+<span class="ctx"> ];</span>
+<span class="ctx"> </span>
+<span class="ctx"> /**</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -82,6 +88,9 @@ const SORTABLE_COLUMNS: { field: ListingSortField; label: string }[] = [</div><pre><span class="ctx">  * descending — only when its own field is the active one, so exactly one</span>
+<span class="ctx">  * header in the table ever shows an indicator. `aria-sort` carries the same</span>
+<span class="ctx">  * information for assistive tech, reading `none` on every inactive column.</span>
+<span class="add">+ * Req 8: `isLoading` disables the button while a fetch for the table&#x27;s own</span>
+<span class="add">+ * rows is in flight, so a click can&#x27;t queue a second sort change against</span>
+<span class="add">+ * data that&#x27;s already stale and about to be replaced.</span>
+<span class="ctx">  */</span>
+<span class="ctx"> function SortableHeader({</span>
+<span class="ctx">   field,</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -89,12 +98,14 @@ function SortableHeader({</div><pre><span class="ctx">   sortBy,</span>
+<span class="ctx">   sortDirection,</span>
+<span class="ctx">   onSortChange,</span>
+<span class="add">+  isLoading,</span>
+<span class="ctx"> }: {</span>
+<span class="ctx">   field: ListingSortField;</span>
+<span class="ctx">   label: string;</span>
+<span class="ctx">   sortBy?: ListingSortField;</span>
+<span class="ctx">   sortDirection?: ListingSortDirection;</span>
+<span class="ctx">   onSortChange: (field: ListingSortField) =&gt; void;</span>
+<span class="add">+  isLoading?: boolean;</span>
+<span class="ctx"> }) {</span>
+<span class="ctx">   const isActive = sortBy === field;</span>
+<span class="ctx">   // A field can only ever be active ascending or descending; an active</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -107,8 +118,9 @@ function SortableHeader({</div><pre><span class="ctx">     &lt;th className=&quot;px-4 py-2 font-medium&quot; aria-sort={isActive ? (isDescending ? &#x27;descending&#x27; : &#x27;ascending&#x27;) : &#x27;none&#x27;}&gt;</span>
+<span class="ctx">       &lt;button</span>
+<span class="ctx">         type=&quot;button&quot;</span>
+<span class="del">-        className=&quot;inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground&quot;</span>
+<span class="add">+        className=&quot;inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50&quot;</span>
+<span class="ctx">         onClick={() =&gt; onSortChange(field)}</span>
+<span class="add">+        disabled={isLoading}</span>
+<span class="ctx">       &gt;</span>
+<span class="ctx">         {label}</span>
+<span class="ctx">         {isActive &amp;&amp; &lt;Arrow className=&quot;h-3.5 w-3.5 shrink-0&quot; aria-label={`Sorted ${isDescending ? &#x27;descending&#x27; : &#x27;ascending&#x27;}`} /&gt;}</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -145,6 +157,7 @@ export function ListingList({</div><pre><span class="ctx">   sortBy,</span>
+<span class="ctx">   sortDirection,</span>
+<span class="ctx">   onSortChange,</span>
+<span class="add">+  isLoading,</span>
+<span class="ctx"> }: ListingListProps) {</span>
+<span class="ctx">   const headerCheckboxRef = useRef&lt;HTMLInputElement&gt;(null);</span>
+<span class="ctx"> </span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -169,7 +182,14 @@ export function ListingList({</div><pre><span class="ctx"> </span>
+<span class="ctx">   return (</span>
+<span class="ctx">     &lt;div className=&quot;overflow-x-auto&quot;&gt;</span>
+<span class="del">-      &lt;table className=&quot;w-full border-collapse text-left text-sm&quot;&gt;</span>
+<span class="add">+      {isLoading &amp;&amp; (</span>
+<span class="add">+        &lt;div className=&quot;mb-2 flex items-center gap-2 text-sm text-muted-foreground&quot; role=&quot;status&quot;&gt;</span>
+<span class="add">+          {/* Decorative spinner glyph, matching LoadingSpinner&#x27;s own markup; the text label carries the accessible status */}</span>
+<span class="add">+          &lt;span className=&quot;h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent&quot; aria-hidden=&quot;true&quot; /&gt;</span>
+<span class="add">+          &lt;span&gt;Loading…&lt;/span&gt;</span>
+<span class="add">+        &lt;/div&gt;</span>
+<span class="add">+      )}</span>
+<span class="add">+      &lt;table className={cn(&#x27;w-full border-collapse text-left text-sm&#x27;, isLoading &amp;&amp; &#x27;pointer-events-none opacity-60&#x27;)}&gt;</span>
+<span class="ctx">         &lt;thead&gt;</span>
+<span class="ctx">           &lt;tr className=&quot;border-b border-border text-muted-foreground&quot;&gt;</span>
+<span class="ctx">             &lt;th className=&quot;w-8 px-4 py-2 font-medium&quot;&gt;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -189,6 +209,7 @@ export function ListingList({</div><pre><span class="ctx">                 sortBy={sortBy}</span>
+<span class="ctx">                 sortDirection={sortDirection}</span>
+<span class="ctx">                 onSortChange={onSortChange}</span>
+<span class="add">+                isLoading={isLoading}</span>
+<span class="ctx">               /&gt;</span>
+<span class="ctx">             ))}</span>
+<span class="ctx">             &lt;th className=&quot;px-4 py-2 font-medium&quot; /&gt;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -234,7 +255,7 @@ export function ListingList({</div><pre><span class="ctx">                     &lt;IdentifyPartsStatusBadge status={listing.identifyPartsStatus} /&gt;</span>
+<span class="ctx">                   &lt;/td&gt;</span>
+<span class="ctx">                   &lt;td className=&quot;px-4 py-3&quot;&gt;</span>
+<span class="del">-                    &lt;UnpricedPartsBadge hasUnpricedParts={listing.hasUnpricedParts} /&gt;</span>
+<span class="add">+                    &lt;PricingStatusBadge hasUnpricedParts={listing.hasUnpricedParts} /&gt;</span>
+<span class="ctx">                   &lt;/td&gt;</span>
+<span class="ctx">                   &lt;td className=&quot;whitespace-nowrap px-4 py-3 text-right&quot;&gt;</span>
+<span class="ctx">                     {listing.status === &#x27;open&#x27; &amp;&amp; (</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">the old &quot;badge or nothing&quot; assertions become &quot;Partially Priced&quot; / &quot;Fully Priced&quot; assertions, both always present.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/listing-list.test.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Column renames, Pricing Status badge, Loading state during a refetch) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -59,11 +59,13 @@ function Harness({</div><pre><span class="ctx">   sortBy,</span>
+<span class="ctx">   sortDirection,</span>
+<span class="ctx">   onSortChange = () =&gt; {},</span>
+<span class="add">+  isLoading,</span>
+<span class="ctx"> }: {</span>
+<span class="ctx">   listings: ListingSummary[];</span>
+<span class="ctx">   sortBy?: ListingSortField;</span>
+<span class="ctx">   sortDirection?: ListingSortDirection;</span>
+<span class="ctx">   onSortChange?: (field: ListingSortField) =&gt; void;</span>
+<span class="add">+  isLoading?: boolean;</span>
+<span class="ctx"> }) {</span>
+<span class="ctx">   const [editingListingId, setEditingListingId] = useState&lt;string | null&gt;(null);</span>
+<span class="ctx">   const [selectedIds, setSelectedIds] = useState&lt;Set&lt;string&gt;&gt;(new Set());</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -104,6 +106,7 @@ function Harness({</div><pre><span class="ctx">       sortBy={sortBy}</span>
+<span class="ctx">       sortDirection={sortDirection}</span>
+<span class="ctx">       onSortChange={onSortChange}</span>
+<span class="add">+      isLoading={isLoading}</span>
+<span class="ctx">     /&gt;</span>
+<span class="ctx">   );</span>
+<span class="ctx"> }</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -121,16 +124,17 @@ afterEach(() =&gt; {</div><pre><span class="ctx"> });</span>
+<span class="ctx"> </span>
+<span class="ctx"> // Mounts the harness. `sort` carries the optional active-sort props (and a</span>
+<span class="del">-// click spy) the sortable-header tests need; the older tests pass none and</span>
+<span class="del">-// get the unsorted default.</span>
+<span class="add">+// click spy) the sortable-header tests need, plus the Req 6-8 `isLoading`</span>
+<span class="add">+// flag the loading-state tests need; the older tests pass none and get the</span>
+<span class="add">+// unsorted, not-loading default.</span>
+<span class="ctx"> async function mount(</span>
+<span class="ctx">   listings: ListingSummary[],</span>
+<span class="del">-  sort: { sortBy?: ListingSortField; sortDirection?: ListingSortDirection; onSortChange?: (field: ListingSortField) =&gt; void } = {},</span>
+<span class="add">+  sort: { sortBy?: ListingSortField; sortDirection?: ListingSortDirection; onSortChange?: (field: ListingSortField) =&gt; void; isLoading?: boolean } = {},</span>
+<span class="ctx"> ): Promise&lt;HTMLDivElement&gt; {</span>
+<span class="ctx">   container = document.createElement(&#x27;div&#x27;);</span>
+<span class="ctx">   await act(async () =&gt; {</span>
+<span class="ctx">     root = createRoot(container!);</span>
+<span class="del">-    root.render(&lt;Harness listings={listings} sortBy={sort.sortBy} sortDirection={sort.sortDirection} onSortChange={sort.onSortChange} /&gt;);</span>
+<span class="add">+    root.render(&lt;Harness listings={listings} sortBy={sort.sortBy} sortDirection={sort.sortDirection} onSortChange={sort.onSortChange} isLoading={sort.isLoading} /&gt;);</span>
+<span class="ctx">   });</span>
+<span class="ctx">   return container;</span>
+<span class="ctx"> }</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -153,6 +157,18 @@ function findListingRow(el: HTMLElement, title: string): HTMLTableRowElement {</div><pre><span class="ctx">   return row as HTMLTableRowElement;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="add">+function headerCells(el: HTMLElement): HTMLTableCellElement[] {</span>
+<span class="add">+  return Array.from(el.querySelectorAll(&#x27;thead th&#x27;));</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+function headerButton(el: HTMLElement, label: string): HTMLButtonElement {</span>
+<span class="add">+  const button = Array.from(el.querySelectorAll(&#x27;thead button&#x27;)).find((b) =&gt; b.textContent?.trim() === label);</span>
+<span class="add">+  if (!button) {</span>
+<span class="add">+    throw new Error(`No sortable header button found for &quot;${label}&quot;`);</span>
+<span class="add">+  }</span>
+<span class="add">+  return button as HTMLButtonElement;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="ctx"> describe(&#x27;ListingList title click -&gt; inline edit row&#x27;, () =&gt; {</span>
+<span class="ctx">   it(&#x27;has no trailing Edit button column — the title itself is the click trigger&#x27;, async () =&gt; {</span>
+<span class="ctx">     const el = await mount([makeListing()]);</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -315,19 +331,7 @@ describe(&#x27;ListingList Accept/Reject gating and per-row in-flight disable (Req 4)</div><pre><span class="ctx"> // are clickable, which field each one reports, and that the direction</span>
+<span class="ctx"> // arrow appears on the active column only.</span>
+<span class="ctx"> describe(&#x27;ListingList sortable column headers&#x27;, () =&gt; {</span>
+<span class="del">-  const SORTABLE_LABELS = [&#x27;Title&#x27;, &#x27;Source&#x27;, &#x27;Status&#x27;, &#x27;Asking Price&#x27;, &#x27;Expected Resale&#x27;, &#x27;Difference&#x27;, &#x27;Identify Parts&#x27;, &#x27;Unpriced&#x27;];</span>
+<span class="del">-</span>
+<span class="del">-  function headerCells(el: HTMLElement): HTMLTableCellElement[] {</span>
+<span class="del">-    return Array.from(el.querySelectorAll(&#x27;thead th&#x27;));</span>
+<span class="del">-  }</span>
+<span class="del">-</span>
+<span class="del">-  function headerButton(el: HTMLElement, label: string): HTMLButtonElement {</span>
+<span class="del">-    const button = Array.from(el.querySelectorAll(&#x27;thead button&#x27;)).find((b) =&gt; b.textContent?.trim() === label);</span>
+<span class="del">-    if (!button) {</span>
+<span class="del">-      throw new Error(`No sortable header button found for &quot;${label}&quot;`);</span>
+<span class="del">-    }</span>
+<span class="del">-    return button as HTMLButtonElement;</span>
+<span class="del">-  }</span>
+<span class="add">+  const SORTABLE_LABELS = [&#x27;Title&#x27;, &#x27;Source&#x27;, &#x27;Status&#x27;, &#x27;Asking Price&#x27;, &#x27;Expected Resale&#x27;, &#x27;Expected Profit&#x27;, &#x27;Sourcing Status&#x27;, &#x27;Pricing Status&#x27;];</span>
+<span class="ctx"> </span>
+<span class="ctx">   it(&#x27;makes exactly the 8 data-bearing headers clickable, each reporting its own sort field, and leaves the checkbox and actions columns plain&#x27;, async () =&gt; {</span>
+<span class="ctx">     const clicked: string[] = [];</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -393,7 +397,7 @@ describe(&#x27;ListingList sortable column headers&#x27;, () =&gt; {</div><pre><span class="ctx">     const arrows = Array.from(el.querySelectorAll(&#x27;thead [aria-label^=&quot;Sorted&quot;]&#x27;));</span>
+<span class="ctx">     expect(arrows).toHaveLength(1);</span>
+<span class="ctx">     expect(arrows[0].getAttribute(&#x27;aria-label&#x27;)).toBe(&#x27;Sorted descending&#x27;);</span>
+<span class="del">-    expect(headerButton(el, &#x27;Difference&#x27;).contains(arrows[0])).toBe(true);</span>
+<span class="add">+    expect(headerButton(el, &#x27;Expected Profit&#x27;).contains(arrows[0])).toBe(true);</span>
+<span class="ctx">     // The rendered icon itself differs, not just its label — a direction</span>
+<span class="ctx">     // indicator that drew the same glyph both ways would indicate nothing.</span>
+<span class="ctx">     expect(ascendingGlyph).not.toBe(&#x27;&#x27;);</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -403,45 +407,87 @@ describe(&#x27;ListingList sortable column headers&#x27;, () =&gt; {</div><pre><span class="ctx">     ]);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> </span>
+<span class="del">-  // Req 8, 9: clicking the new Unpriced header reports &#x27;unpriced&#x27; to the</span>
+<span class="del">-  // page exactly like every other header — no direction is attached to the</span>
+<span class="del">-  // click itself (that&#x27;s the page&#x27;s own first-click-is-ascending logic,</span>
+<span class="del">-  // already covered above for the other 7 columns and not re-tested here),</span>
+<span class="del">-  // this pins only that the new column&#x27;s own click wiring is correct.</span>
+<span class="del">-  it(&#x27;clicking the Unpriced header while inactive reports sortBy &quot;unpriced&quot; and nothing else&#x27;, async () =&gt; {</span>
+<span class="add">+  // Req 3, 9: clicking the renamed Pricing Status header still reports the</span>
+<span class="add">+  // unchanged &#x27;unpriced&#x27; sort field to the page — no direction is attached</span>
+<span class="add">+  // to the click itself (that&#x27;s the page&#x27;s own first-click-is-ascending</span>
+<span class="add">+  // logic, already covered above for the other 7 columns and not</span>
+<span class="add">+  // re-tested here), this pins only that the renamed column&#x27;s own click</span>
+<span class="add">+  // wiring is correct.</span>
+<span class="add">+  it(&#x27;clicking the Pricing Status header while inactive reports sortBy &quot;unpriced&quot; and nothing else&#x27;, async () =&gt; {</span>
+<span class="ctx">     const clicked: string[] = [];</span>
+<span class="ctx">     const el = await mount([makeListing()], { onSortChange: (field) =&gt; clicked.push(field) });</span>
+<span class="ctx"> </span>
+<span class="ctx">     await act(async () =&gt; {</span>
+<span class="del">-      headerButton(el, &#x27;Unpriced&#x27;).click();</span>
+<span class="add">+      headerButton(el, &#x27;Pricing Status&#x27;).click();</span>
+<span class="ctx">     });</span>
+<span class="ctx"> </span>
+<span class="ctx">     expect(clicked).toEqual([&#x27;unpriced&#x27;]);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> });</span>
+<span class="ctx"> </span>
+<span class="del">-// The new Unpriced column&#x27;s badge cell (Req 8). The column sits</span>
+<span class="del">-// immediately after Identify Parts and before the trailing Accept/Reject</span>
+<span class="del">-// actions column, so in each row&#x27;s &lt;td&gt; list (checkbox, title, source,</span>
+<span class="del">-// status, askingPrice, expectedResale, difference, identifyParts,</span>
+<span class="del">-// unpriced, actions) it is always index 8 — pinned here as a literal, not</span>
+<span class="del">-// derived from SORTABLE_COLUMNS, so a header/body position drift between</span>
+<span class="del">-// the two would actually fail this test rather than silently agree with</span>
+<span class="del">-// itself.</span>
+<span class="del">-describe(&#x27;ListingList Unpriced column badge (Req 8)&#x27;, () =&gt; {</span>
+<span class="del">-  const UNPRICED_CELL_INDEX = 8;</span>
+<span class="del">-</span>
+<span class="del">-  it(&#x27;renders the &quot;Unpriced&quot; badge text for a listing with at least one unpriced part, and renders nothing for one with none&#x27;, async () =&gt; {</span>
+<span class="del">-    const unpriced = makeListing({ id: &#x27;listing-unpriced&#x27;, title: &#x27;Unpriced Listing&#x27;, hasUnpricedParts: true });</span>
+<span class="del">-    const priced = makeListing({ id: &#x27;listing-priced&#x27;, title: &#x27;Priced Listing&#x27;, hasUnpricedParts: false });</span>
+<span class="del">-    const el = await mount([unpriced, priced]);</span>
+<span class="del">-</span>
+<span class="del">-    const unpricedRow = findListingRow(el, &#x27;Unpriced Listing&#x27;);</span>
+<span class="del">-    const pricedRow = findListingRow(el, &#x27;Priced Listing&#x27;);</span>
+<span class="del">-</span>
+<span class="del">-    expect(unpricedRow.cells[UNPRICED_CELL_INDEX].textContent?.trim()).toBe(&#x27;Unpriced&#x27;);</span>
+<span class="del">-    expect(unpricedRow.cells[UNPRICED_CELL_INDEX].querySelector(&#x27;span&#x27;)).not.toBeNull();</span>
+<span class="del">-    expect(pricedRow.cells[UNPRICED_CELL_INDEX].textContent?.trim()).toBe(&#x27;&#x27;);</span>
+<span class="del">-    expect(pricedRow.cells[UNPRICED_CELL_INDEX].querySelector(&#x27;span&#x27;)).toBeNull();</span>
+<span class="add">+// The renamed Pricing Status column&#x27;s badge cell (Req 3-4). The column</span>
+<span class="add">+// sits immediately after Sourcing Status and before the trailing</span>
+<span class="add">+// Accept/Reject actions column, so in each row&#x27;s &lt;td&gt; list (checkbox,</span>
+<span class="add">+// title, source, status, askingPrice, expectedResale, difference,</span>
+<span class="add">+// identifyParts, unpriced, actions) it is always index 8 — pinned here as</span>
+<span class="add">+// a literal, not derived from SORTABLE_COLUMNS, so a header/body position</span>
+<span class="add">+// drift between the two would actually fail this test rather than</span>
+<span class="add">+// silently agree with itself.</span>
+<span class="add">+describe(&#x27;ListingList Pricing Status column badge (Req 3-4)&#x27;, () =&gt; {</span>
+<span class="add">+  const PRICING_STATUS_CELL_INDEX = 8;</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;renders &quot;Partially Priced&quot; for a listing with at least one unpriced part, and &quot;Fully Priced&quot; for one with none — never blank&#x27;, async () =&gt; {</span>
+<span class="add">+    const partial = makeListing({ id: &#x27;listing-partial&#x27;, title: &#x27;Partial Listing&#x27;, hasUnpricedParts: true });</span>
+<span class="add">+    const full = makeListing({ id: &#x27;listing-full&#x27;, title: &#x27;Full Listing&#x27;, hasUnpricedParts: false });</span>
+<span class="add">+    const el = await mount([partial, full]);</span>
+<span class="add">+</span>
+<span class="add">+    const partialRow = findListingRow(el, &#x27;Partial Listing&#x27;);</span>
+<span class="add">+    const fullRow = findListingRow(el, &#x27;Full Listing&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    expect(partialRow.cells[PRICING_STATUS_CELL_INDEX].textContent?.trim()).toBe(&#x27;Partially Priced&#x27;);</span>
+<span class="add">+    expect(partialRow.cells[PRICING_STATUS_CELL_INDEX].querySelector(&#x27;span&#x27;)).not.toBeNull();</span>
+<span class="add">+    expect(fullRow.cells[PRICING_STATUS_CELL_INDEX].textContent?.trim()).toBe(&#x27;Fully Priced&#x27;);</span>
+<span class="add">+    expect(fullRow.cells[PRICING_STATUS_CELL_INDEX].querySelector(&#x27;span&#x27;)).not.toBeNull();</span>
+<span class="add">+  });</span>
+<span class="add">+});</span>
+<span class="add">+</span>
+<span class="add">+// Req 6-8: the table&#x27;s own loading state, set by the host page while a</span>
+<span class="add">+// user-triggered refetch is in flight — pins that ListingList disables</span>
+<span class="add">+// every sortable header&#x27;s actual `disabled` attribute (not just its</span>
+<span class="add">+// styling), shows the status indicator, and keeps the existing rows</span>
+<span class="add">+// mounted underneath (never unmounted/replaced) whenever `isLoading` is</span>
+<span class="add">+// true, and does none of that when it is false/undefined.</span>
+<span class="add">+describe(&#x27;ListingList loading state (Req 6-8)&#x27;, () =&gt; {</span>
+<span class="add">+  it(&#x27;disables every sortable header and suppresses its click while isLoading is true&#x27;, async () =&gt; {</span>
+<span class="add">+    const clicked: string[] = [];</span>
+<span class="add">+    const el = await mount([makeListing()], { isLoading: true, onSortChange: (field) =&gt; clicked.push(field) });</span>
+<span class="add">+</span>
+<span class="add">+    const button = headerButton(el, &#x27;Title&#x27;);</span>
+<span class="add">+    expect(button.disabled).toBe(true);</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      button.click();</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    expect(clicked).toEqual([]);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;renders the role=&quot;status&quot; loading indicator only while isLoading is true, not when it is false&#x27;, async () =&gt; {</span>
+<span class="add">+    const loading = await mount([makeListing()], { isLoading: true });</span>
+<span class="add">+    expect(loading.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).not.toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    act(() =&gt; {</span>
+<span class="add">+      root?.unmount();</span>
+<span class="add">+    });</span>
+<span class="add">+    container?.remove();</span>
+<span class="add">+</span>
+<span class="add">+    const notLoading = await mount([makeListing()], { isLoading: false });</span>
+<span class="add">+    expect(notLoading.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;keeps the existing row mounted in the table (not unmounted/replaced) while isLoading is true&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount([makeListing({ title: &#x27;Stale Listing&#x27; })], { isLoading: true });</span>
+<span class="add">+    expect(findListingRow(el, &#x27;Stale Listing&#x27;)).toBeDefined();</span>
+<span class="add">+    expect(el.querySelectorAll(&#x27;tbody tr&#x27;).length).toBe(1);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> });</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Loading state during a refetch</span><span class="meta">4 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">A sort, filter, or page change now visibly blocks the table while its request is in</p>
+<p class="note">Tasks: T1</p>
+<div class="flow"><svg viewBox="0 0 914 108" role="img" aria-label="data flow" class="flow-svg">
+<rect x="8" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="8" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">User clicks header/filter/page</div><div class="flow-note">sets isLoadingListings true</div></div></foreignObject>
+<line x1="198" y1="54" x2="238" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="244" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="244" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">ListingList renders</div><div class="flow-note">rows dimmed, spinner shown, headers disabled</div></div></foreignObject>
+<line x1="434" y1="54" x2="474" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="480" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="480" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Request resolves</div><div class="flow-note">isLoadingListings false, table re-enabled</div></div></foreignObject>
+<line x1="670" y1="54" x2="710" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="716" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="716" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Background poll (silent</div><div class="flow-note">true): bypasses loading state entirely</div></div></foreignObject>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" class="flow-arrowhead"/></marker></defs>
+</svg></div>
+<ul class="files"><li class="file-group">
+<p class="file-note">adds `isLoadingListings` state; `loadListings` now accepts `{ silent?: boolean }`, toggling the loading flag around the fetch except when called silently; the 2-second poll&#x27;s own call becomes `loadListings({ silent: true })`, every other call site unchanged.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/routes/listings-page.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -62,6 +62,13 @@ export function ListingsPage() {</div><pre><span class="ctx">   // pages, which is what &quot;select all&quot; has to resolve to — the current</span>
+<span class="ctx">   // page&#x27;s rows are only a window onto it.</span>
+<span class="ctx">   const [allFilteredIds, setAllFilteredIds] = useState&lt;string[]&gt;([]);</span>
+<span class="add">+  // Req 8: true while a listings fetch triggered by a user-visible action</span>
+<span class="add">+  // (filter/page/sort change, or a post-edit/accept/reject reload) is in</span>
+<span class="add">+  // flight — passed to ListingList so it can disable its sortable headers</span>
+<span class="add">+  // and dim the stale rows underneath. The Req 12 background poll fetches</span>
+<span class="add">+  // silently and never touches this, since re-polling for a status badge</span>
+<span class="add">+  // to advance shouldn&#x27;t flicker the whole table.</span>
+<span class="add">+  const [isLoadingListings, setIsLoadingListings] = useState(false);</span>
+<span class="ctx"> </span>
+<span class="ctx">   // Which Listing&#x27;s inline edit row is open, and its full ListingDetail</span>
+<span class="ctx">   // (fetched, with Expected Parts, once a row opens) — mirrors the old</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -80,8 +87,11 @@ export function ListingsPage() {</div><pre><span class="ctx">   // below the clicked row — so this only ever toggles the create form.</span>
+<span class="ctx">   const [panel, setPanel] = useState&lt;PanelState&gt;({ mode: &#x27;list&#x27; });</span>
+<span class="ctx"> </span>
+<span class="del">-  const loadListings = useCallback(async () =&gt; {</span>
+<span class="add">+  const loadListings = useCallback(async (options?: { silent?: boolean }) =&gt; {</span>
+<span class="ctx">     setLoadError(null);</span>
+<span class="add">+    if (!options?.silent) {</span>
+<span class="add">+      setIsLoadingListings(true);</span>
+<span class="add">+    }</span>
+<span class="ctx">     try {</span>
+<span class="ctx">       const result = await fetchListings({</span>
+<span class="ctx">         status: filters.status || undefined,</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -107,6 +117,10 @@ export function ListingsPage() {</div><pre><span class="ctx">       setTotal(result.total);</span>
+<span class="ctx">     } catch (err) {</span>
+<span class="ctx">       setLoadError(err instanceof ApiError ? err.message : &#x27;Failed to load listings.&#x27;);</span>
+<span class="add">+    } finally {</span>
+<span class="add">+      if (!options?.silent) {</span>
+<span class="add">+        setIsLoadingListings(false);</span>
+<span class="add">+      }</span>
+<span class="ctx">     }</span>
+<span class="ctx">   }, [filters, page, sortBy, sortDirection]);</span>
+<span class="ctx"> </span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -149,7 +163,7 @@ export function ListingsPage() {</div><pre><span class="ctx">     }</span>
+<span class="ctx"> </span>
+<span class="ctx">     const intervalId = window.setInterval(() =&gt; {</span>
+<span class="del">-      void loadListings();</span>
+<span class="add">+      void loadListings({ silent: true });</span>
+<span class="ctx">     }, 2000);</span>
+<span class="ctx">     return () =&gt; clearInterval(intervalId);</span>
+<span class="ctx">   }, [listings, loadListings]);</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -350,6 +364,7 @@ export function ListingsPage() {</div><pre><span class="ctx">                 sortDirection={sortDirection}</span>
+<span class="ctx">                 onSortChange={handleSortChange}</span>
+<span class="ctx">                 onToggleAllFiltered={handleToggleAllFiltered}</span>
+<span class="add">+                isLoading={isLoadingListings}</span>
+<span class="ctx">               /&gt;</span>
+<span class="ctx">               &lt;PaginationControls page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} /&gt;</span>
+<span class="ctx">             &lt;/&gt;</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">adds an `isLoading` prop, threaded into every `SortableHeader`; disables each header&#x27;s button, dims the table with a `pointer-events-none opacity-60` wrapper, and shows a `role=&quot;status&quot;` spinner/&quot;Loading…&quot; indicator above the (still-visible) rows.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/features/listings/listing-list.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Column renames, Pricing Status badge, Loading state during a refetch) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -7,7 +7,7 @@ import { ListingForm } from &#x27;@/features/listings/listing-form&#x27;;</div><pre><span class="ctx"> import { EbayScanBadge } from &#x27;@/features/listings/ebay-scan-badge&#x27;;</span>
+<span class="ctx"> import { NonWorkingBadge } from &#x27;@/features/listings/non-working-badge&#x27;;</span>
+<span class="ctx"> import { IdentifyPartsStatusBadge } from &#x27;@/features/listings/identify-parts-status-badge&#x27;;</span>
+<span class="del">-import { UnpricedPartsBadge } from &#x27;@/features/listings/unpriced-parts-badge&#x27;;</span>
+<span class="add">+import { PricingStatusBadge } from &#x27;@/features/listings/pricing-status-badge&#x27;;</span>
+<span class="ctx"> import { cn } from &#x27;@/lib/utils&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> interface ListingListProps {</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -51,6 +51,12 @@ interface ListingListProps {</div><pre><span class="ctx">   // field active (ascending) or, when it is already active, to flip its</span>
+<span class="ctx">   // direction. This component holds no sort state of its own.</span>
+<span class="ctx">   onSortChange: (field: ListingSortField) =&gt; void;</span>
+<span class="add">+  // Req 8: true while the page above has a listings fetch in flight that</span>
+<span class="add">+  // should visibly block interaction with the currently-displayed (now</span>
+<span class="add">+  // stale) rows — every sortable header disables its click handler and the</span>
+<span class="add">+  // whole table reads as inert, while the rows themselves stay visible</span>
+<span class="add">+  // underneath rather than being replaced by a full-page spinner.</span>
+<span class="add">+  isLoading?: boolean;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="ctx"> // One table body plus, for whichever row is open, an extra full-width row</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -70,9 +76,9 @@ const SORTABLE_COLUMNS: { field: ListingSortField; label: string }[] = [</div><pre><span class="ctx">   { field: &#x27;status&#x27;, label: &#x27;Status&#x27; },</span>
+<span class="ctx">   { field: &#x27;askingPrice&#x27;, label: &#x27;Asking Price&#x27; },</span>
+<span class="ctx">   { field: &#x27;expectedResale&#x27;, label: &#x27;Expected Resale&#x27; },</span>
+<span class="del">-  { field: &#x27;difference&#x27;, label: &#x27;Difference&#x27; },</span>
+<span class="del">-  { field: &#x27;identifyParts&#x27;, label: &#x27;Identify Parts&#x27; },</span>
+<span class="del">-  { field: &#x27;unpriced&#x27;, label: &#x27;Unpriced&#x27; },</span>
+<span class="add">+  { field: &#x27;difference&#x27;, label: &#x27;Expected Profit&#x27; },</span>
+<span class="add">+  { field: &#x27;identifyParts&#x27;, label: &#x27;Sourcing Status&#x27; },</span>
+<span class="add">+  { field: &#x27;unpriced&#x27;, label: &#x27;Pricing Status&#x27; },</span>
+<span class="ctx"> ];</span>
+<span class="ctx"> </span>
+<span class="ctx"> /**</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -82,6 +88,9 @@ const SORTABLE_COLUMNS: { field: ListingSortField; label: string }[] = [</div><pre><span class="ctx">  * descending — only when its own field is the active one, so exactly one</span>
+<span class="ctx">  * header in the table ever shows an indicator. `aria-sort` carries the same</span>
+<span class="ctx">  * information for assistive tech, reading `none` on every inactive column.</span>
+<span class="add">+ * Req 8: `isLoading` disables the button while a fetch for the table&#x27;s own</span>
+<span class="add">+ * rows is in flight, so a click can&#x27;t queue a second sort change against</span>
+<span class="add">+ * data that&#x27;s already stale and about to be replaced.</span>
+<span class="ctx">  */</span>
+<span class="ctx"> function SortableHeader({</span>
+<span class="ctx">   field,</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -89,12 +98,14 @@ function SortableHeader({</div><pre><span class="ctx">   sortBy,</span>
+<span class="ctx">   sortDirection,</span>
+<span class="ctx">   onSortChange,</span>
+<span class="add">+  isLoading,</span>
+<span class="ctx"> }: {</span>
+<span class="ctx">   field: ListingSortField;</span>
+<span class="ctx">   label: string;</span>
+<span class="ctx">   sortBy?: ListingSortField;</span>
+<span class="ctx">   sortDirection?: ListingSortDirection;</span>
+<span class="ctx">   onSortChange: (field: ListingSortField) =&gt; void;</span>
+<span class="add">+  isLoading?: boolean;</span>
+<span class="ctx"> }) {</span>
+<span class="ctx">   const isActive = sortBy === field;</span>
+<span class="ctx">   // A field can only ever be active ascending or descending; an active</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -107,8 +118,9 @@ function SortableHeader({</div><pre><span class="ctx">     &lt;th className=&quot;px-4 py-2 font-medium&quot; aria-sort={isActive ? (isDescending ? &#x27;descending&#x27; : &#x27;ascending&#x27;) : &#x27;none&#x27;}&gt;</span>
+<span class="ctx">       &lt;button</span>
+<span class="ctx">         type=&quot;button&quot;</span>
+<span class="del">-        className=&quot;inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground&quot;</span>
+<span class="add">+        className=&quot;inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50&quot;</span>
+<span class="ctx">         onClick={() =&gt; onSortChange(field)}</span>
+<span class="add">+        disabled={isLoading}</span>
+<span class="ctx">       &gt;</span>
+<span class="ctx">         {label}</span>
+<span class="ctx">         {isActive &amp;&amp; &lt;Arrow className=&quot;h-3.5 w-3.5 shrink-0&quot; aria-label={`Sorted ${isDescending ? &#x27;descending&#x27; : &#x27;ascending&#x27;}`} /&gt;}</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -145,6 +157,7 @@ export function ListingList({</div><pre><span class="ctx">   sortBy,</span>
+<span class="ctx">   sortDirection,</span>
+<span class="ctx">   onSortChange,</span>
+<span class="add">+  isLoading,</span>
+<span class="ctx"> }: ListingListProps) {</span>
+<span class="ctx">   const headerCheckboxRef = useRef&lt;HTMLInputElement&gt;(null);</span>
+<span class="ctx"> </span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -169,7 +182,14 @@ export function ListingList({</div><pre><span class="ctx"> </span>
+<span class="ctx">   return (</span>
+<span class="ctx">     &lt;div className=&quot;overflow-x-auto&quot;&gt;</span>
+<span class="del">-      &lt;table className=&quot;w-full border-collapse text-left text-sm&quot;&gt;</span>
+<span class="add">+      {isLoading &amp;&amp; (</span>
+<span class="add">+        &lt;div className=&quot;mb-2 flex items-center gap-2 text-sm text-muted-foreground&quot; role=&quot;status&quot;&gt;</span>
+<span class="add">+          {/* Decorative spinner glyph, matching LoadingSpinner&#x27;s own markup; the text label carries the accessible status */}</span>
+<span class="add">+          &lt;span className=&quot;h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent&quot; aria-hidden=&quot;true&quot; /&gt;</span>
+<span class="add">+          &lt;span&gt;Loading…&lt;/span&gt;</span>
+<span class="add">+        &lt;/div&gt;</span>
+<span class="add">+      )}</span>
+<span class="add">+      &lt;table className={cn(&#x27;w-full border-collapse text-left text-sm&#x27;, isLoading &amp;&amp; &#x27;pointer-events-none opacity-60&#x27;)}&gt;</span>
+<span class="ctx">         &lt;thead&gt;</span>
+<span class="ctx">           &lt;tr className=&quot;border-b border-border text-muted-foreground&quot;&gt;</span>
+<span class="ctx">             &lt;th className=&quot;w-8 px-4 py-2 font-medium&quot;&gt;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -189,6 +209,7 @@ export function ListingList({</div><pre><span class="ctx">                 sortBy={sortBy}</span>
+<span class="ctx">                 sortDirection={sortDirection}</span>
+<span class="ctx">                 onSortChange={onSortChange}</span>
+<span class="add">+                isLoading={isLoading}</span>
+<span class="ctx">               /&gt;</span>
+<span class="ctx">             ))}</span>
+<span class="ctx">             &lt;th className=&quot;px-4 py-2 font-medium&quot; /&gt;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -234,7 +255,7 @@ export function ListingList({</div><pre><span class="ctx">                     &lt;IdentifyPartsStatusBadge status={listing.identifyPartsStatus} /&gt;</span>
+<span class="ctx">                   &lt;/td&gt;</span>
+<span class="ctx">                   &lt;td className=&quot;px-4 py-3&quot;&gt;</span>
+<span class="del">-                    &lt;UnpricedPartsBadge hasUnpricedParts={listing.hasUnpricedParts} /&gt;</span>
+<span class="add">+                    &lt;PricingStatusBadge hasUnpricedParts={listing.hasUnpricedParts} /&gt;</span>
+<span class="ctx">                   &lt;/td&gt;</span>
+<span class="ctx">                   &lt;td className=&quot;whitespace-nowrap px-4 py-3 text-right&quot;&gt;</span>
+<span class="ctx">                     {listing.status === &#x27;open&#x27; &amp;&amp; (</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">new cases cover headers disabling their click while `isLoading`, the indicator appearing/disappearing, and rows staying mounted during loading.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/listing-list.test.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Column renames, Pricing Status badge, Loading state during a refetch) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -59,11 +59,13 @@ function Harness({</div><pre><span class="ctx">   sortBy,</span>
+<span class="ctx">   sortDirection,</span>
+<span class="ctx">   onSortChange = () =&gt; {},</span>
+<span class="add">+  isLoading,</span>
+<span class="ctx"> }: {</span>
+<span class="ctx">   listings: ListingSummary[];</span>
+<span class="ctx">   sortBy?: ListingSortField;</span>
+<span class="ctx">   sortDirection?: ListingSortDirection;</span>
+<span class="ctx">   onSortChange?: (field: ListingSortField) =&gt; void;</span>
+<span class="add">+  isLoading?: boolean;</span>
+<span class="ctx"> }) {</span>
+<span class="ctx">   const [editingListingId, setEditingListingId] = useState&lt;string | null&gt;(null);</span>
+<span class="ctx">   const [selectedIds, setSelectedIds] = useState&lt;Set&lt;string&gt;&gt;(new Set());</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -104,6 +106,7 @@ function Harness({</div><pre><span class="ctx">       sortBy={sortBy}</span>
+<span class="ctx">       sortDirection={sortDirection}</span>
+<span class="ctx">       onSortChange={onSortChange}</span>
+<span class="add">+      isLoading={isLoading}</span>
+<span class="ctx">     /&gt;</span>
+<span class="ctx">   );</span>
+<span class="ctx"> }</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -121,16 +124,17 @@ afterEach(() =&gt; {</div><pre><span class="ctx"> });</span>
+<span class="ctx"> </span>
+<span class="ctx"> // Mounts the harness. `sort` carries the optional active-sort props (and a</span>
+<span class="del">-// click spy) the sortable-header tests need; the older tests pass none and</span>
+<span class="del">-// get the unsorted default.</span>
+<span class="add">+// click spy) the sortable-header tests need, plus the Req 6-8 `isLoading`</span>
+<span class="add">+// flag the loading-state tests need; the older tests pass none and get the</span>
+<span class="add">+// unsorted, not-loading default.</span>
+<span class="ctx"> async function mount(</span>
+<span class="ctx">   listings: ListingSummary[],</span>
+<span class="del">-  sort: { sortBy?: ListingSortField; sortDirection?: ListingSortDirection; onSortChange?: (field: ListingSortField) =&gt; void } = {},</span>
+<span class="add">+  sort: { sortBy?: ListingSortField; sortDirection?: ListingSortDirection; onSortChange?: (field: ListingSortField) =&gt; void; isLoading?: boolean } = {},</span>
+<span class="ctx"> ): Promise&lt;HTMLDivElement&gt; {</span>
+<span class="ctx">   container = document.createElement(&#x27;div&#x27;);</span>
+<span class="ctx">   await act(async () =&gt; {</span>
+<span class="ctx">     root = createRoot(container!);</span>
+<span class="del">-    root.render(&lt;Harness listings={listings} sortBy={sort.sortBy} sortDirection={sort.sortDirection} onSortChange={sort.onSortChange} /&gt;);</span>
+<span class="add">+    root.render(&lt;Harness listings={listings} sortBy={sort.sortBy} sortDirection={sort.sortDirection} onSortChange={sort.onSortChange} isLoading={sort.isLoading} /&gt;);</span>
+<span class="ctx">   });</span>
+<span class="ctx">   return container;</span>
+<span class="ctx"> }</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -153,6 +157,18 @@ function findListingRow(el: HTMLElement, title: string): HTMLTableRowElement {</div><pre><span class="ctx">   return row as HTMLTableRowElement;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="add">+function headerCells(el: HTMLElement): HTMLTableCellElement[] {</span>
+<span class="add">+  return Array.from(el.querySelectorAll(&#x27;thead th&#x27;));</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="add">+function headerButton(el: HTMLElement, label: string): HTMLButtonElement {</span>
+<span class="add">+  const button = Array.from(el.querySelectorAll(&#x27;thead button&#x27;)).find((b) =&gt; b.textContent?.trim() === label);</span>
+<span class="add">+  if (!button) {</span>
+<span class="add">+    throw new Error(`No sortable header button found for &quot;${label}&quot;`);</span>
+<span class="add">+  }</span>
+<span class="add">+  return button as HTMLButtonElement;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="ctx"> describe(&#x27;ListingList title click -&gt; inline edit row&#x27;, () =&gt; {</span>
+<span class="ctx">   it(&#x27;has no trailing Edit button column — the title itself is the click trigger&#x27;, async () =&gt; {</span>
+<span class="ctx">     const el = await mount([makeListing()]);</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -315,19 +331,7 @@ describe(&#x27;ListingList Accept/Reject gating and per-row in-flight disable (Req 4)</div><pre><span class="ctx"> // are clickable, which field each one reports, and that the direction</span>
+<span class="ctx"> // arrow appears on the active column only.</span>
+<span class="ctx"> describe(&#x27;ListingList sortable column headers&#x27;, () =&gt; {</span>
+<span class="del">-  const SORTABLE_LABELS = [&#x27;Title&#x27;, &#x27;Source&#x27;, &#x27;Status&#x27;, &#x27;Asking Price&#x27;, &#x27;Expected Resale&#x27;, &#x27;Difference&#x27;, &#x27;Identify Parts&#x27;, &#x27;Unpriced&#x27;];</span>
+<span class="del">-</span>
+<span class="del">-  function headerCells(el: HTMLElement): HTMLTableCellElement[] {</span>
+<span class="del">-    return Array.from(el.querySelectorAll(&#x27;thead th&#x27;));</span>
+<span class="del">-  }</span>
+<span class="del">-</span>
+<span class="del">-  function headerButton(el: HTMLElement, label: string): HTMLButtonElement {</span>
+<span class="del">-    const button = Array.from(el.querySelectorAll(&#x27;thead button&#x27;)).find((b) =&gt; b.textContent?.trim() === label);</span>
+<span class="del">-    if (!button) {</span>
+<span class="del">-      throw new Error(`No sortable header button found for &quot;${label}&quot;`);</span>
+<span class="del">-    }</span>
+<span class="del">-    return button as HTMLButtonElement;</span>
+<span class="del">-  }</span>
+<span class="add">+  const SORTABLE_LABELS = [&#x27;Title&#x27;, &#x27;Source&#x27;, &#x27;Status&#x27;, &#x27;Asking Price&#x27;, &#x27;Expected Resale&#x27;, &#x27;Expected Profit&#x27;, &#x27;Sourcing Status&#x27;, &#x27;Pricing Status&#x27;];</span>
+<span class="ctx"> </span>
+<span class="ctx">   it(&#x27;makes exactly the 8 data-bearing headers clickable, each reporting its own sort field, and leaves the checkbox and actions columns plain&#x27;, async () =&gt; {</span>
+<span class="ctx">     const clicked: string[] = [];</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -393,7 +397,7 @@ describe(&#x27;ListingList sortable column headers&#x27;, () =&gt; {</div><pre><span class="ctx">     const arrows = Array.from(el.querySelectorAll(&#x27;thead [aria-label^=&quot;Sorted&quot;]&#x27;));</span>
+<span class="ctx">     expect(arrows).toHaveLength(1);</span>
+<span class="ctx">     expect(arrows[0].getAttribute(&#x27;aria-label&#x27;)).toBe(&#x27;Sorted descending&#x27;);</span>
+<span class="del">-    expect(headerButton(el, &#x27;Difference&#x27;).contains(arrows[0])).toBe(true);</span>
+<span class="add">+    expect(headerButton(el, &#x27;Expected Profit&#x27;).contains(arrows[0])).toBe(true);</span>
+<span class="ctx">     // The rendered icon itself differs, not just its label — a direction</span>
+<span class="ctx">     // indicator that drew the same glyph both ways would indicate nothing.</span>
+<span class="ctx">     expect(ascendingGlyph).not.toBe(&#x27;&#x27;);</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -403,45 +407,87 @@ describe(&#x27;ListingList sortable column headers&#x27;, () =&gt; {</div><pre><span class="ctx">     ]);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> </span>
+<span class="del">-  // Req 8, 9: clicking the new Unpriced header reports &#x27;unpriced&#x27; to the</span>
+<span class="del">-  // page exactly like every other header — no direction is attached to the</span>
+<span class="del">-  // click itself (that&#x27;s the page&#x27;s own first-click-is-ascending logic,</span>
+<span class="del">-  // already covered above for the other 7 columns and not re-tested here),</span>
+<span class="del">-  // this pins only that the new column&#x27;s own click wiring is correct.</span>
+<span class="del">-  it(&#x27;clicking the Unpriced header while inactive reports sortBy &quot;unpriced&quot; and nothing else&#x27;, async () =&gt; {</span>
+<span class="add">+  // Req 3, 9: clicking the renamed Pricing Status header still reports the</span>
+<span class="add">+  // unchanged &#x27;unpriced&#x27; sort field to the page — no direction is attached</span>
+<span class="add">+  // to the click itself (that&#x27;s the page&#x27;s own first-click-is-ascending</span>
+<span class="add">+  // logic, already covered above for the other 7 columns and not</span>
+<span class="add">+  // re-tested here), this pins only that the renamed column&#x27;s own click</span>
+<span class="add">+  // wiring is correct.</span>
+<span class="add">+  it(&#x27;clicking the Pricing Status header while inactive reports sortBy &quot;unpriced&quot; and nothing else&#x27;, async () =&gt; {</span>
+<span class="ctx">     const clicked: string[] = [];</span>
+<span class="ctx">     const el = await mount([makeListing()], { onSortChange: (field) =&gt; clicked.push(field) });</span>
+<span class="ctx"> </span>
+<span class="ctx">     await act(async () =&gt; {</span>
+<span class="del">-      headerButton(el, &#x27;Unpriced&#x27;).click();</span>
+<span class="add">+      headerButton(el, &#x27;Pricing Status&#x27;).click();</span>
+<span class="ctx">     });</span>
+<span class="ctx"> </span>
+<span class="ctx">     expect(clicked).toEqual([&#x27;unpriced&#x27;]);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> });</span>
+<span class="ctx"> </span>
+<span class="del">-// The new Unpriced column&#x27;s badge cell (Req 8). The column sits</span>
+<span class="del">-// immediately after Identify Parts and before the trailing Accept/Reject</span>
+<span class="del">-// actions column, so in each row&#x27;s &lt;td&gt; list (checkbox, title, source,</span>
+<span class="del">-// status, askingPrice, expectedResale, difference, identifyParts,</span>
+<span class="del">-// unpriced, actions) it is always index 8 — pinned here as a literal, not</span>
+<span class="del">-// derived from SORTABLE_COLUMNS, so a header/body position drift between</span>
+<span class="del">-// the two would actually fail this test rather than silently agree with</span>
+<span class="del">-// itself.</span>
+<span class="del">-describe(&#x27;ListingList Unpriced column badge (Req 8)&#x27;, () =&gt; {</span>
+<span class="del">-  const UNPRICED_CELL_INDEX = 8;</span>
+<span class="del">-</span>
+<span class="del">-  it(&#x27;renders the &quot;Unpriced&quot; badge text for a listing with at least one unpriced part, and renders nothing for one with none&#x27;, async () =&gt; {</span>
+<span class="del">-    const unpriced = makeListing({ id: &#x27;listing-unpriced&#x27;, title: &#x27;Unpriced Listing&#x27;, hasUnpricedParts: true });</span>
+<span class="del">-    const priced = makeListing({ id: &#x27;listing-priced&#x27;, title: &#x27;Priced Listing&#x27;, hasUnpricedParts: false });</span>
+<span class="del">-    const el = await mount([unpriced, priced]);</span>
+<span class="del">-</span>
+<span class="del">-    const unpricedRow = findListingRow(el, &#x27;Unpriced Listing&#x27;);</span>
+<span class="del">-    const pricedRow = findListingRow(el, &#x27;Priced Listing&#x27;);</span>
+<span class="del">-</span>
+<span class="del">-    expect(unpricedRow.cells[UNPRICED_CELL_INDEX].textContent?.trim()).toBe(&#x27;Unpriced&#x27;);</span>
+<span class="del">-    expect(unpricedRow.cells[UNPRICED_CELL_INDEX].querySelector(&#x27;span&#x27;)).not.toBeNull();</span>
+<span class="del">-    expect(pricedRow.cells[UNPRICED_CELL_INDEX].textContent?.trim()).toBe(&#x27;&#x27;);</span>
+<span class="del">-    expect(pricedRow.cells[UNPRICED_CELL_INDEX].querySelector(&#x27;span&#x27;)).toBeNull();</span>
+<span class="add">+// The renamed Pricing Status column&#x27;s badge cell (Req 3-4). The column</span>
+<span class="add">+// sits immediately after Sourcing Status and before the trailing</span>
+<span class="add">+// Accept/Reject actions column, so in each row&#x27;s &lt;td&gt; list (checkbox,</span>
+<span class="add">+// title, source, status, askingPrice, expectedResale, difference,</span>
+<span class="add">+// identifyParts, unpriced, actions) it is always index 8 — pinned here as</span>
+<span class="add">+// a literal, not derived from SORTABLE_COLUMNS, so a header/body position</span>
+<span class="add">+// drift between the two would actually fail this test rather than</span>
+<span class="add">+// silently agree with itself.</span>
+<span class="add">+describe(&#x27;ListingList Pricing Status column badge (Req 3-4)&#x27;, () =&gt; {</span>
+<span class="add">+  const PRICING_STATUS_CELL_INDEX = 8;</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;renders &quot;Partially Priced&quot; for a listing with at least one unpriced part, and &quot;Fully Priced&quot; for one with none — never blank&#x27;, async () =&gt; {</span>
+<span class="add">+    const partial = makeListing({ id: &#x27;listing-partial&#x27;, title: &#x27;Partial Listing&#x27;, hasUnpricedParts: true });</span>
+<span class="add">+    const full = makeListing({ id: &#x27;listing-full&#x27;, title: &#x27;Full Listing&#x27;, hasUnpricedParts: false });</span>
+<span class="add">+    const el = await mount([partial, full]);</span>
+<span class="add">+</span>
+<span class="add">+    const partialRow = findListingRow(el, &#x27;Partial Listing&#x27;);</span>
+<span class="add">+    const fullRow = findListingRow(el, &#x27;Full Listing&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    expect(partialRow.cells[PRICING_STATUS_CELL_INDEX].textContent?.trim()).toBe(&#x27;Partially Priced&#x27;);</span>
+<span class="add">+    expect(partialRow.cells[PRICING_STATUS_CELL_INDEX].querySelector(&#x27;span&#x27;)).not.toBeNull();</span>
+<span class="add">+    expect(fullRow.cells[PRICING_STATUS_CELL_INDEX].textContent?.trim()).toBe(&#x27;Fully Priced&#x27;);</span>
+<span class="add">+    expect(fullRow.cells[PRICING_STATUS_CELL_INDEX].querySelector(&#x27;span&#x27;)).not.toBeNull();</span>
+<span class="add">+  });</span>
+<span class="add">+});</span>
+<span class="add">+</span>
+<span class="add">+// Req 6-8: the table&#x27;s own loading state, set by the host page while a</span>
+<span class="add">+// user-triggered refetch is in flight — pins that ListingList disables</span>
+<span class="add">+// every sortable header&#x27;s actual `disabled` attribute (not just its</span>
+<span class="add">+// styling), shows the status indicator, and keeps the existing rows</span>
+<span class="add">+// mounted underneath (never unmounted/replaced) whenever `isLoading` is</span>
+<span class="add">+// true, and does none of that when it is false/undefined.</span>
+<span class="add">+describe(&#x27;ListingList loading state (Req 6-8)&#x27;, () =&gt; {</span>
+<span class="add">+  it(&#x27;disables every sortable header and suppresses its click while isLoading is true&#x27;, async () =&gt; {</span>
+<span class="add">+    const clicked: string[] = [];</span>
+<span class="add">+    const el = await mount([makeListing()], { isLoading: true, onSortChange: (field) =&gt; clicked.push(field) });</span>
+<span class="add">+</span>
+<span class="add">+    const button = headerButton(el, &#x27;Title&#x27;);</span>
+<span class="add">+    expect(button.disabled).toBe(true);</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      button.click();</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    expect(clicked).toEqual([]);</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;renders the role=&quot;status&quot; loading indicator only while isLoading is true, not when it is false&#x27;, async () =&gt; {</span>
+<span class="add">+    const loading = await mount([makeListing()], { isLoading: true });</span>
+<span class="add">+    expect(loading.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).not.toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    act(() =&gt; {</span>
+<span class="add">+      root?.unmount();</span>
+<span class="add">+    });</span>
+<span class="add">+    container?.remove();</span>
+<span class="add">+</span>
+<span class="add">+    const notLoading = await mount([makeListing()], { isLoading: false });</span>
+<span class="add">+    expect(notLoading.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+  });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;keeps the existing row mounted in the table (not unmounted/replaced) while isLoading is true&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount([makeListing({ title: &#x27;Stale Listing&#x27; })], { isLoading: true });</span>
+<span class="add">+    expect(findListingRow(el, &#x27;Stale Listing&#x27;)).toBeDefined();</span>
+<span class="add">+    expect(el.querySelectorAll(&#x27;tbody tr&#x27;).length).toBe(1);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> });</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">new cases cover the indicator and disabled headers during a pending sort-triggered fetch, and confirm the silent polling reload never toggles either.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/listings-page.test.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Column renames, Loading state during a refetch) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -615,7 +615,7 @@ describe(&#x27;ListingsPage sortable columns (T3)&#x27;, () =&gt; {</div><pre><span class="ctx">     await clickHeader(el, &#x27;Title&#x27;);</span>
+<span class="ctx">     expect(lastFetchOptions().sortDirection).toBe(&#x27;desc&#x27;);</span>
+<span class="ctx"> </span>
+<span class="del">-    await clickHeader(el, &#x27;Difference&#x27;);</span>
+<span class="add">+    await clickHeader(el, &#x27;Expected Profit&#x27;);</span>
+<span class="ctx">     const options = lastFetchOptions();</span>
+<span class="ctx">     expect(options.sortBy).toBe(&#x27;difference&#x27;);</span>
+<span class="ctx">     expect(options.sortDirection).toBe(&#x27;asc&#x27;);</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -623,7 +623,7 @@ describe(&#x27;ListingsPage sortable columns (T3)&#x27;, () =&gt; {</div><pre><span class="ctx">     // sortBy, and the previously active column&#x27;s arrow is gone.</span>
+<span class="ctx">     expect(Object.keys(options).filter((key) =&gt; key.startsWith(&#x27;sort&#x27;))).toEqual([&#x27;sortBy&#x27;, &#x27;sortDirection&#x27;]);</span>
+<span class="ctx">     const titleHeader = findButton(el, &#x27;Title&#x27;).closest(&#x27;th&#x27;) as HTMLTableCellElement;</span>
+<span class="del">-    const differenceHeader = findButton(el, &#x27;Difference&#x27;).closest(&#x27;th&#x27;) as HTMLTableCellElement;</span>
+<span class="add">+    const differenceHeader = findButton(el, &#x27;Expected Profit&#x27;).closest(&#x27;th&#x27;) as HTMLTableCellElement;</span>
+<span class="ctx">     expect(titleHeader.getAttribute(&#x27;aria-sort&#x27;)).toBe(&#x27;none&#x27;);</span>
+<span class="ctx">     expect(titleHeader.querySelector(&#x27;[aria-label^=&quot;Sorted&quot;]&#x27;)).toBeNull();</span>
+<span class="ctx">     expect(differenceHeader.getAttribute(&#x27;aria-sort&#x27;)).toBe(&#x27;ascending&#x27;);</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -678,3 +678,77 @@ describe(&#x27;ListingsPage sortable columns (T3)&#x27;, () =&gt; {</div><pre><span class="ctx">     expect(header.getAttribute(&#x27;aria-sort&#x27;)).toBe(&#x27;descending&#x27;);</span>
+<span class="ctx">   }, 10_000);</span>
+<span class="ctx"> });</span>
+<span class="add">+</span>
+<span class="add">+// Req 6-8: the host page&#x27;s own loading-state wiring — shows the indicator</span>
+<span class="add">+// and disables the sort headers for a user-triggered refetch, but never</span>
+<span class="add">+// for the silent Req 12 background poll.</span>
+<span class="add">+describe(&#x27;ListingsPage loading state (Req 6-8)&#x27;, () =&gt; {</span>
+<span class="add">+  it(&#x27;shows the loading indicator and disables the sort headers while a sort-triggered fetch is pending, then clears both once it resolves&#x27;, async () =&gt; {</span>
+<span class="add">+    fetchListingsMock.mockResolvedValueOnce({ listings: [listingA, listingB], total: 2 });</span>
+<span class="add">+    fetchListingIdsMock.mockResolvedValue([]);</span>
+<span class="add">+</span>
+<span class="add">+    const el = await mount();</span>
+<span class="add">+    await waitFor(() =&gt; el.querySelectorAll(&#x27;tbody tr&#x27;).length === 2);</span>
+<span class="add">+    expect(el.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    const { promise, resolve } = Promise.withResolvers&lt;{ listings: ListingSummary[]; total: number }&gt;();</span>
+<span class="add">+    fetchListingsMock.mockReturnValueOnce(promise);</span>
+<span class="add">+</span>
+<span class="add">+    const callsBefore = fetchListingsMock.mock.calls.length;</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      findButton(el, &#x27;Title&#x27;).click();</span>
+<span class="add">+    });</span>
+<span class="add">+    await waitFor(() =&gt; fetchListingsMock.mock.calls.length &gt; callsBefore);</span>
+<span class="add">+</span>
+<span class="add">+    expect(el.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).not.toBeNull();</span>
+<span class="add">+    expect(findButton(el, &#x27;Title&#x27;).disabled).toBe(true);</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      resolve({ listings: [listingA, listingB], total: 2 });</span>
+<span class="add">+      await promise;</span>
+<span class="add">+    });</span>
+<span class="add">+    await waitFor(() =&gt; el.querySelector(&#x27;[role=&quot;status&quot;]&#x27;) === null);</span>
+<span class="add">+</span>
+<span class="add">+    expect(el.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+    expect(findButton(el, &#x27;Title&#x27;).disabled).toBe(false);</span>
+<span class="add">+  }, 10_000);</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;does not show the loading indicator or disable the headers for the silent Req 12 polling reload&#x27;, async () =&gt; {</span>
+<span class="add">+    vi.useFakeTimers();</span>
+<span class="add">+    try {</span>
+<span class="add">+      fetchListingsMock.mockResolvedValueOnce({</span>
+<span class="add">+        listings: [{ ...listingA, identifyPartsStatus: { stage: &#x27;identifying&#x27;, errorMessage: null } }],</span>
+<span class="add">+        total: 1,</span>
+<span class="add">+      });</span>
+<span class="add">+      fetchListingIdsMock.mockResolvedValue([listingA.id]);</span>
+<span class="add">+</span>
+<span class="add">+      const el = await mount();</span>
+<span class="add">+      expect(fetchListingsMock).toHaveBeenCalledTimes(1);</span>
+<span class="add">+      expect(el.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+      // Hold the poll&#x27;s own fetch open, so the assertions below land</span>
+<span class="add">+      // while it&#x27;s actually pending — a mutation that made the poll</span>
+<span class="add">+      // non-silent would show the indicator/disable the header during</span>
+<span class="add">+      // exactly this window; checking only after it resolves (near</span>
+<span class="add">+      // instantly, under fake timers) would never observe that.</span>
+<span class="add">+      const { promise, resolve } = Promise.withResolvers&lt;{ listings: ListingSummary[]; total: number }&gt;();</span>
+<span class="add">+      fetchListingsMock.mockReturnValueOnce(promise);</span>
+<span class="add">+</span>
+<span class="add">+      await act(async () =&gt; {</span>
+<span class="add">+        await vi.advanceTimersByTimeAsync(2000);</span>
+<span class="add">+      });</span>
+<span class="add">+</span>
+<span class="add">+      expect(fetchListingsMock).toHaveBeenCalledTimes(2);</span>
+<span class="add">+      expect(el.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+      expect(findButton(el, &#x27;Title&#x27;).disabled).toBe(false);</span>
+<span class="add">+</span>
+<span class="add">+      await act(async () =&gt; {</span>
+<span class="add">+        resolve({ listings: [{ ...listingA, identifyPartsStatus: { stage: &#x27;completed&#x27;, errorMessage: null } }], total: 1 });</span>
+<span class="add">+        await promise;</span>
+<span class="add">+      });</span>
+<span class="add">+      expect(el.querySelector(&#x27;[role=&quot;status&quot;]&#x27;)).toBeNull();</span>
+<span class="add">+    } finally {</span>
+<span class="add">+      vi.useRealTimers();</span>
+<span class="add">+    }</span>
+<span class="add">+  }, 10_000);</span>
+<span class="add">+});</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+</main><script>
+function toggleSection(btn){
+  var body = btn.nextElementSibling;
+  body.hidden = !body.hidden;
+  btn.setAttribute('aria-expanded', String(!body.hidden));
+}
+function toggleFile(btn){
+  var body = btn.nextElementSibling;
+  body.hidden = !body.hidden;
+  btn.setAttribute('aria-expanded', String(!body.hidden));
+}
+</script>

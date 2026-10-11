@@ -62,6 +62,13 @@ export function ListingsPage() {
   // pages, which is what "select all" has to resolve to — the current
   // page's rows are only a window onto it.
   const [allFilteredIds, setAllFilteredIds] = useState<string[]>([]);
+  // Req 8: true while a listings fetch triggered by a user-visible action
+  // (filter/page/sort change, or a post-edit/accept/reject reload) is in
+  // flight — passed to ListingList so it can disable its sortable headers
+  // and dim the stale rows underneath. The Req 12 background poll fetches
+  // silently and never touches this, since re-polling for a status badge
+  // to advance shouldn't flicker the whole table.
+  const [isLoadingListings, setIsLoadingListings] = useState(false);
 
   // Which Listing's inline edit row is open, and its full ListingDetail
   // (fetched, with Expected Parts, once a row opens) — mirrors the old
@@ -80,8 +87,11 @@ export function ListingsPage() {
   // below the clicked row — so this only ever toggles the create form.
   const [panel, setPanel] = useState<PanelState>({ mode: 'list' });
 
-  const loadListings = useCallback(async () => {
+  const loadListings = useCallback(async (options?: { silent?: boolean }) => {
     setLoadError(null);
+    if (!options?.silent) {
+      setIsLoadingListings(true);
+    }
     try {
       const result = await fetchListings({
         status: filters.status || undefined,
@@ -107,6 +117,10 @@ export function ListingsPage() {
       setTotal(result.total);
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'Failed to load listings.');
+    } finally {
+      if (!options?.silent) {
+        setIsLoadingListings(false);
+      }
     }
   }, [filters, page, sortBy, sortDirection]);
 
@@ -149,7 +163,7 @@ export function ListingsPage() {
     }
 
     const intervalId = window.setInterval(() => {
-      void loadListings();
+      void loadListings({ silent: true });
     }, 2000);
     return () => clearInterval(intervalId);
   }, [listings, loadListings]);
@@ -350,6 +364,7 @@ export function ListingsPage() {
                 sortDirection={sortDirection}
                 onSortChange={handleSortChange}
                 onToggleAllFiltered={handleToggleAllFiltered}
+                isLoading={isLoadingListings}
               />
               <PaginationControls page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
             </>
