@@ -1,0 +1,277 @@
+<title>Feature</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--radius:8px;
+--autorefresh-bg:rgba(31,95,79,.14);--refresh-bg:rgba(42,95,143,.14);--refresh-ink:#2a5f8f}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74;
+--autorefresh-bg:rgba(79,181,154,.18);--refresh-bg:rgba(111,168,220,.18);--refresh-ink:#8fc1ef}}
+*{box-sizing:border-box;overflow-wrap:break-word}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+/* Grid tracks default to fitting their content's full, unbroken width -- a single
+   long token (a file path, a backtick-quoted identifier) anywhere in a panel would
+   otherwise stretch the whole page past max-width, no matter how long the gap or how
+   small every other panel is. min-width:0 is what lets a grid item shrink below that
+   and actually wrap instead. Confirmed live: this is what was making every real plan
+   (which is full of exactly these long tokens) render many times wider than the
+   viewport, independent of the DOCTYPE/viewport fix. */
+main{max-width:1300px;margin:0 auto;padding:24px;display:grid;gap:20px}
+main>*{min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);
+border-radius:var(--radius);padding:20px 22px}
+h1{margin:0 0 4px;font-size:21px;letter-spacing:-.01em}
+h2{margin:22px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+h2:first-of-type{margin-top:14px}
+.panel>p{line-height:1.65;margin:0 0 4px}
+.totals{display:flex;gap:32px;flex-wrap:wrap;margin:12px 0}
+.total .n{font-size:26px;font-variant-numeric:tabular-nums}
+.total .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+details{margin-top:8px}summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;
+border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--good);border-color:var(--good);color:var(--panel)}
+.scroll{overflow-x:auto}
+/* table-layout:auto (the default) sizes a column from its content's own natural
+   width -- for a nowrap+ellipsis cell, that is the FULL unwrapped text, which is
+   exactly the width ellipsis is meant to avoid ever reaching. It is a well-known
+   gap in the auto algorithm, not a quirk of this page: the standard fix is
+   table-layout:fixed, with every narrow column given an explicit width so the
+   description column (the one left unset) absorbs the rest and actually holds
+   .desc to it. Confirmed live: without this, a single real task description
+   dragged the whole table into a wide horizontal scrollbar regardless of how
+   short every other column's content was. */
+table{width:100%;border-collapse:collapse;font-size:14px;table-layout:fixed}
+/* The status column's own text ("In progress &middot; running long.") is real
+   prose, not a single short token -- 28px forced it to wrap, and the page's own
+   global overflow-wrap:break-word (needed elsewhere, see main>* above) then broke
+   it mid-word instead of at a space. Wide enough for the longest badge on two
+   lines, with normal word-wrapping restored just for this column. */
+th:first-child,td:first-child{width:112px;overflow-wrap:normal}
+th:nth-child(2),td:nth-child(2){width:52px}
+th:nth-child(4),td:nth-child(4){width:160px}
+th:nth-child(5),td:nth-child(5){width:300px}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.good .dot,.dot.good{background:var(--good)}.bad .dot,.dot.bad{background:var(--bad)}
+.neutral .dot,.dot.neutral{background:var(--muted)}
+.sub td{border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);padding-top:0}
+/* .desc is a <span> -- inline by default, and width/overflow/text-overflow are all
+   spec-ignored on a plain inline box, so none of this ever actually truncated
+   anything on its own. display:block (now that its <td> has a real fixed width to
+   fill, from table-layout:fixed above) is what makes the rest of this rule do
+   anything at all. */
+.desc{display:block;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.desc.open{white-space:normal;overflow:visible}
+.more{font:inherit;font-size:11px;border:none;background:none;color:var(--muted);cursor:pointer}
+.tag{display:inline-block;padding:0 6px;margin-right:4px;border:1px solid var(--line);
+border-radius:999px;font-size:11px;font-variant-numeric:tabular-nums}
+.banner{border-left:3px solid var(--bad);padding:10px 14px;background:var(--panel);
+border-radius:var(--radius);margin-bottom:14px}
+.fail{background:rgba(163,49,42,.09);padding:6px 9px;border-radius:6px;margin-top:6px}
+ul,ol{margin:8px 0;padding-left:24px}
+li{margin:8px 0;line-height:1.6}
+/* Requirements and Assumptions are both "one short id, one longer text" --
+   the same shape a table row has, so they get the same row-grid treatment
+   the task table already uses (a border between rows, an aligned label
+   column), instead of reading as a looser bulleted paragraph. Plain bullet
+   lists (Findings, UAT checks) keep the plainer rule above. The id badge
+   reuses .tag -- the exact same pill the task table's own id column uses now
+   -- so a reader learns one visual language for "this is an id" instead of
+   three different ones. */
+.items{list-style:none;margin:8px 0;padding:0;display:grid;gap:0}
+.items li{margin:0;display:grid;grid-template-columns:34px 1fr;gap:10px;
+padding:10px 2px;border-bottom:1px solid var(--line);line-height:1.6}
+.items li:last-child{border-bottom:none}
+/* A grid item's own display:inline-block is not enough to stop it stretching
+   to fill its whole cell -- CSS Grid stretches an item's box to its area by
+   default regardless, so the pill's border was being drawn around the full
+   34px-by-row-height cell instead of snugly around "A1". justify/align-self
+   opt back out of that stretch. */
+.items li>:first-child{justify-self:start;align-self:start}
+.note{font-size:12px;color:var(--muted)}
+.btn{display:inline-block;padding:8px 16px;margin:2px 0;border-radius:8px;
+background:var(--good);color:var(--panel);text-decoration:none;font-size:13px;font-weight:600}
+.btn:hover{opacity:.85}
+/* Same shape for both so they read as a pair of related controls; a different
+   background on each is the only thing telling them apart at a glance -- a toggle
+   and an immediate action should not look identical. */
+.ghost-btn{font:inherit;font-size:12px;padding:4px 12px;border-radius:999px;
+border:none;cursor:pointer}
+.ghost-btn.autorefresh{background:var(--autorefresh-bg);color:var(--good)}
+.ghost-btn.refresh-now{background:var(--refresh-bg);color:var(--refresh-ink)}
+.ghost-btn:hover{opacity:.8}
+.refresh-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+pre{font-family:inherit;white-space:pre-wrap;word-break:break-word;margin:0;line-height:1.65}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9em;
+background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+/* A retrospective's own markdown headings nest two levels below this section's own
+   h2, so "What happened" reads as a sub-heading of "Retrospective", never a peer of
+   it or of another panel's h2 entirely. */
+.prose h3{margin:18px 0 8px;font-size:15px}
+.prose h4,.prose h5,.prose h6{margin:14px 0 6px;font-size:14px;color:var(--muted)}
+.prose p{margin:8px 0;line-height:1.65}
+/* A bullet whose own text opens with a bold phrase is using it as the item's own
+   title, not as mid-sentence emphasis -- block-level + its own line is what actually
+   separates the two instead of letting the body run on immediately after it. */
+.prose .bullet-title{display:block;margin-bottom:2px}
+.prose .bullet-body{display:block}
+</style>
+<main>
+<section class="panel">
+<h1>Feature</h1>
+<p class="note">Status done &middot; cycle 0 of 3</p>
+<p class="note refresh-controls" data-feature-done><button type="button" id="autorefresh" class="ghost-btn autorefresh" aria-pressed="false">Auto refresh off</button> <button type="button" id="refresh-now" class="ghost-btn refresh-now">Refresh now</button> &middot; <span data-refresh-in>5m 0s</span><span data-refresh-off-note hidden>Auto-refresh is off.</span></p>
+<h2>Goal</h2><p>Three small, user-requested tweaks to the Listings table (<code>listing-list.tsx</code>/<code>listings-page.tsx</code>):
+
+1. Rename three column headers: &quot;Difference&quot; -&gt; &quot;Expected Profit&quot;, &quot;Identify Parts&quot; -&gt; &quot;Sourcing
+   Status&quot;, &quot;Unpriced&quot; -&gt; &quot;Pricing Status&quot;. Every rename is a display-label change only — the
+   underlying <code>ListingSortField</code> identifiers (<code>difference</code>, <code>identifyParts</code>, <code>unpriced</code>) sent to the
+   server and the values each column actually shows are unchanged.
+2. The renamed &quot;Pricing Status&quot; column&#x27;s cell, previously a binary &quot;Unpriced&quot; pill-or-nothing, now
+   always carries one of two named values: &quot;Fully Priced&quot; (no unpriced Expected Part) or &quot;Partially
+   Priced&quot; (at least one unpriced Expected Part) — the same underlying <code>hasUnpricedParts</code> boolean,
+   given both of its states an explicit label instead of only the <code>true</code> case.
+3. Clicking a sortable column header to change sort order currently leaves the table showing the
+   previous (stale) data, unchanged, until the new page arrives — confirmed by the user: this has led
+   to an accidental second click while the first request is still in flight. The table now enters a
+   visible loading state for the duration of any user-triggered refetch (sort change, filter change,
+   page change), and every sortable header is disabled for that same duration, so a second click
+   cannot queue a redundant request.</p>
+<h2>Requirements</h2><ul class="items"><li><span class="tag">1</span><span>The &quot;Difference&quot; column header is renamed to &quot;Expected Profit&quot;. Its sort field identifier
+   (<code>difference</code>), its computed value (<code>comparison.difference</code>), and its $ formatting/color coding
+   are all unchanged.</span></li><li><span class="tag">2</span><span>The &quot;Identify Parts&quot; column header is renamed to &quot;Sourcing Status&quot;. Its sort field identifier
+   (<code>identifyParts</code>) and its per-stage badge values are unchanged. This rename is scoped to the
+   Listings table&#x27;s column header only — the separate &quot;Identify Parts&quot; action buttons elsewhere on
+   the page (the per-row <code>IdentifyPartsButton</code>, the bulk-action bar&#x27;s button) keep their existing
+   wording; they are a different control for a different purpose that happens to share the same
+   words today.</span></li><li><span class="tag">3</span><span>The &quot;Unpriced&quot; column header is renamed to &quot;Pricing Status&quot;. Its sort field identifier
+   (<code>unpriced</code>) and its underlying <code>hasUnpricedParts</code> boolean are unchanged.</span></li><li><span class="tag">4</span><span>The Pricing Status column&#x27;s cell always renders one of two values, replacing the previous
+   badge-or-nothing rendering: &quot;Partially Priced&quot; when <code>hasUnpricedParts</code> is <code>true</code>, &quot;Fully Priced&quot;
+   when it is <code>false</code>.</span></li><li><span class="tag">5</span><span>Ascending sort on the Pricing Status column still lists every &quot;Partially Priced&quot; listing before
+   every &quot;Fully Priced&quot; one (the existing, deliberately-inverted sort direction is unchanged by this
+   relabeling).</span></li><li><span class="tag">6</span><span>While a <code>GET /api/listings</code> request triggered by a sort-header click, a filter change, or a page
+   change is in flight, the Listings table visibly enters a loading state: its existing rows stay on
+   screen (never replaced by a blank/spinner-only view) but are visually marked as stale until the
+   new result lands.</span></li><li><span class="tag">7</span><span>While that loading state is active, every sortable column header is disabled (not clickable) —
+   a click during this window has no effect, which is what stops the double-request the user
+   described.</span></li><li><span class="tag">8</span><span>The background 2-second polling reload (while a visible row&#x27;s identify-parts job is still
+   non-terminal) does not trigger the Requirement 6/7 loading state — that reload is intentionally
+   silent today, and nothing about this feature changes it, so the table does not flicker every 2
+   seconds while a job is running.</span></li></ul>
+<p><a class="btn" href="https://gist.githack.com/adamcrevel/32e4a3d5b242d4763c4e7ba11118d89e/raw/prototype.html" target="_blank" rel="noopener noreferrer">Prototype</a></p>
+<div class="totals">
+<div class="total"><div class="n" data-since="2026-10-11T17:02:05Z">&mdash;</div><div class="l">total time</div></div>
+<div class="total"><div class="n">211,658</div><div class="l">total tokens</div></div>
+</div>
+<details><summary>Where that token figure comes from</summary><p class="note">input 0 + output 16,526 + cache-write 38,578 + cache-read 81,715, across 79 turns</p><p class="note">Most of a long conversation's token count is cache-read: the accumulated context is resent on every turn and billed at a fraction of the normal rate. A high total reflects the turn count over time, not necessarily a large bill.</p></details>
+</section>
+<nav class="tabs">
+<button data-cycle-tab="0" aria-selected="true" onclick="showCycle(0)">Cycle 0</button>
+</nav>
+<section class="panel" data-cycle-panel="0">
+<h2>Cycle 0</h2>
+<p><strong>Trigger.</strong> initial</p>
+<p><span class="good"><span class="dot"></span>UAT passed.</span></p>
+<ul><li>Isolation: apps/server ran on isolated port 3101 against a fresh/empty DuckDB file; apps/web ran on isolated port 5273, pointed at the isolated server.</li><li>Req 1 (rename): header shows &quot;Expected Profit&quot;, not &quot;Difference&quot;.</li><li>Req 1 (sort field and computed value unchanged): the shared <code>ListingSortField</code> union and <code>SORTABLE_COLUMNS</code>&#x27;s <code>field: &#x27;difference&#x27;</code> entry are untouched; the cell still renders <code>comparison.difference</code> verbatim.</li><li>Req 1 ($ formatting/color unchanged): a negative value rendered red, positive values rendered green, matching the unedited conditional.</li><li>Req 2 (rename): header shows &quot;Sourcing Status&quot;, not &quot;Identify Parts&quot;.</li><li>Req 2 (sort field and badge values unchanged): <code>field: &#x27;identifyParts&#x27;</code> untouched; IdentifyPartsStatusBadge&#x27;s own stage vocabulary untouched and unobserved-as-changed.</li><li>Req 2 (per-row and bulk-action buttons keep their wording): both read &quot;Identify Parts&quot; unchanged in the live DOM.</li><li>Req 3 (rename): header shows &quot;Pricing Status&quot;, not &quot;Unpriced&quot;.</li><li>Req 3 (hasUnpricedParts boolean unchanged): the server&#x27;s computation is untouched and confirmed live via API for both a true and a false case.</li><li>Req 4 (both pricing-status values): a true-case listing rendered &quot;Partially Priced&quot; in red; two false-case listings rendered &quot;Fully Priced&quot; in teal; no row was ever blank or showed the old &quot;Unpriced&quot; text.</li><li>Req 5 (ascending sort): clicking Pricing Status set aria-sort=ascending and placed the Partially Priced listing before both Fully Priced ones.</li><li>Req 6 (loading state, sort-triggered): under network throttling, the table kept all rows visible but visually dimmed, with a spinner+&quot;Loading…&quot; indicator, during the in-flight window.</li><li>Req 6 (loading state, filter-triggered): same dimming/indicator behavior confirmed changing the Status filter, with stale rows persisting until the new filtered result landed.</li><li>Req 6 (loading state, page-change-triggered): same behavior confirmed clicking to page 2 of a 2-page, 22-listing dataset.</li><li>Req 7 (headers genuinely disabled): mid-flight DOM evaluation confirmed every sortable header button&#x27;s real <code>.disabled</code> DOM property was <code>true</code>, for all three trigger types.</li><li>Req 7 (a click during loading has no effect): a real click fired on a different header during the in-flight window produced zero additional network requests and left the active sort field unchanged after the original request resolved.</li><li>Req 7 (headers re-enabled after resolve): confirmed <code>.disabled</code> reverted to <code>false</code> and the indicator disappeared once each fetch completed.</li><li>Req 8 (polling exclusion, structural proof): confirmed by direct code read that <code>{ silent: true }</code> is passed at exactly the one background-poll call site and nowhere else, so the loading flag never fires for that reload.</li><li>Req 8 (live-job observation): honestly reported inconclusive — no AI API key configured in this environment meant the one enqueued job resolved before a non-terminal poll could be observed live; the structural proof above is what actually establishes this requirement.</li><li>Standing check (lint): clean, 0 violations, re-run directly by the UAT tester.</li><li>Standing check (doc comments): every new/changed public surface (PricingStatusBadge, isLoading prop, isLoadingListings state, SortableHeader&#x27;s updated comment) carries a genuine explanatory comment.</li><li>Standing check (import boundary): zero apps/web -&gt; apps/server imports across every file this feature touched.</li><li>Standing check (suite + count, cited from validate-lead&#x27;s gate, not re-run): 943 vs baseline 938 (+5); server&#x27;s one pre-existing failure and full-suite-only flakiness both confirmed unrelated to this feature&#x27;s zero apps/server changes.</li><li>Cleanup: both UAT dev servers stopped, temp DB/script directories removed, no listeners left on the isolated ports.</li></ul>
+<p class="note">5 task(s). Estimated 115 min. Actual tokens 74,839, estimated 227,400. This never includes the driving conversation's own tokens, which cannot honestly be split by cycle.
+<div class="scroll"><table><thead><tr><th></th><th>Id</th><th>Description</th><th>Duration (Estimate)</th><th>Started At (Estimate)</th></tr></thead><tbody><tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">P0</span></td><td><span class="desc">Prototype covering T1 (ui: yes): three column-header renames, the Pricing Status two-value badge, and the sort/filter/page-triggered loading state (dimmed table + disabled headers + spinner, excluding the silent background poll).</span></td><td><span data-since="2026-10-11T17:02:30Z" data-until="2026-10-11T17:17:17Z">&mdash;</span> (10 min)</td><td><span data-at="2026-10-11T17:02:30Z">&mdash;</span> (<span data-at="2026-10-11T17:02:30Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">prototype &middot; <span class="tag">UI</span> &middot; Est tokens — &middot; Actual tokens 10900</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T1</span></td><td><span class="desc">Column renames, Pricing Status 2-value badge, and table loading state (Req 1-8). All in one task since the loading-state and header-label changes land in the same small region of the same file. <code>apps/web/src/features/listings/listing-list.tsx</code>: update <code>SORTABLE_COLUMNS</code>&#x27;s three <code>label</code> strings (<code>&#x27;Difference&#x27;</code> -&gt; <code>&#x27;Expected Profit&#x27;</code>, <code>&#x27;Identify Parts&#x27;</code> -&gt; <code>&#x27;Sourcing Status&#x27;</code>, <code>&#x27;Unpriced&#x27;</code> -&gt; <code>&#x27;Pricing Status&#x27;</code>) — the <code>field</code> identifiers (<code>difference</code>/<code>identifyParts</code>/<code>unpriced</code>) are untouched. Add a new <code>isLoading?: boolean</code> prop to <code>ListingListProps</code>; thread it into every <code>&lt;SortableHeader&gt;</code> call (<code>isLoading={isLoading}</code>); inside <code>SortableHeader</code>, add <code>disabled={isLoading}</code> to its <code>&lt;button&gt;</code> plus a <code>disabled:cursor-not-allowed disabled:opacity-50</code> class so a disabled header reads as inert, not just non-functional. Add a small inline loading indicator when <code>isLoading</code> is true, reusing <code>LoadingSpinner</code>&#x27;s own spinner-glyph markup (<code>&lt;span className=&quot;h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent&quot; aria-hidden=&quot;true&quot; /&gt;</code>) plus a <code>role=&quot;status&quot;</code> text label (e.g. &quot;Loading…&quot;), positioned above or beside the table (not replacing it) so the existing rows stay visible underneath; also apply a <code>pointer-events-none opacity-60</code> (or equivalent) wrapper around the <code>&lt;table&gt;</code> itself while <code>isLoading</code> is true, so the stale rows read as visually inert, not just the headers. Rename <code>apps/web/src/features/listings/unpriced-parts-badge.tsx</code> to <code>pricing-status-badge.tsx</code>, renaming its component <code>UnpricedPartsBadge</code> to <code>PricingStatusBadge</code>: it always renders a pill now (never <code>null</code>) — &quot;Partially Priced&quot; using the exact destructive/red styling the old &quot;Unpriced&quot; pill used, &quot;Fully Priced&quot; using teal styling matching <code>IdentifyPartsStatusBadge</code>&#x27;s existing &quot;completed&quot;-stage pill (same rounded-full/border/bg/text pattern, teal color tokens) — update its doc comment to describe both states and the import in <code>listing-list.tsx</code> accordingly. <code>apps/web/src/routes/listings-page.tsx</code>: add <code>const [isLoadingListings, setIsLoadingListings] = useState(false);</code>; change <code>loadListings</code> to accept <code>(options?: { silent?: boolean })</code>, setting <code>isLoadingListings</code> to <code>true</code> at its start and back to <code>false</code> in a <code>finally</code> block, both skipped when <code>options?.silent</code> is <code>true</code>; the Requirement 8 polling effect&#x27;s own <code>loadListings()</code> call becomes <code>loadListings({ silent: true })</code> — every other call site (the main filters/page/sort-driven effect, <code>handleCreateSaved</code>, <code>handleEditSaved</code>, <code>handleAccept</code>, <code>handleReject</code>) keeps calling <code>loadListings()</code> with no options, so they do show the loading state; pass <code>isLoading={isLoadingListings}</code> into <code>&lt;ListingList&gt;</code>.</span></td><td><span data-since="2026-10-11T17:18:00Z" data-until="2026-10-11T17:22:23Z">&mdash;</span> (40 min)</td><td><span data-at="2026-10-11T17:18:00Z">&mdash;</span> (<span data-at="2026-10-11T17:17:17Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; <span class="tag">UI</span> &middot; Est tokens 24900 &middot; Actual tokens 33139</td></tr>
+<tr><td><span class="bad"><span class="dot"></span>Complete &middot; found a FAIL.</span></td><td><span class="tag">R1</span></td><td><span class="desc">Review T1 against Req 1-8, scoped to <code>listing-list.tsx</code>, <code>pricing-status-badge.tsx</code>, and <code>listings-page.tsx</code>. Confirm: the three <code>SORTABLE_COLUMNS</code> labels are renamed exactly as specified and nothing else in that array changed; <code>field</code> identifiers are untouched (grep the shared <code>ListingSortField</code> type and the server&#x27;s <code>SORT_KEYS</code> to confirm neither was touched, since this is a label-only change); the Pricing Status cell always renders one of the two new labels, never blank and never the old &quot;Unpriced&quot; text; <code>isLoading</code> disables every sortable header&#x27;s <code>&lt;button&gt;</code> (not just visually, the <code>disabled</code> attribute itself) and is NOT wired into the Requirement 8 silent polling path; <code>loadListings</code>&#x27;s <code>silent</code> option is honored exactly once, at exactly the one call site named in T1&#x27;s description, and every other call site still shows the loading state. PASS only if the polling-silence behavior is confirmed by reading the actual polling effect&#x27;s call, not inferred from the description. FAIL: reviewer found <code>loadListings</code> crosses the cyclomatic-complexity threshold (8 -&gt; 12, eslint-measured) from T1&#x27;s two new <code>options?.silent</code> guards; validate-lead judged this a maintainability/style finding, not a correctness or safety defect, so it does not block this cycle.</span></td><td><span data-since="2026-10-11T17:27:51Z" data-until="2026-10-11T18:12:54Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-11T17:27:51Z">&mdash;</span> (<span data-at="2026-10-11T17:27:51Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 17500 &middot; Actual tokens null</td></tr>
+<tr><td colspan="5"><p class="fail">reviewer found <code>loadListings</code> crosses the cyclomatic-complexity threshold (8 -&gt; 12, eslint-measured) from T1&#x27;s two new <code>options?.silent</code> guards; validate-lead judged this a maintainability/style finding, not a correctness or safety defect, so it does not block this cycle.</p></td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE1</span></td><td><span class="desc">Test T1. Update <code>apps/web/test/listing-list.test.tsx</code>&#x27;s <code>SORTABLE_LABELS</code> array and every <code>headerButton(el, &#x27;Difference&#x27;/&#x27;Identify Parts&#x27;/&#x27;Unpriced&#x27;)</code> call to the new labels; update its &quot;ListingList Unpriced column badge&quot; describe block&#x27;s two assertions (<code>&#x27;Unpriced&#x27;</code>/<code>&#x27;&#x27;</code> text) to <code>&#x27;Partially Priced&#x27;</code>/<code>&#x27;Fully Priced&#x27;</code>. Update <code>apps/web/test/listings-page.test.tsx</code>&#x27;s <code>clickHeader(el, &#x27;Difference&#x27;)</code>/<code>findButton(el, &#x27;Difference&#x27;)</code> calls to <code>&#x27;Expected Profit&#x27;</code>. Add new cases: clicking a sortable header while <code>isLoading</code> is true does not fire <code>onSortChange</code> (button is disabled); the loading indicator renders when <code>isLoading</code> is true and not when <code>false</code>; the existing table rows remain present (not unmounted) while <code>isLoading</code> is true. In <code>listings-page.test.tsx</code>, add a case proving the table shows the loading state while a sort-triggered <code>fetchListings</code> call is pending and clears it once the call resolves, and a separate case proving the 2-second polling reload (Req 8) does NOT toggle it. Check <code>apps/web/test/bulk-identify-parts-ui.test.tsx</code> and <code>apps/web/test/ebay-scan-ui.test.tsx</code> still pass unmodified (both reference &quot;Identify Parts&quot; text, but for the unrelated action button/a test description, not the renamed column header) — update either only if an actual run shows it broke, not preemptively. PASS: every updated/new case passes, no regression in the existing suites.</span></td><td><span data-since="2026-10-11T17:27:51Z" data-until="2026-10-11T18:12:54Z">&mdash;</span> (30 min)</td><td><span data-at="2026-10-11T17:27:51Z">&mdash;</span> (<span data-at="2026-10-11T17:27:51Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 185000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">U0</span></td><td><span class="desc">UAT pass over the whole feature (Req 1-8): start apps/server+apps/web in the worktree on isolated ports against the worktree&#x27;s own isolated DuckDB file. Confirm the three renamed headers, confirm the Pricing Status column always shows &quot;Fully Priced&quot; or &quot;Partially Priced&quot; (never blank, never the old &quot;Unpriced&quot; text), confirm ascending sort still puts Partially Priced first, confirm the table visibly enters a loading state (dimmed rows, disabled headers, spinner) during a sort/filter/page-triggered refetch and that a second click on a disabled header has no effect, confirm the silent background poll never triggers that loading state.</span></td><td><span data-since="2026-10-11T18:22:18Z" data-until="2026-10-11T18:43:57Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-11T18:22:18Z">&mdash;</span> (<span data-at="2026-10-11T18:22:18Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">uat &middot; <span class="tag">UI</span> &middot; Est tokens — &middot; Actual tokens 30800</td></tr></tbody></table></div>
+<h2>Assumptions</h2><ul class="items"><li><span class="tag">A1</span><span>The three column renames are display-label changes only — the underlying</span></li><li><span class="tag">A2</span><span>&quot;Identify Parts&quot; -&gt; &quot;Sourcing Status&quot; is scoped to the Listings table&#x27;s column</span></li><li><span class="tag">A3</span><span>&quot;Pricing Status&quot; replaces the previous single-state &quot;Unpriced&quot; badge with exactly</span></li><li><span class="tag">A4</span><span>The Requirement 6/7 loading state applies to every user-triggered refetch (sort</span></li><li><span class="tag">A5</span><span><code>BaselineSuite</code> is recorded <code>fail</code> for one inherited, unrelated,</span></li></ul>
+</section>
+</main><script>
+// REFRESH_MS and LOADED_AT drive the scheduled reload, the on-page countdown, and
+// the auto-refresh toggle below, so none of them can ever disagree with each other.
+var REFRESH_MS=300000, LOADED_AT=Date.now();
+var AUTOREFRESH_KEY='feature-dashboard-autorefresh';
+var reloadTimer=null;
+
+function armReload(){
+  if(reloadTimer) clearTimeout(reloadTimer);
+  reloadTimer=setTimeout(function(){location.reload();}, REFRESH_MS-(Date.now()-LOADED_AT));
+}
+function disarmReload(){
+  if(reloadTimer){clearTimeout(reloadTimer);reloadTimer=null;}
+}
+function storedAutorefreshPref(){
+  try{return localStorage.getItem(AUTOREFRESH_KEY);}catch(e){return null;}
+}
+function setAutorefreshUI(button,on){
+  button.textContent='Auto refresh '+(on?'on':'off');
+  button.setAttribute('aria-pressed',String(on));
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){el.hidden=!on;});
+  document.querySelectorAll('[data-refresh-off-note]').forEach(function(el){el.hidden=on;});
+}
+
+// Durations count up client-side, so an in-progress row does not freeze between
+// publishes, and every timestamp reads in the viewer's own zone rather than one
+// chosen when the page was written.
+function fmt(ms){var s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),
+m=Math.floor(s%3600/60);return h?h+'h '+m+'m':m+'m';}
+function fmtCountdown(ms){var s=Math.max(0,Math.round(ms/1000)),
+m=Math.floor(s/60);return m+'m '+(s%60)+'s';}
+var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtAt(d){
+  var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'pm':'am';
+  h=h%12;if(h===0)h=12;
+  var mm=m<10?'0'+m:m;
+  return MONTHS[d.getMonth()]+' '+d.getDate()+', '+h+':'+mm+ap;
+}
+function tick(){
+  var now=Date.now();
+  document.querySelectorAll('[data-since]').forEach(function(el){
+    var until=el.dataset.until?Date.parse(el.dataset.until):now;
+    el.textContent=fmt(until-Date.parse(el.dataset.since));});
+  document.querySelectorAll('[data-at]').forEach(function(el){
+    el.textContent=fmtAt(new Date(el.dataset.at));});
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){
+    el.textContent=fmtCountdown(REFRESH_MS-(now-LOADED_AT));});
+}
+tick(); setInterval(tick,1000);
+
+// Auto-refresh defaults off once the feature is done (data-feature-done, set by the
+// page itself) and on otherwise, unless this browser already recorded its own choice.
+(function(){
+  var button=document.getElementById('autorefresh');
+  if(!button) return;
+  var stored=storedAutorefreshPref();
+  var defaultOn=!document.querySelector('[data-feature-done]');
+  var isOn=stored===null?defaultOn:stored==='on';
+  setAutorefreshUI(button,isOn);
+  if(isOn) armReload();
+  button.addEventListener('click',function(){
+    var on=button.getAttribute('aria-pressed')!=='true';
+    try{localStorage.setItem(AUTOREFRESH_KEY,on?'on':'off');}catch(e){}
+    setAutorefreshUI(button,on);
+    if(on){LOADED_AT=Date.now();armReload();}else{disarmReload();}
+  });
+  var refreshNow=document.getElementById('refresh-now');
+  if(refreshNow) refreshNow.addEventListener('click',function(){location.reload();});
+})();
+
+// A description gets an expand control only when it truly does not fit.
+document.querySelectorAll('.desc').forEach(function(el){
+  if(el.scrollWidth<=el.clientWidth) return;
+  var b=document.createElement('button');b.className='more';b.textContent='more';
+  b.onclick=function(){el.classList.toggle('open');
+    b.textContent=el.classList.contains('open')?'less':'more';};
+  el.parentNode.appendChild(b);});
+
+function showCycle(n){
+  document.querySelectorAll('[data-cycle-panel]').forEach(function(p){
+    p.hidden=(p.dataset.cyclePanel!==String(n));});
+  document.querySelectorAll('[data-cycle-tab]').forEach(function(t){
+    t.setAttribute('aria-selected',t.dataset.cycleTab===String(n));});
+}
+</script>

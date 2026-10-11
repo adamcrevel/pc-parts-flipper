@@ -59,11 +59,13 @@ function Harness({
   sortBy,
   sortDirection,
   onSortChange = () => {},
+  isLoading,
 }: {
   listings: ListingSummary[];
   sortBy?: ListingSortField;
   sortDirection?: ListingSortDirection;
   onSortChange?: (field: ListingSortField) => void;
+  isLoading?: boolean;
 }) {
   const [editingListingId, setEditingListingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -104,6 +106,7 @@ function Harness({
       sortBy={sortBy}
       sortDirection={sortDirection}
       onSortChange={onSortChange}
+      isLoading={isLoading}
     />
   );
 }
@@ -121,16 +124,17 @@ afterEach(() => {
 });
 
 // Mounts the harness. `sort` carries the optional active-sort props (and a
-// click spy) the sortable-header tests need; the older tests pass none and
-// get the unsorted default.
+// click spy) the sortable-header tests need, plus the Req 6-8 `isLoading`
+// flag the loading-state tests need; the older tests pass none and get the
+// unsorted, not-loading default.
 async function mount(
   listings: ListingSummary[],
-  sort: { sortBy?: ListingSortField; sortDirection?: ListingSortDirection; onSortChange?: (field: ListingSortField) => void } = {},
+  sort: { sortBy?: ListingSortField; sortDirection?: ListingSortDirection; onSortChange?: (field: ListingSortField) => void; isLoading?: boolean } = {},
 ): Promise<HTMLDivElement> {
   container = document.createElement('div');
   await act(async () => {
     root = createRoot(container!);
-    root.render(<Harness listings={listings} sortBy={sort.sortBy} sortDirection={sort.sortDirection} onSortChange={sort.onSortChange} />);
+    root.render(<Harness listings={listings} sortBy={sort.sortBy} sortDirection={sort.sortDirection} onSortChange={sort.onSortChange} isLoading={sort.isLoading} />);
   });
   return container;
 }
@@ -151,6 +155,18 @@ function findListingRow(el: HTMLElement, title: string): HTMLTableRowElement {
     throw new Error(`No listing row found for "${title}"`);
   }
   return row as HTMLTableRowElement;
+}
+
+function headerCells(el: HTMLElement): HTMLTableCellElement[] {
+  return Array.from(el.querySelectorAll('thead th'));
+}
+
+function headerButton(el: HTMLElement, label: string): HTMLButtonElement {
+  const button = Array.from(el.querySelectorAll('thead button')).find((b) => b.textContent?.trim() === label);
+  if (!button) {
+    throw new Error(`No sortable header button found for "${label}"`);
+  }
+  return button as HTMLButtonElement;
 }
 
 describe('ListingList title click -> inline edit row', () => {
@@ -315,19 +331,7 @@ describe('ListingList Accept/Reject gating and per-row in-flight disable (Req 4)
 // are clickable, which field each one reports, and that the direction
 // arrow appears on the active column only.
 describe('ListingList sortable column headers', () => {
-  const SORTABLE_LABELS = ['Title', 'Source', 'Status', 'Asking Price', 'Expected Resale', 'Difference', 'Identify Parts', 'Unpriced'];
-
-  function headerCells(el: HTMLElement): HTMLTableCellElement[] {
-    return Array.from(el.querySelectorAll('thead th'));
-  }
-
-  function headerButton(el: HTMLElement, label: string): HTMLButtonElement {
-    const button = Array.from(el.querySelectorAll('thead button')).find((b) => b.textContent?.trim() === label);
-    if (!button) {
-      throw new Error(`No sortable header button found for "${label}"`);
-    }
-    return button as HTMLButtonElement;
-  }
+  const SORTABLE_LABELS = ['Title', 'Source', 'Status', 'Asking Price', 'Expected Resale', 'Expected Profit', 'Sourcing Status', 'Pricing Status'];
 
   it('makes exactly the 8 data-bearing headers clickable, each reporting its own sort field, and leaves the checkbox and actions columns plain', async () => {
     const clicked: string[] = [];
@@ -393,7 +397,7 @@ describe('ListingList sortable column headers', () => {
     const arrows = Array.from(el.querySelectorAll('thead [aria-label^="Sorted"]'));
     expect(arrows).toHaveLength(1);
     expect(arrows[0].getAttribute('aria-label')).toBe('Sorted descending');
-    expect(headerButton(el, 'Difference').contains(arrows[0])).toBe(true);
+    expect(headerButton(el, 'Expected Profit').contains(arrows[0])).toBe(true);
     // The rendered icon itself differs, not just its label — a direction
     // indicator that drew the same glyph both ways would indicate nothing.
     expect(ascendingGlyph).not.toBe('');
@@ -403,45 +407,87 @@ describe('ListingList sortable column headers', () => {
     ]);
   });
 
-  // Req 8, 9: clicking the new Unpriced header reports 'unpriced' to the
-  // page exactly like every other header — no direction is attached to the
-  // click itself (that's the page's own first-click-is-ascending logic,
-  // already covered above for the other 7 columns and not re-tested here),
-  // this pins only that the new column's own click wiring is correct.
-  it('clicking the Unpriced header while inactive reports sortBy "unpriced" and nothing else', async () => {
+  // Req 3, 9: clicking the renamed Pricing Status header still reports the
+  // unchanged 'unpriced' sort field to the page — no direction is attached
+  // to the click itself (that's the page's own first-click-is-ascending
+  // logic, already covered above for the other 7 columns and not
+  // re-tested here), this pins only that the renamed column's own click
+  // wiring is correct.
+  it('clicking the Pricing Status header while inactive reports sortBy "unpriced" and nothing else', async () => {
     const clicked: string[] = [];
     const el = await mount([makeListing()], { onSortChange: (field) => clicked.push(field) });
 
     await act(async () => {
-      headerButton(el, 'Unpriced').click();
+      headerButton(el, 'Pricing Status').click();
     });
 
     expect(clicked).toEqual(['unpriced']);
   });
 });
 
-// The new Unpriced column's badge cell (Req 8). The column sits
-// immediately after Identify Parts and before the trailing Accept/Reject
-// actions column, so in each row's <td> list (checkbox, title, source,
-// status, askingPrice, expectedResale, difference, identifyParts,
-// unpriced, actions) it is always index 8 — pinned here as a literal, not
-// derived from SORTABLE_COLUMNS, so a header/body position drift between
-// the two would actually fail this test rather than silently agree with
-// itself.
-describe('ListingList Unpriced column badge (Req 8)', () => {
-  const UNPRICED_CELL_INDEX = 8;
+// The renamed Pricing Status column's badge cell (Req 3-4). The column
+// sits immediately after Sourcing Status and before the trailing
+// Accept/Reject actions column, so in each row's <td> list (checkbox,
+// title, source, status, askingPrice, expectedResale, difference,
+// identifyParts, unpriced, actions) it is always index 8 — pinned here as
+// a literal, not derived from SORTABLE_COLUMNS, so a header/body position
+// drift between the two would actually fail this test rather than
+// silently agree with itself.
+describe('ListingList Pricing Status column badge (Req 3-4)', () => {
+  const PRICING_STATUS_CELL_INDEX = 8;
 
-  it('renders the "Unpriced" badge text for a listing with at least one unpriced part, and renders nothing for one with none', async () => {
-    const unpriced = makeListing({ id: 'listing-unpriced', title: 'Unpriced Listing', hasUnpricedParts: true });
-    const priced = makeListing({ id: 'listing-priced', title: 'Priced Listing', hasUnpricedParts: false });
-    const el = await mount([unpriced, priced]);
+  it('renders "Partially Priced" for a listing with at least one unpriced part, and "Fully Priced" for one with none — never blank', async () => {
+    const partial = makeListing({ id: 'listing-partial', title: 'Partial Listing', hasUnpricedParts: true });
+    const full = makeListing({ id: 'listing-full', title: 'Full Listing', hasUnpricedParts: false });
+    const el = await mount([partial, full]);
 
-    const unpricedRow = findListingRow(el, 'Unpriced Listing');
-    const pricedRow = findListingRow(el, 'Priced Listing');
+    const partialRow = findListingRow(el, 'Partial Listing');
+    const fullRow = findListingRow(el, 'Full Listing');
 
-    expect(unpricedRow.cells[UNPRICED_CELL_INDEX].textContent?.trim()).toBe('Unpriced');
-    expect(unpricedRow.cells[UNPRICED_CELL_INDEX].querySelector('span')).not.toBeNull();
-    expect(pricedRow.cells[UNPRICED_CELL_INDEX].textContent?.trim()).toBe('');
-    expect(pricedRow.cells[UNPRICED_CELL_INDEX].querySelector('span')).toBeNull();
+    expect(partialRow.cells[PRICING_STATUS_CELL_INDEX].textContent?.trim()).toBe('Partially Priced');
+    expect(partialRow.cells[PRICING_STATUS_CELL_INDEX].querySelector('span')).not.toBeNull();
+    expect(fullRow.cells[PRICING_STATUS_CELL_INDEX].textContent?.trim()).toBe('Fully Priced');
+    expect(fullRow.cells[PRICING_STATUS_CELL_INDEX].querySelector('span')).not.toBeNull();
+  });
+});
+
+// Req 6-8: the table's own loading state, set by the host page while a
+// user-triggered refetch is in flight — pins that ListingList disables
+// every sortable header's actual `disabled` attribute (not just its
+// styling), shows the status indicator, and keeps the existing rows
+// mounted underneath (never unmounted/replaced) whenever `isLoading` is
+// true, and does none of that when it is false/undefined.
+describe('ListingList loading state (Req 6-8)', () => {
+  it('disables every sortable header and suppresses its click while isLoading is true', async () => {
+    const clicked: string[] = [];
+    const el = await mount([makeListing()], { isLoading: true, onSortChange: (field) => clicked.push(field) });
+
+    const button = headerButton(el, 'Title');
+    expect(button.disabled).toBe(true);
+
+    await act(async () => {
+      button.click();
+    });
+
+    expect(clicked).toEqual([]);
+  });
+
+  it('renders the role="status" loading indicator only while isLoading is true, not when it is false', async () => {
+    const loading = await mount([makeListing()], { isLoading: true });
+    expect(loading.querySelector('[role="status"]')).not.toBeNull();
+
+    act(() => {
+      root?.unmount();
+    });
+    container?.remove();
+
+    const notLoading = await mount([makeListing()], { isLoading: false });
+    expect(notLoading.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it('keeps the existing row mounted in the table (not unmounted/replaced) while isLoading is true', async () => {
+    const el = await mount([makeListing({ title: 'Stale Listing' })], { isLoading: true });
+    expect(findListingRow(el, 'Stale Listing')).toBeDefined();
+    expect(el.querySelectorAll('tbody tr').length).toBe(1);
   });
 });
