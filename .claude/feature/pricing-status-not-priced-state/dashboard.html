@@ -1,0 +1,282 @@
+<title>Feature</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--radius:8px;
+--autorefresh-bg:rgba(31,95,79,.14);--refresh-bg:rgba(42,95,143,.14);--refresh-ink:#2a5f8f}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74;
+--autorefresh-bg:rgba(79,181,154,.18);--refresh-bg:rgba(111,168,220,.18);--refresh-ink:#8fc1ef}}
+*{box-sizing:border-box;overflow-wrap:break-word}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+/* Grid tracks default to fitting their content's full, unbroken width -- a single
+   long token (a file path, a backtick-quoted identifier) anywhere in a panel would
+   otherwise stretch the whole page past max-width, no matter how long the gap or how
+   small every other panel is. min-width:0 is what lets a grid item shrink below that
+   and actually wrap instead. Confirmed live: this is what was making every real plan
+   (which is full of exactly these long tokens) render many times wider than the
+   viewport, independent of the DOCTYPE/viewport fix. */
+main{max-width:1300px;margin:0 auto;padding:24px;display:grid;gap:20px}
+main>*{min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);
+border-radius:var(--radius);padding:20px 22px}
+h1{margin:0 0 4px;font-size:21px;letter-spacing:-.01em}
+h2{margin:22px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+h2:first-of-type{margin-top:14px}
+.panel>p{line-height:1.65;margin:0 0 4px}
+.totals{display:flex;gap:32px;flex-wrap:wrap;margin:12px 0}
+.total .n{font-size:26px;font-variant-numeric:tabular-nums}
+.total .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+details{margin-top:8px}summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;
+border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--good);border-color:var(--good);color:var(--panel)}
+.scroll{overflow-x:auto}
+/* table-layout:auto (the default) sizes a column from its content's own natural
+   width -- for a nowrap+ellipsis cell, that is the FULL unwrapped text, which is
+   exactly the width ellipsis is meant to avoid ever reaching. It is a well-known
+   gap in the auto algorithm, not a quirk of this page: the standard fix is
+   table-layout:fixed, with every narrow column given an explicit width so the
+   description column (the one left unset) absorbs the rest and actually holds
+   .desc to it. Confirmed live: without this, a single real task description
+   dragged the whole table into a wide horizontal scrollbar regardless of how
+   short every other column's content was. */
+table{width:100%;border-collapse:collapse;font-size:14px;table-layout:fixed}
+/* The status column's own text ("In progress &middot; running long.") is real
+   prose, not a single short token -- 28px forced it to wrap, and the page's own
+   global overflow-wrap:break-word (needed elsewhere, see main>* above) then broke
+   it mid-word instead of at a space. Wide enough for the longest badge on two
+   lines, with normal word-wrapping restored just for this column. */
+th:first-child,td:first-child{width:112px;overflow-wrap:normal}
+th:nth-child(2),td:nth-child(2){width:52px}
+th:nth-child(4),td:nth-child(4){width:160px}
+th:nth-child(5),td:nth-child(5){width:300px}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.good .dot,.dot.good{background:var(--good)}.bad .dot,.dot.bad{background:var(--bad)}
+.neutral .dot,.dot.neutral{background:var(--muted)}
+.sub td{border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);padding-top:0}
+/* .desc is a <span> -- inline by default, and width/overflow/text-overflow are all
+   spec-ignored on a plain inline box, so none of this ever actually truncated
+   anything on its own. display:block (now that its <td> has a real fixed width to
+   fill, from table-layout:fixed above) is what makes the rest of this rule do
+   anything at all. */
+.desc{display:block;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.desc.open{white-space:normal;overflow:visible}
+.more{font:inherit;font-size:11px;border:none;background:none;color:var(--muted);cursor:pointer}
+.tag{display:inline-block;padding:0 6px;margin-right:4px;border:1px solid var(--line);
+border-radius:999px;font-size:11px;font-variant-numeric:tabular-nums}
+.banner{border-left:3px solid var(--bad);padding:10px 14px;background:var(--panel);
+border-radius:var(--radius);margin-bottom:14px}
+.fail{background:rgba(163,49,42,.09);padding:6px 9px;border-radius:6px;margin-top:6px}
+ul,ol{margin:8px 0;padding-left:24px}
+li{margin:8px 0;line-height:1.6}
+/* Requirements and Assumptions are both "one short id, one longer text" --
+   the same shape a table row has, so they get the same row-grid treatment
+   the task table already uses (a border between rows, an aligned label
+   column), instead of reading as a looser bulleted paragraph. Plain bullet
+   lists (Findings, UAT checks) keep the plainer rule above. The id badge
+   reuses .tag -- the exact same pill the task table's own id column uses now
+   -- so a reader learns one visual language for "this is an id" instead of
+   three different ones. */
+.items{list-style:none;margin:8px 0;padding:0;display:grid;gap:0}
+.items li{margin:0;display:grid;grid-template-columns:34px 1fr;gap:10px;
+padding:10px 2px;border-bottom:1px solid var(--line);line-height:1.6}
+.items li:last-child{border-bottom:none}
+/* A grid item's own display:inline-block is not enough to stop it stretching
+   to fill its whole cell -- CSS Grid stretches an item's box to its area by
+   default regardless, so the pill's border was being drawn around the full
+   34px-by-row-height cell instead of snugly around "A1". justify/align-self
+   opt back out of that stretch. */
+.items li>:first-child{justify-self:start;align-self:start}
+.note{font-size:12px;color:var(--muted)}
+.btn{display:inline-block;padding:8px 16px;margin:2px 0;border-radius:8px;
+background:var(--good);color:var(--panel);text-decoration:none;font-size:13px;font-weight:600}
+.btn:hover{opacity:.85}
+/* Same shape for both so they read as a pair of related controls; a different
+   background on each is the only thing telling them apart at a glance -- a toggle
+   and an immediate action should not look identical. */
+.ghost-btn{font:inherit;font-size:12px;padding:4px 12px;border-radius:999px;
+border:none;cursor:pointer}
+.ghost-btn.autorefresh{background:var(--autorefresh-bg);color:var(--good)}
+.ghost-btn.refresh-now{background:var(--refresh-bg);color:var(--refresh-ink)}
+.ghost-btn:hover{opacity:.8}
+.refresh-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+pre{font-family:inherit;white-space:pre-wrap;word-break:break-word;margin:0;line-height:1.65}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9em;
+background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+/* A retrospective's own markdown headings nest two levels below this section's own
+   h2, so "What happened" reads as a sub-heading of "Retrospective", never a peer of
+   it or of another panel's h2 entirely. */
+.prose h3{margin:18px 0 8px;font-size:15px}
+.prose h4,.prose h5,.prose h6{margin:14px 0 6px;font-size:14px;color:var(--muted)}
+.prose p{margin:8px 0;line-height:1.65}
+/* A bullet whose own text opens with a bold phrase is using it as the item's own
+   title, not as mid-sentence emphasis -- block-level + its own line is what actually
+   separates the two instead of letting the body run on immediately after it. */
+.prose .bullet-title{display:block;margin-bottom:2px}
+.prose .bullet-body{display:block}
+</style>
+<main>
+<section class="panel">
+<h1>Feature</h1>
+<p class="note">Status done &middot; cycle 0 of 3</p>
+<p class="note refresh-controls" data-feature-done><button type="button" id="autorefresh" class="ghost-btn autorefresh" aria-pressed="false">Auto refresh off</button> <button type="button" id="refresh-now" class="ghost-btn refresh-now">Refresh now</button> &middot; <span data-refresh-in>5m 0s</span><span data-refresh-off-note hidden>Auto-refresh is off.</span></p>
+<h2>Goal</h2><p>The Listings table&#x27;s &quot;Pricing Status&quot; column currently shows only two values, computed from a
+boolean <code>hasUnpricedParts</code> (<code>true</code> if at least one fetched Expected Part has a null
+<code>estimatedResaleValue</code>, <code>false</code> otherwise — including, by <code>.some</code>&#x27;s own semantics on an empty
+array, a listing with <strong>zero</strong> Expected Parts at all). User-reported bug: a listing that has not
+yet had its parts identified (zero Expected Parts) — or one whose parts exist but are *all*
+unpriced — is shown as &quot;Fully Priced&quot;, which is wrong: neither listing has actually had any
+pricing work done on it at all.
+
+This feature replaces the two-value model with three, computed from the same Expected Parts data
+already fetched, no new stored column:
+
+- <strong>&quot;Not Priced&quot;</strong> — zero Expected Parts (not yet identified), or at least one Expected Part exists
+  but every one of them is unpriced (zero priced out of however many exist).
+- <strong>&quot;Partially Priced&quot;</strong> — at least one Expected Part is priced AND at least one is unpriced (a
+  genuine mix).
+- <strong>&quot;Fully Priced&quot;</strong> — at least one Expected Part exists and every one of them is priced.
+
+Ascending sort keeps the existing &quot;most work still needed sorts first&quot; direction, extended to the
+third state: Not Priced, then Partially Priced, then Fully Priced.</p>
+<h2>Requirements</h2><ul class="items"><li><span class="tag">1</span><span>A Listing&#x27;s Pricing Status is computed as exactly one of three values — <code>not_priced</code>,
+   <code>partially_priced</code>, <code>fully_priced</code> — replacing the current two-value <code>hasUnpricedParts</code> boolean
+   entirely (not added alongside it).</span></li><li><span class="tag">2</span><span>&quot;Not Priced&quot; is the result when the Listing has zero Expected Parts.</span></li><li><span class="tag">3</span><span>&quot;Not Priced&quot; is also the result when the Listing has one or more Expected Parts but every one of
+   them has a null <code>estimatedResaleValue</code> (none priced at all) — the specific gap the user reported.</span></li><li><span class="tag">4</span><span>&quot;Partially Priced&quot; is the result only when the Listing has at least one priced Expected Part and
+   at least one unpriced Expected Part, both true at once.</span></li><li><span class="tag">5</span><span>&quot;Fully Priced&quot; is the result when the Listing has at least one Expected Part and every one of
+   them has a non-null <code>estimatedResaleValue</code>.</span></li><li><span class="tag">6</span><span>The Listings table&#x27;s Pricing Status column renders the correct one of three distinct labels —
+   &quot;Not Priced&quot;, &quot;Partially Priced&quot;, &quot;Fully Priced&quot; — for every row, never blank and never a
+   two-value result.</span></li><li><span class="tag">7</span><span>Ascending sort on the Pricing Status column lists every &quot;Not Priced&quot; listing first, then every
+   &quot;Partially Priced&quot; listing, then every &quot;Fully Priced&quot; listing — extending the existing
+   unpriced-first convention to the new third bucket, not just preserving it for the old two.</span></li><li><span class="tag">8</span><span>Descending sort on the Pricing Status column is the exact reverse of Requirement 7&#x27;s order.</span></li><li><span class="tag">9</span><span>Sorting by Pricing Status still composes correctly with pagination across the whole filtered
+   dataset (a bucket boundary that falls mid-page is not re-sorted independently per page), matching
+   the existing proof already established for every other sortable column.</span></li></ul>
+<p><a class="btn" href="https://gist.githack.com/adamcrevel/29cd8c945244f4f18168d8742f539eb6/raw/prototype.html" target="_blank" rel="noopener noreferrer">Prototype</a></p>
+<div class="totals">
+<div class="total"><div class="n" data-since="2026-10-11T21:21:19Z">&mdash;</div><div class="l">total time</div></div>
+<div class="total"><div class="n">145,193</div><div class="l">total tokens</div></div>
+</div>
+<details><summary>Where that token figure comes from</summary><p class="note">input 0 + output 14,032 + cache-write 29,684 + cache-read 67,977, across 73 turns</p><p class="note">Most of a long conversation's token count is cache-read: the accumulated context is resent on every turn and billed at a fraction of the normal rate. A high total reflects the turn count over time, not necessarily a large bill.</p></details>
+</section>
+<nav class="tabs">
+<button data-cycle-tab="0" aria-selected="true" onclick="showCycle(0)">Cycle 0</button>
+</nav>
+<section class="panel" data-cycle-panel="0">
+<h2>Cycle 0</h2>
+<p><strong>Trigger.</strong> initial</p>
+<p><span class="good"><span class="dot"></span>UAT passed.</span></p>
+<ul><li>Isolation: apps/server ran on isolated port 3101 against a fresh/empty DuckDB file; apps/web ran on isolated port 5273; confirmed no collision with the live main-checkout service on 3001/5173.</li><li>Req 2 (zero Expected Parts -&gt; Not Priced): created via the real browser form, confirmed live — the originally reported bug.</li><li>Req 3 (non-empty but all unpriced -&gt; Not Priced): created via the real browser form, confirmed live — the other reported gap.</li><li>Req 4 (genuine mix -&gt; Partially Priced): created via the real browser form, confirmed live.</li><li>Req 5 (all priced -&gt; Fully Priced): created via the real browser form, confirmed live.</li><li>Req 6 (always exactly one of three labels, never blank): confirmed across 34 distinct listings total (4 primary + 30 bulk-seeded), both pages, both sort directions.</li><li>Req 7 (ascending groups Not Priced, then Partially Priced, then Fully Priced): confirmed over the full 30-row concatenated ascending sequence across both pages — strictly non-decreasing by bucket.</li><li>Req 8 (descending is the exact reverse): confirmed the full 30-row descending sequence is the byte-for-byte reverse of the ascending one.</li><li>Req 9 (sort composes with pagination across a bucket boundary): confirmed a Partially Priced -&gt; Fully Priced boundary fell strictly inside page 2 (its 5th row), proving the whole filtered set sorts before slicing.</li><li>Req 1 (old field fully removed): grepped the whole apps/ and packages/ tree for hasUnpricedParts — zero matches.</li><li>Standing check (suite + lint, cited from validate-lead&#x27;s gate, not re-run): 944 vs baseline 943 (+1); one documented pre-existing failure plus confirmed-in-isolation environmental flakiness, neither a regression; lint clean.</li><li>Standing check (doc comments): PricingStatus and PricingStatusBadgeProps both carry genuine explanatory comments.</li><li>Standing check (import boundary): zero apps/web -&gt; apps/server imports in any touched file.</li><li>Standing check (no schema change): confirmed via direct read of migrate.ts — no new column or migration, pricingStatus computed at read time exactly as hasUnpricedParts was.</li><li>Cleanup: both UAT dev servers stopped, temp DB and throwaway scripts removed, ports confirmed released, main-checkout live service never touched.</li></ul>
+<p class="note">11 task(s). Estimated 190 min. Actual tokens 33,500, estimated 180,000. This never includes the driving conversation's own tokens, which cannot honestly be split by cycle.
+<div class="scroll"><table><thead><tr><th></th><th>Id</th><th>Description</th><th>Duration (Estimate)</th><th>Started At (Estimate)</th></tr></thead><tbody><tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">P0</span></td><td><span class="desc">Prototype covering T3 (ui: yes): three-state Pricing Status badge (Not Priced/Partially Priced/Fully Priced) with correct 3-way ascending/descending sort, including the two reported edge cases (zero Expected Parts, all-unpriced Expected Parts).</span></td><td><span data-since="2026-10-11T21:21:40Z" data-until="2026-10-11T21:31:32Z">&mdash;</span> (10 min)</td><td><span data-at="2026-10-11T21:21:40Z">&mdash;</span> (<span data-at="2026-10-11T21:21:40Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">prototype &middot; <span class="tag">UI</span> &middot; Est tokens — &middot; Actual tokens 7500</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T1</span></td><td><span class="desc">Shared type (Req 1). <code>packages/shared/src/listings.ts</code>: add <code>export type PricingStatus = &#x27;not_priced&#x27; | &#x27;partially_priced&#x27; | &#x27;fully_priced&#x27;;</code> with a doc comment explaining each value&#x27;s exact condition (Req 2-5, verbatim from this plan&#x27;s Requirements, so the type&#x27;s own comment is the single source of truth for the three rules). Replace <code>ListingSummary</code>&#x27;s <code>hasUnpricedParts: boolean;</code> field with <code>pricingStatus: PricingStatus;</code> (same required, non-optional treatment — no caller should read this as missing). Do not touch <code>ListingSortField</code>: its existing <code>&#x27;unpriced&#x27;</code> member is kept as the wire identifier for this column&#x27;s sort (a display-only field rename, not a new sort field — avoids a second unrelated rename in the same change).</span></td><td><span data-since="2026-10-11T21:34:34Z" data-until="2026-10-11T21:37:07Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-11T21:34:34Z">&mdash;</span> (<span data-at="2026-10-11T21:33:46Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens 4100 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T2</span></td><td><span class="desc">Server computation and sort key (Req 2-5, 7-9), depends on T1. <code>apps/server/src/routes/listings.ts</code>: add a new <code>computePricingStatus(expectedParts: ExpectedPart[]): PricingStatus</code> helper (placed near <code>computeComparison</code>, same file) implementing exactly: zero parts -&gt; <code>&#x27;not_priced&#x27;</code>; counts of priced vs. unpriced parts both &gt; 0 -&gt; <code>&#x27;partially_priced&#x27;</code>; every part priced (non-empty) -&gt; <code>&#x27;fully_priced&#x27;</code>; every part unpriced (non-empty, zero priced) -&gt; <code>&#x27;not_priced&#x27;</code>. Replace both <code>toSummary</code> and <code>toDetail</code>&#x27;s <code>hasUnpricedParts: expectedParts.some(...)</code> lines with <code>pricingStatus: computePricingStatus(expectedParts)</code>, calling the one shared helper from both places (not duplicating the logic a second time the way the old boolean computation was intentionally duplicated — this one is non-trivial enough that a single shared implementation is the right call, and a doc comment on the helper should say so explicitly). Update <code>SORT_KEYS.unpriced</code>&#x27;s extractor: replace the old <code>(listing) =&gt; (listing.hasUnpricedParts ? 0 : 1)</code> with an ordinal mapping <code>{ not_priced: 0, partially_priced: 1, fully_priced: 2 }[listing.pricingStatus]</code>, with a doc comment explaining the three-way ordinal (not just the old binary one) is what makes ascending sort read Not Priced, then Partially Priced, then Fully Priced (Req 7), and reusing the same <code>Number(keyA) - Number(keyB)</code> comparator already in place (no comparator change needed).</span></td><td><span data-since="2026-10-11T21:37:07Z" data-until="2026-10-11T21:40:20Z">&mdash;</span> (25 min)</td><td><span data-at="2026-10-11T21:37:07Z">&mdash;</span> (<span data-at="2026-10-11T21:53:46Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens 10200 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T3</span></td><td><span class="desc">Client badge and wiring (Req 6), depends on T1. <code>apps/web/src/features/listings/pricing-status-badge.tsx</code>: change <code>PricingStatusBadgeProps</code> from <code>{ hasUnpricedParts: boolean }</code> to <code>{ pricingStatus: PricingStatus }</code> (import the type from <code>@pc-parts-flipper/shared</code>); render three pills instead of two — keep &quot;Partially Priced&quot; in its existing destructive/red styling, keep &quot;Fully Priced&quot; in its existing teal styling (matching <code>IdentifyPartsStatusBadge</code>&#x27;s &quot;completed&quot; pill), and add &quot;Not Priced&quot; in a neutral/muted pill (<code>border-muted-foreground/40 bg-muted text-muted-foreground</code>, or this project&#x27;s closest equivalent muted-pill convention — grep for an existing muted pill, e.g. <code>IdentifyPartsStatusBadge</code>&#x27;s own &quot;no job yet&quot; state, and match its exact token names) to read as &quot;nothing done yet,&quot; distinct from both the red (something needs attention mid-way) and teal (done) states. Update the component&#x27;s doc comment to describe all three states and when each applies. <code>apps/web/src/features/listings/listing-list.tsx</code>: update the one call site from <code>&lt;PricingStatusBadge hasUnpricedParts={listing.hasUnpricedParts} /&gt;</code> to <code>&lt;PricingStatusBadge pricingStatus={listing.pricingStatus} /&gt;</code>.</span></td><td><span data-since="2026-10-11T21:37:07Z" data-until="2026-10-11T21:40:20Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-11T21:37:07Z">&mdash;</span> (<span data-at="2026-10-11T22:18:46Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; <span class="tag">UI</span> &middot; Est tokens 10900 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R1</span></td><td><span class="desc">Review T1 against Req 1, scoped to <code>packages/shared/src/listings.ts</code>. Confirm <code>PricingStatus</code> is exactly the 3 literal members named, <code>ListingSummary.pricingStatus</code> is required/non-optional, <code>hasUnpricedParts</code> no longer exists anywhere in this file, and <code>ListingSortField</code>&#x27;s <code>&#x27;unpriced&#x27;</code> member is untouched (confirming T1 did not also rename the sort field, which was explicitly out of scope). PASS only if a grep for <code>hasUnpricedParts</code> across the whole file returns nothing.</span></td><td><span data-since="2026-10-11T21:42:36Z" data-until="2026-10-11T22:07:13Z">&mdash;</span> (10 min)</td><td><span data-at="2026-10-11T21:42:36Z">&mdash;</span> (<span data-at="2026-10-11T21:42:36Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 9000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE1</span></td><td><span class="desc">Test T1. Update <code>packages/shared/src/partNotesAndUnpricedTypes.test.ts</code>&#x27;s <code>&#x27;ListingSummary.hasUnpricedParts&#x27;</code> describe block (and its two tests) to cover the new <code>pricingStatus: PricingStatus</code> field instead: all three literal values are valid, an invalid string literal is rejected (<code>@ts-expect-error</code>), and omitting the key entirely is rejected (required, not optional) — same rigor as the tests it replaces. PASS: updated/new cases pass, shared package builds clean, no regression in the other existing shared tests.</span></td><td><span data-since="2026-10-11T21:42:36Z" data-until="2026-10-11T22:07:13Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-11T21:42:36Z">&mdash;</span> (<span data-at="2026-10-11T21:42:36Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 26500 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R2</span></td><td><span class="desc">Review T2 against Req 2-5, 7-9, scoped to <code>apps/server/src/routes/listings.ts</code>. Confirm <code>computePricingStatus</code>&#x27;s four-way logic exactly matches Req 2-5 (test it by hand against a zero-parts list, an all-unpriced non-empty list, a genuinely mixed list, and an all-priced list); confirm both <code>toSummary</code> and <code>toDetail</code> call the same one helper (not two separate reimplementations); confirm <code>SORT_KEYS.unpriced</code>&#x27;s new ordinal mapping is <code>0</code>/<code>1</code>/<code>2</code> for <code>not_priced</code>/<code>partially_priced</code>/<code>fully_priced</code> respectively, verified against the real <code>Number(keyA) - Number(keyB)</code> ascending comparator so Req 7&#x27;s stated order is what actually results, not its apparent opposite. PASS only if the ordinal-to-order mapping is traced through the real comparator code, not merely read as plausible.</span></td><td><span data-since="2026-10-11T21:42:36Z" data-until="2026-10-11T22:07:13Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-11T21:42:36Z">&mdash;</span> (<span data-at="2026-10-11T21:42:36Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 10300 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE2</span></td><td><span class="desc">Test T2. Rewrite <code>apps/server/test/listings.test.ts</code>&#x27;s existing &quot;groups unpriced listings...&quot; sort test (search for <code>sortBy=unpriced</code> / &quot;Unpriced Mix&quot; in that file) for the new three-bucket model: seed at least 2 listings per bucket (not_priced via a zero-parts listing AND via a nonzero-all-unpriced listing; partially_priced via a genuine mix; fully_priced via all-priced), scrambled relative to both bucket and <code>listingDate</code>, and prove ascending order groups all not_priced listings first, then all partially_priced, then all fully_priced (index-based, not a single-row spot check); prove descending is the exact reverse; prove it composes with pagination across a bucket boundary that falls mid-page, the same rigor the test it replaces already used for the two-bucket model. PASS: rewritten test passes, no regression in the rest of <code>listings.test.ts</code>&#x27;s sort suite (the other 7 columns).</span></td><td><span data-since="2026-10-11T21:42:36Z" data-until="2026-10-11T22:07:13Z">&mdash;</span> (30 min)</td><td><span data-at="2026-10-11T21:42:36Z">&mdash;</span> (<span data-at="2026-10-11T21:42:36Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 52000 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R3</span></td><td><span class="desc">Review T3 against Req 6, scoped to <code>pricing-status-badge.tsx</code> and <code>listing-list.tsx</code>. Confirm the badge renders exactly one of the three correct labels for each of the three <code>PricingStatus</code> values, never blank; confirm the three pills are visually distinct from each other (three different color tokens, not two colors reused for three labels); confirm <code>listing-list.tsx</code>&#x27;s one call site passes <code>pricingStatus</code>, not the old <code>hasUnpricedParts</code> prop name. PASS only if the &quot;Not Priced&quot; pill&#x27;s styling is confirmed genuinely distinct from both of the other two, not just a label change on a reused class string.</span></td><td><span data-since="2026-10-11T21:42:36Z" data-until="2026-10-11T22:07:13Z">&mdash;</span> (10 min)</td><td><span data-at="2026-10-11T21:42:36Z">&mdash;</span> (<span data-at="2026-10-11T21:42:36Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 10300 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE3</span></td><td><span class="desc">Test T3. Update <code>apps/web/test/listing-list.test.tsx</code>&#x27;s Pricing Status badge test (currently asserting &quot;Partially Priced&quot;/&quot;Fully Priced&quot; for <code>hasUnpricedParts: true</code>/<code>false</code>) to pass <code>pricingStatus</code> instead and add the third case: a listing with <code>pricingStatus: &#x27;not_priced&#x27;</code> renders &quot;Not Priced&quot;, distinct from the other two cases&#x27; text and (if feasible via computed style/class) visually distinct styling. PASS: updated/new cases pass, no regression in the rest of <code>listing-list.test.tsx</code>.</span></td><td><span data-since="2026-10-11T21:42:36Z" data-until="2026-10-11T22:07:13Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-11T21:42:36Z">&mdash;</span> (<span data-at="2026-10-11T21:42:36Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 46700 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">U0</span></td><td><span class="desc">UAT pass over the whole feature (Req 1-9): start apps/server+apps/web in the worktree on isolated ports against the worktree&#x27;s own isolated DuckDB file. Confirm a listing with zero Expected Parts shows &quot;Not Priced&quot; (the originally reported bug), confirm a listing whose Expected Parts exist but are all unpriced also shows &quot;Not Priced&quot;, confirm a genuinely mixed listing shows &quot;Partially Priced&quot; and an all-priced listing shows &quot;Fully Priced&quot;, confirm ascending sort groups Not Priced, then Partially Priced, then Fully Priced, confirm descending is the exact reverse, confirm sort composes with pagination across a bucket boundary.</span></td><td><span data-since="2026-10-11T22:26:33Z" data-until="2026-10-11T22:41:30Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-11T22:26:33Z">&mdash;</span> (<span data-at="2026-10-11T22:26:33Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">uat &middot; <span class="tag">UI</span> &middot; Est tokens — &middot; Actual tokens 26000</td></tr></tbody></table></div>
+<h2>Assumptions</h2><ul class="items"><li><span class="tag">A1</span><span><code>ListingSortField</code>&#x27;s wire identifier for this column stays <code>&#x27;unpriced&#x27;</code> — only the</span></li><li><span class="tag">A2</span><span>Ascending order for the three buckets is Not Priced, then Partially Priced, then</span></li><li><span class="tag">A3</span><span><code>BaselineSuite</code> is recorded <code>fail</code> for the same single inherited, unrelated,</span></li></ul>
+</section>
+</main><script>
+// REFRESH_MS and LOADED_AT drive the scheduled reload, the on-page countdown, and
+// the auto-refresh toggle below, so none of them can ever disagree with each other.
+var REFRESH_MS=300000, LOADED_AT=Date.now();
+var AUTOREFRESH_KEY='feature-dashboard-autorefresh';
+var reloadTimer=null;
+
+function armReload(){
+  if(reloadTimer) clearTimeout(reloadTimer);
+  reloadTimer=setTimeout(function(){location.reload();}, REFRESH_MS-(Date.now()-LOADED_AT));
+}
+function disarmReload(){
+  if(reloadTimer){clearTimeout(reloadTimer);reloadTimer=null;}
+}
+function storedAutorefreshPref(){
+  try{return localStorage.getItem(AUTOREFRESH_KEY);}catch(e){return null;}
+}
+function setAutorefreshUI(button,on){
+  button.textContent='Auto refresh '+(on?'on':'off');
+  button.setAttribute('aria-pressed',String(on));
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){el.hidden=!on;});
+  document.querySelectorAll('[data-refresh-off-note]').forEach(function(el){el.hidden=on;});
+}
+
+// Durations count up client-side, so an in-progress row does not freeze between
+// publishes, and every timestamp reads in the viewer's own zone rather than one
+// chosen when the page was written.
+function fmt(ms){var s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),
+m=Math.floor(s%3600/60);return h?h+'h '+m+'m':m+'m';}
+function fmtCountdown(ms){var s=Math.max(0,Math.round(ms/1000)),
+m=Math.floor(s/60);return m+'m '+(s%60)+'s';}
+var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtAt(d){
+  var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'pm':'am';
+  h=h%12;if(h===0)h=12;
+  var mm=m<10?'0'+m:m;
+  return MONTHS[d.getMonth()]+' '+d.getDate()+', '+h+':'+mm+ap;
+}
+function tick(){
+  var now=Date.now();
+  document.querySelectorAll('[data-since]').forEach(function(el){
+    var until=el.dataset.until?Date.parse(el.dataset.until):now;
+    el.textContent=fmt(until-Date.parse(el.dataset.since));});
+  document.querySelectorAll('[data-at]').forEach(function(el){
+    el.textContent=fmtAt(new Date(el.dataset.at));});
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){
+    el.textContent=fmtCountdown(REFRESH_MS-(now-LOADED_AT));});
+}
+tick(); setInterval(tick,1000);
+
+// Auto-refresh defaults off once the feature is done (data-feature-done, set by the
+// page itself) and on otherwise, unless this browser already recorded its own choice.
+(function(){
+  var button=document.getElementById('autorefresh');
+  if(!button) return;
+  var stored=storedAutorefreshPref();
+  var defaultOn=!document.querySelector('[data-feature-done]');
+  var isOn=stored===null?defaultOn:stored==='on';
+  setAutorefreshUI(button,isOn);
+  if(isOn) armReload();
+  button.addEventListener('click',function(){
+    var on=button.getAttribute('aria-pressed')!=='true';
+    try{localStorage.setItem(AUTOREFRESH_KEY,on?'on':'off');}catch(e){}
+    setAutorefreshUI(button,on);
+    if(on){LOADED_AT=Date.now();armReload();}else{disarmReload();}
+  });
+  var refreshNow=document.getElementById('refresh-now');
+  if(refreshNow) refreshNow.addEventListener('click',function(){location.reload();});
+})();
+
+// A description gets an expand control only when it truly does not fit.
+document.querySelectorAll('.desc').forEach(function(el){
+  if(el.scrollWidth<=el.clientWidth) return;
+  var b=document.createElement('button');b.className='more';b.textContent='more';
+  b.onclick=function(){el.classList.toggle('open');
+    b.textContent=el.classList.contains('open')?'less':'more';};
+  el.parentNode.appendChild(b);});
+
+function showCycle(n){
+  document.querySelectorAll('[data-cycle-panel]').forEach(function(p){
+    p.hidden=(p.dataset.cyclePanel!==String(n));});
+  document.querySelectorAll('[data-cycle-tab]').forEach(function(t){
+    t.setAttribute('aria-selected',t.dataset.cycleTab===String(n));});
+}
+</script>

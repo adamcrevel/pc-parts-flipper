@@ -20,10 +20,10 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 // Builds one open ListingSummary, overridable per test — matches the
 // fields the table/comparison columns and the photo icon render.
-// `hasUnpricedParts` defaults to false (the common case: a fully-priced
-// listing) so the pre-existing tests below, which never set it, render the
-// unpriced column's badge as empty exactly like every other untouched
-// column default.
+// `pricingStatus` defaults to 'fully_priced' (the common case: a
+// fully-priced listing) so the pre-existing tests below, which never set
+// it, render the Pricing Status column's badge exactly like every other
+// untouched column default.
 function makeListing(overrides: Partial<ListingSummary> = {}): ListingSummary {
   return {
     id: 'listing-1',
@@ -42,7 +42,7 @@ function makeListing(overrides: Partial<ListingSummary> = {}): ListingSummary {
     updatedAt: '2024-01-01',
     comparison: { totalExpectedResaleValue: 150, totalCost: 100, difference: 50 },
     identifyPartsStatus: null,
-    hasUnpricedParts: false,
+    pricingStatus: 'fully_priced',
     ...overrides,
   };
 }
@@ -425,29 +425,44 @@ describe('ListingList sortable column headers', () => {
   });
 });
 
-// The renamed Pricing Status column's badge cell (Req 3-4). The column
-// sits immediately after Sourcing Status and before the trailing
-// Accept/Reject actions column, so in each row's <td> list (checkbox,
-// title, source, status, askingPrice, expectedResale, difference,
-// identifyParts, unpriced, actions) it is always index 8 — pinned here as
-// a literal, not derived from SORTABLE_COLUMNS, so a header/body position
-// drift between the two would actually fail this test rather than
-// silently agree with itself.
-describe('ListingList Pricing Status column badge (Req 3-4)', () => {
+// The Pricing Status column's badge cell (Req 6). The column sits
+// immediately after Sourcing Status and before the trailing Accept/Reject
+// actions column, so in each row's <td> list (checkbox, title, source,
+// status, askingPrice, expectedResale, difference, identifyParts, unpriced,
+// actions) it is always index 8 — pinned here as a literal, not derived
+// from SORTABLE_COLUMNS, so a header/body position drift between the two
+// would actually fail this test rather than silently agree with itself.
+describe('ListingList Pricing Status column badge (Req 6)', () => {
   const PRICING_STATUS_CELL_INDEX = 8;
 
-  it('renders "Partially Priced" for a listing with at least one unpriced part, and "Fully Priced" for one with none — never blank', async () => {
-    const partial = makeListing({ id: 'listing-partial', title: 'Partial Listing', hasUnpricedParts: true });
-    const full = makeListing({ id: 'listing-full', title: 'Full Listing', hasUnpricedParts: false });
-    const el = await mount([partial, full]);
+  it('renders "Not Priced", "Partially Priced", or "Fully Priced" depending on pricingStatus — never blank, each visually distinct', async () => {
+    const notPriced = makeListing({ id: 'listing-not-priced', title: 'Not Priced Listing', pricingStatus: 'not_priced' });
+    const partial = makeListing({ id: 'listing-partial', title: 'Partial Listing', pricingStatus: 'partially_priced' });
+    const full = makeListing({ id: 'listing-full', title: 'Full Listing', pricingStatus: 'fully_priced' });
+    const el = await mount([notPriced, partial, full]);
 
+    const notPricedRow = findListingRow(el, 'Not Priced Listing');
     const partialRow = findListingRow(el, 'Partial Listing');
     const fullRow = findListingRow(el, 'Full Listing');
 
+    const notPricedSpan = notPricedRow.cells[PRICING_STATUS_CELL_INDEX].querySelector('span');
+    const partialSpan = partialRow.cells[PRICING_STATUS_CELL_INDEX].querySelector('span');
+    const fullSpan = fullRow.cells[PRICING_STATUS_CELL_INDEX].querySelector('span');
+
+    expect(notPricedRow.cells[PRICING_STATUS_CELL_INDEX].textContent?.trim()).toBe('Not Priced');
     expect(partialRow.cells[PRICING_STATUS_CELL_INDEX].textContent?.trim()).toBe('Partially Priced');
-    expect(partialRow.cells[PRICING_STATUS_CELL_INDEX].querySelector('span')).not.toBeNull();
     expect(fullRow.cells[PRICING_STATUS_CELL_INDEX].textContent?.trim()).toBe('Fully Priced');
-    expect(fullRow.cells[PRICING_STATUS_CELL_INDEX].querySelector('span')).not.toBeNull();
+
+    expect(notPricedSpan).not.toBeNull();
+    expect(partialSpan).not.toBeNull();
+    expect(fullSpan).not.toBeNull();
+
+    // Each pill's rendered className is genuinely distinct from the other
+    // two — not just a shared class string under a different label — so a
+    // regression that collapses two states onto the same styling fails
+    // here even though the text assertions above would still pass.
+    const classNames = [notPricedSpan?.className, partialSpan?.className, fullSpan?.className];
+    expect(new Set(classNames).size).toBe(3);
   });
 });
 

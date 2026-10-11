@@ -255,7 +255,7 @@ export function ListingList({
                     <IdentifyPartsStatusBadge status={listing.identifyPartsStatus} />
                   </td>
                   <td className="px-4 py-3">
-                    <PricingStatusBadge hasUnpricedParts={listing.hasUnpricedParts} />
+                    <PricingStatusBadge pricingStatus={listing.pricingStatus} />
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right">
                     {listing.status === 'open' && (

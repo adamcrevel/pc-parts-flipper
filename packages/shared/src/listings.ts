@@ -23,6 +23,19 @@ export type ComponentCategory =
 export type ListingStatus = 'open' | 'accepted' | 'rejected';
 
 /**
+ * Pricing coverage of a Listing's Expected Parts, derived from their
+ * `estimatedResaleValue` fields:
+ * - `'not_priced'`: the Listing has zero Expected Parts, OR has one or more
+ *   Expected Parts but every one of them has a null `estimatedResaleValue`
+ *   (none priced at all).
+ * - `'partially_priced'`: the Listing has at least one priced Expected Part
+ *   AND at least one unpriced Expected Part (both true at once).
+ * - `'fully_priced'`: the Listing has at least one Expected Part and every
+ *   one of them has a non-null `estimatedResaleValue`.
+ */
+export type PricingStatus = 'not_priced' | 'partially_priced' | 'fully_priced';
+
+/**
  * One expected part on a Listing, with its estimated resale value (Req 2-3).
  * `brand` and `partNumber` are the structured identity of the component
  * (e.g. "NVIDIA" / "RTX 3060"); both are null whenever the part has not been
@@ -109,8 +122,8 @@ export interface ListingComparison {
 export type ListingSummary = Listing & {
   comparison: ListingComparison;
   identifyPartsStatus: { stage: IdentifyPartsJobStage; errorMessage: string | null } | null;
-  /** True if at least one Expected Part has estimatedResaleValue === null; false for a listing with zero Expected Parts. */
-  hasUnpricedParts: boolean;
+  /** Pricing coverage of this Listing's Expected Parts; see `PricingStatus`. */
+  pricingStatus: PricingStatus;
 };
 
 /** `GET /api/listings/:id` shape: a Listing with its full Expected Parts set. */

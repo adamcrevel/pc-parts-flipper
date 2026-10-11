@@ -26,6 +26,7 @@ import type {
   ListingSummary,
   ListListingIdsResponse,
   ListListingsResponse,
+  PricingStatus,
 } from '@pc-parts-flipper/shared';
 import {
   countListings,
@@ -59,6 +60,29 @@ function computeComparison(listing: Listing, expectedParts: ExpectedPart[]): Lis
   return { totalExpectedResaleValue, totalCost, difference: totalExpectedResaleValue - totalCost };
 }
 
+// Req 8, 11: derives the three-way PricingStatus from a Listing's fetched
+// Expected Parts. Four cases fall out of counting priced vs. unpriced parts:
+// zero parts at all -> 'not_priced' (nothing to flag as priced, Req 11);
+// a non-empty set where every part is priced -> 'fully_priced'; a
+// non-empty set where every part is unpriced (zero priced) -> 'not_priced',
+// same as the zero-parts case; and a non-empty set with at least one of
+// each -> 'partially_priced'. Implemented once here rather than duplicated
+// between toSummary/toDetail (unlike the old simpler boolean computation,
+// which WAS intentionally duplicated there) because this four-way branch
+// is non-trivial enough that a single shared implementation is the right
+// call — duplicating it would risk the two call sites drifting apart on
+// a case as easy to get subtly wrong as "non-empty but zero priced".
+function computePricingStatus(expectedParts: ExpectedPart[]): PricingStatus {
+  if (expectedParts.length === 0) {
+    return 'not_priced';
+  }
+  const pricedCount = expectedParts.filter((part) => part.estimatedResaleValue !== null).length;
+  if (pricedCount === 0) {
+    return 'not_priced';
+  }
+  return pricedCount === expectedParts.length ? 'fully_priced' : 'partially_priced';
+}
+
 // Attaches the Req 3 comparison to a Listing for the list response, without
 // the full Expected Parts array (kept out of the lighter list payload; the
 // single-listing response below includes it).
@@ -68,13 +92,12 @@ async function toSummary(listing: Listing): Promise<ListingSummary> {
     ...listing,
     comparison: computeComparison(listing, expectedParts),
     identifyPartsStatus: job ? { stage: job.stage, errorMessage: job.errorMessage } : null,
-    // Req 8, 11: true the moment any fetched Expected Part has a null
-    // estimatedResaleValue. `.some` on an empty array is `false` by
-    // definition, which is exactly the Req 11 zero-parts case — a Listing
-    // with no Expected Parts yet has nothing unpriced to flag, so this
-    // falls out of `.some`'s own semantics rather than needing a separate
-    // empty-array branch.
-    hasUnpricedParts: expectedParts.some((part) => part.estimatedResaleValue === null),
+    // Req 8, 11: the shared four-way computePricingStatus helper handles
+    // the Req 11 zero-parts case ('not_priced') the same way it handles a
+    // non-empty set where every part is still unpriced — both fall out of
+    // its own zero-priced-count branch rather than needing a separate
+    // empty-array branch here.
+    pricingStatus: computePricingStatus(expectedParts),
   };
 }
 
@@ -98,14 +121,15 @@ const SORT_KEYS: Record<ListingSortField, (listing: ListingSummary, sourceNamesB
   expectedResale: (listing) => listing.comparison.totalExpectedResaleValue,
   difference: (listing) => listing.comparison.difference,
   identifyParts: (listing) => listing.identifyPartsStatus?.stage ?? '',
-  // Req 10: deliberately inverted vs. every extractor above, which returns
-  // the column's own literal value. The shared comparator sorts ascending
-  // via `Number(keyA) - Number(keyB)`, so the *smaller* key sorts first;
-  // returning 0 for `hasUnpricedParts: true` (and 1 for false) is what
-  // makes ascending "unpriced" sort put unpriced rows first, matching the
-  // confirmed "unpriced ascending = unpriced first" direction rather than
-  // the literal `false < true` ordering a non-inverted boolean would give.
-  unpriced: (listing) => (listing.hasUnpricedParts ? 0 : 1),
+  // Req 7, 10: an ordinal mapping, not the old binary one. The shared
+  // comparator sorts ascending via `Number(keyA) - Number(keyB)`, so the
+  // *smaller* key sorts first; mapping not_priced -> 0, partially_priced
+  // -> 1, fully_priced -> 2 is what makes ascending "unpriced" sort read
+  // Not Priced, then Partially Priced, then Fully Priced (Req 7), and a
+  // descending sort (this same sort key, reversed after the comparator
+  // runs — see listSortedListingsPage) reverses that to Fully Priced,
+  // then Partially Priced, then Not Priced.
+  unpriced: (listing) => ({ not_priced: 0, partially_priced: 1, fully_priced: 2 })[listing.pricingStatus],
 };
 
 // The allow-list of accepted `sortBy` query values, derived from SORT_KEYS
@@ -170,11 +194,12 @@ async function toDetail(listing: Listing): Promise<ListingDetail> {
     expectedParts,
     comparison: computeComparison(listing, expectedParts),
     identifyPartsStatus: job ? { stage: job.stage, errorMessage: job.errorMessage } : null,
-    // See toSummary's identical computation above for the Req 8, 11
-    // reasoning; duplicated here rather than factored out since the two
-    // functions fetch `expectedParts` independently and neither should
-    // depend on the other's shape.
-    hasUnpricedParts: expectedParts.some((part) => part.estimatedResaleValue === null),
+    // Req 8, 11: calls the same shared computePricingStatus helper as
+    // toSummary above — see its doc comment for the four-way reasoning.
+    // Unlike the old simpler boolean computation (which WAS intentionally
+    // duplicated between the two functions), this logic is non-trivial
+    // enough that a single shared implementation is the right call.
+    pricingStatus: computePricingStatus(expectedParts),
   };
 }
 

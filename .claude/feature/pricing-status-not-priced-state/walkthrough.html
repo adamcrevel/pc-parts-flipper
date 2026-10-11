@@ -1,0 +1,611 @@
+<title>Walkthrough</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--add-bg:rgba(31,95,79,.10);--del-bg:rgba(163,49,42,.10);--radius:8px}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74;
+--add-bg:rgba(79,181,154,.14);--del-bg:rgba(224,123,116,.14)}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+h1{margin:0 0 8px;font-size:20px;letter-spacing:-.01em}
+.overview-text{margin:0;font-size:15px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.card-head,.file-head{width:100%;display:flex;justify-content:space-between;align-items:center;
+gap:12px;font:inherit;text-align:left;background:none;border:none;color:var(--ink);cursor:pointer;
+padding:14px 18px}
+.card-head{font-weight:600}
+.card-head .meta{font-size:12px;color:var(--muted);font-weight:400}
+.card-body{padding:0 18px 16px;display:grid;gap:12px}
+.summary{margin:0;font-size:14px}
+.note{font-size:12px;color:var(--muted);margin:2px 0}
+.flow{overflow-x:auto}
+.flow-svg{display:block}
+.flow-box{fill:var(--bg);stroke:var(--line)}
+.flow-box-text{width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;
+justify-content:center;align-items:center;gap:4px;padding:8px 12px;text-align:center;
+font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.flow-label{font-size:12px;font-weight:600;color:var(--ink);line-height:1.25;margin:0;
+display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+text-overflow:ellipsis;word-break:break-word}
+.flow-note{font-size:10.5px;color:var(--muted);line-height:1.3;margin:0;
+display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+text-overflow:ellipsis;word-break:break-word}
+.flow-arrow{stroke:var(--muted);stroke-width:1.5}
+.flow-arrowhead{fill:var(--muted)}
+.files{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.file-group{padding:10px 4px 12px}
+.file-group:not(:last-child){border-bottom:1px solid var(--line)}
+.file-note{margin:0 0 8px;font-size:13px}
+.file-rows{list-style:none;margin:0;padding:0}
+.file{border-top:1px solid var(--line)}
+.file:first-child{border-top:none}
+.file-head{padding:10px 4px;font-size:13px}
+.file-head .path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.tag{display:inline-block;padding:0 6px;border:1px solid var(--line);border-radius:999px;
+font-size:11px;color:var(--muted)}
+.file-body{padding:0 4px 12px;display:grid;gap:8px}
+.hunk{overflow-x:auto;border:1px solid var(--line);border-radius:6px}
+.hunk-head{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);
+padding:5px 9px;border-bottom:1px solid var(--line)}
+.hunk pre{margin:0;padding:6px 9px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+white-space:pre}
+.hunk pre span{display:block;padding:0 4px}
+.hunk pre .add{background:var(--add-bg);color:var(--good)}
+.hunk pre .del{background:var(--del-bg);color:var(--bad)}
+</style>
+<main>
+<section class="panel overview">
+<h1>Walkthrough</h1>
+<p class="overview-text">The Listings table&#x27;s Pricing Status column used to show only two values, driven by a boolean `hasUnpricedParts` that quietly mislabeled a listing with zero Expected Parts (or one whose parts were all unpriced) as &quot;Fully Priced.&quot; This feature replaces that boolean with a three-value `PricingStatus` — Not Priced, Partially Priced, Fully Priced — computed from the same already-fetched Expected Parts data, with no schema change, and extends ascending/descending sort and pagination to the new third bucket.</p>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Shared type</span><span class="meta">2 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">Defines the new three-value `PricingStatus` union and swaps `ListingSummary`&#x27;s old</p>
+<p class="note">Tasks: T1</p>
+<ul class="files"><li class="file-group">
+<p class="file-note">adds `export type PricingStatus = &#x27;not_priced&#x27; | &#x27;partially_priced&#x27; | &#x27;fully_priced&#x27;` and replaces `ListingSummary.hasUnpricedParts: boolean` with `pricingStatus: PricingStatus`.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">packages/shared/src/listings.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -22,6 +22,19 @@ export type ComponentCategory =</div><pre><span class="ctx"> /** Listing lifecycle (Req 4). Accepting one creates a linked Purchase (T7+). */</span>
+<span class="ctx"> export type ListingStatus = &#x27;open&#x27; | &#x27;accepted&#x27; | &#x27;rejected&#x27;;</span>
+<span class="ctx"> </span>
+<span class="add">+/**</span>
+<span class="add">+ * Pricing coverage of a Listing&#x27;s Expected Parts, derived from their</span>
+<span class="add">+ * `estimatedResaleValue` fields:</span>
+<span class="add">+ * - `&#x27;not_priced&#x27;`: the Listing has zero Expected Parts, OR has one or more</span>
+<span class="add">+ *   Expected Parts but every one of them has a null `estimatedResaleValue`</span>
+<span class="add">+ *   (none priced at all).</span>
+<span class="add">+ * - `&#x27;partially_priced&#x27;`: the Listing has at least one priced Expected Part</span>
+<span class="add">+ *   AND at least one unpriced Expected Part (both true at once).</span>
+<span class="add">+ * - `&#x27;fully_priced&#x27;`: the Listing has at least one Expected Part and every</span>
+<span class="add">+ *   one of them has a non-null `estimatedResaleValue`.</span>
+<span class="add">+ */</span>
+<span class="add">+export type PricingStatus = &#x27;not_priced&#x27; | &#x27;partially_priced&#x27; | &#x27;fully_priced&#x27;;</span>
+<span class="add">+</span>
+<span class="ctx"> /**</span>
+<span class="ctx">  * One expected part on a Listing, with its estimated resale value (Req 2-3).</span>
+<span class="ctx">  * `brand` and `partNumber` are the structured identity of the component</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -109,8 +122,8 @@ export interface ListingComparison {</div><pre><span class="ctx"> export type ListingSummary = Listing &amp; {</span>
+<span class="ctx">   comparison: ListingComparison;</span>
+<span class="ctx">   identifyPartsStatus: { stage: IdentifyPartsJobStage; errorMessage: string | null } | null;</span>
+<span class="del">-  /** True if at least one Expected Part has estimatedResaleValue === null; false for a listing with zero Expected Parts. */</span>
+<span class="del">-  hasUnpricedParts: boolean;</span>
+<span class="add">+  /** Pricing coverage of this Listing&#x27;s Expected Parts; see `PricingStatus`. */</span>
+<span class="add">+  pricingStatus: PricingStatus;</span>
+<span class="ctx"> };</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** `GET /api/listings/:id` shape: a Listing with its full Expected Parts set. */</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">type-shape proof updated to cover the new field — all three literal values valid, an invalid literal rejected, and omitting the key rejected (still required, not optional).</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">packages/shared/src/partNotesAndUnpricedTypes.test.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -1,7 +1,7 @@</div><pre><span class="ctx"> // Type-shape consistency proof for T1&#x27;s part-notes-and-unpriced-indicator</span>
+<span class="ctx"> // changes: ExpectedPart.notes / ExpectedPartInput.notes (listings.ts),</span>
+<span class="ctx"> // AiIdentifiedPart.notes (aiIdentification.ts), and the new</span>
+<span class="del">-// ListingSortField &#x27;unpriced&#x27; member / ListingSummary.hasUnpricedParts</span>
+<span class="add">+// ListingSortField &#x27;unpriced&#x27; member / ListingSummary.pricingStatus</span>
+<span class="ctx"> // (listings.ts). Follows bulkIdentifyPartsTypes.test.ts&#x27;s convention: these</span>
+<span class="ctx"> // are pure `type`/`interface` declarations with no runtime representation</span>
+<span class="ctx"> // of their own, so `vitest run`&#x27;s esbuild transform strips every type</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -15,7 +15,7 @@</div><pre><span class="ctx"> // files, same caveat bulkIdentifyPartsTypes.test.ts documents).</span>
+<span class="ctx"> import { describe, expect, it } from &#x27;vitest&#x27;;</span>
+<span class="ctx"> import type { AiIdentifiedPart } from &#x27;./aiIdentification.js&#x27;;</span>
+<span class="del">-import type { ExpectedPart, ExpectedPartInput, ListingSortField, ListingSummary } from &#x27;./listings.js&#x27;;</span>
+<span class="add">+import type { ExpectedPart, ExpectedPartInput, ListingSortField, ListingSummary, PricingStatus } from &#x27;./listings.js&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** Minimal valid ExpectedPart base (notes omitted), reused by each notes</span>
+<span class="ctx">  * variant below. Typed as `Omit&lt;ExpectedPart, &#x27;notes&#x27;&gt;` (rather than</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -166,20 +166,28 @@ describe(&#x27;ListingSortField&#x27;, () =&gt; {</div><pre><span class="ctx">   });</span>
+<span class="ctx"> });</span>
+<span class="ctx"> </span>
+<span class="del">-describe(&#x27;ListingSummary.hasUnpricedParts&#x27;, () =&gt; {</span>
+<span class="del">-  it(&#x27;is a required, non-optional boolean (both true and false are valid, omitting the key is not)&#x27;, () =&gt; {</span>
+<span class="del">-    const unpriced: Pick&lt;ListingSummary, &#x27;hasUnpricedParts&#x27;&gt; = { hasUnpricedParts: true };</span>
+<span class="del">-    const priced: Pick&lt;ListingSummary, &#x27;hasUnpricedParts&#x27;&gt; = { hasUnpricedParts: false };</span>
+<span class="del">-    expect(unpriced.hasUnpricedParts).toBe(true);</span>
+<span class="del">-    expect(priced.hasUnpricedParts).toBe(false);</span>
+<span class="add">+describe(&#x27;ListingSummary.pricingStatus&#x27;, () =&gt; {</span>
+<span class="add">+  it(&#x27;is a required, non-optional PricingStatus (all 3 members are valid, omitting the key is not)&#x27;, () =&gt; {</span>
+<span class="add">+    const notPriced: Pick&lt;ListingSummary, &#x27;pricingStatus&#x27;&gt; = { pricingStatus: &#x27;not_priced&#x27; };</span>
+<span class="add">+    const partiallyPriced: Pick&lt;ListingSummary, &#x27;pricingStatus&#x27;&gt; = { pricingStatus: &#x27;partially_priced&#x27; };</span>
+<span class="add">+    const fullyPriced: Pick&lt;ListingSummary, &#x27;pricingStatus&#x27;&gt; = { pricingStatus: &#x27;fully_priced&#x27; };</span>
+<span class="add">+    expect(notPriced.pricingStatus).toBe(&#x27;not_priced&#x27;);</span>
+<span class="add">+    expect(partiallyPriced.pricingStatus).toBe(&#x27;partially_priced&#x27;);</span>
+<span class="add">+    expect(fullyPriced.pricingStatus).toBe(&#x27;fully_priced&#x27;);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> </span>
+<span class="del">-  it(&#x27;rejects an object literal that omits hasUnpricedParts (required, not optional)&#x27;, () =&gt; {</span>
+<span class="del">-    // If a future edit makes this field optional (`hasUnpricedParts?:</span>
+<span class="del">-    // boolean`), this omission stops erroring and the directive below</span>
+<span class="add">+  it(&#x27;rejects an object literal that omits pricingStatus (required, not optional)&#x27;, () =&gt; {</span>
+<span class="add">+    // If a future edit makes this field optional (`pricingStatus?:</span>
+<span class="add">+    // PricingStatus`), this omission stops erroring and the directive below</span>
+<span class="ctx">     // becomes &quot;unused&quot;, which tsc reports as its own error.</span>
+<span class="del">-    // @ts-expect-error - hasUnpricedParts is required; omitting the key entirely must fail.</span>
+<span class="del">-    const missingField: Pick&lt;ListingSummary, &#x27;hasUnpricedParts&#x27;&gt; = {};</span>
+<span class="add">+    // @ts-expect-error - pricingStatus is required; omitting the key entirely must fail.</span>
+<span class="add">+    const missingField: Pick&lt;ListingSummary, &#x27;pricingStatus&#x27;&gt; = {};</span>
+<span class="ctx">     expect(missingField).toEqual({});</span>
+<span class="ctx">   });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;rejects a string literal that is not one of the 3 PricingStatus members&#x27;, () =&gt; {</span>
+<span class="add">+    // @ts-expect-error - &#x27;unpriced&#x27; is not a member of PricingStatus; proves the union is closed to exactly the 3 documented values.</span>
+<span class="add">+    const invalidStatus: PricingStatus = &#x27;unpriced&#x27;;</span>
+<span class="add">+    expect(invalidStatus).toBeTruthy();</span>
+<span class="add">+  });</span>
+<span class="ctx"> });</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Server computation and sort</span><span class="meta">2 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">Adds one shared `computePricingStatus` helper used by both listing-shaping functions, and</p>
+<p class="note">Tasks: T2</p>
+<div class="flow"><svg viewBox="0 0 914 108" role="img" aria-label="data flow" class="flow-svg">
+<rect x="8" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="8" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Expected Parts</div><div class="flow-note">fetched per listing, as before</div></div></foreignObject>
+<line x1="198" y1="54" x2="238" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="244" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="244" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">computePricingStatus</div><div class="flow-note">counts priced vs. unpriced to pick one of the three states</div></div></foreignObject>
+<line x1="434" y1="54" x2="474" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="480" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="480" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">toSummary / toDetail</div><div class="flow-note">attach `pricingStatus` to the response</div></div></foreignObject>
+<line x1="670" y1="54" x2="710" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="716" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="716" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">SORT_KEYS.unpriced</div><div class="flow-note">maps the status to ordinal 0/1/2 for the comparator</div></div></foreignObject>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" class="flow-arrowhead"/></marker></defs>
+</svg></div>
+<ul class="files"><li class="file-group">
+<p class="file-note">new `computePricingStatus` helper (replacing the duplicated `.some(...)` boolean check in both `toSummary` and `toDetail` with one shared call), and `SORT_KEYS.unpriced`&#x27;s extractor remapped from a binary 0/1 to the three-way `{not_priced:0, partially_priced:1, fully_priced:2}` ordinal.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/routes/listings.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -26,6 +26,7 @@ import type {</div><pre><span class="ctx">   ListingSummary,</span>
+<span class="ctx">   ListListingIdsResponse,</span>
+<span class="ctx">   ListListingsResponse,</span>
+<span class="add">+  PricingStatus,</span>
+<span class="ctx"> } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> import {</span>
+<span class="ctx">   countListings,</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -59,6 +60,29 @@ function computeComparison(listing: Listing, expectedParts: ExpectedPart[]): Lis</div><pre><span class="ctx">   return { totalExpectedResaleValue, totalCost, difference: totalExpectedResaleValue - totalCost };</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="add">+// Req 8, 11: derives the three-way PricingStatus from a Listing&#x27;s fetched</span>
+<span class="add">+// Expected Parts. Four cases fall out of counting priced vs. unpriced parts:</span>
+<span class="add">+// zero parts at all -&gt; &#x27;not_priced&#x27; (nothing to flag as priced, Req 11);</span>
+<span class="add">+// a non-empty set where every part is priced -&gt; &#x27;fully_priced&#x27;; a</span>
+<span class="add">+// non-empty set where every part is unpriced (zero priced) -&gt; &#x27;not_priced&#x27;,</span>
+<span class="add">+// same as the zero-parts case; and a non-empty set with at least one of</span>
+<span class="add">+// each -&gt; &#x27;partially_priced&#x27;. Implemented once here rather than duplicated</span>
+<span class="add">+// between toSummary/toDetail (unlike the old simpler boolean computation,</span>
+<span class="add">+// which WAS intentionally duplicated there) because this four-way branch</span>
+<span class="add">+// is non-trivial enough that a single shared implementation is the right</span>
+<span class="add">+// call — duplicating it would risk the two call sites drifting apart on</span>
+<span class="add">+// a case as easy to get subtly wrong as &quot;non-empty but zero priced&quot;.</span>
+<span class="add">+function computePricingStatus(expectedParts: ExpectedPart[]): PricingStatus {</span>
+<span class="add">+  if (expectedParts.length === 0) {</span>
+<span class="add">+    return &#x27;not_priced&#x27;;</span>
+<span class="add">+  }</span>
+<span class="add">+  const pricedCount = expectedParts.filter((part) =&gt; part.estimatedResaleValue !== null).length;</span>
+<span class="add">+  if (pricedCount === 0) {</span>
+<span class="add">+    return &#x27;not_priced&#x27;;</span>
+<span class="add">+  }</span>
+<span class="add">+  return pricedCount === expectedParts.length ? &#x27;fully_priced&#x27; : &#x27;partially_priced&#x27;;</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="ctx"> // Attaches the Req 3 comparison to a Listing for the list response, without</span>
+<span class="ctx"> // the full Expected Parts array (kept out of the lighter list payload; the</span>
+<span class="ctx"> // single-listing response below includes it).</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -68,13 +92,12 @@ async function toSummary(listing: Listing): Promise&lt;ListingSummary&gt; {</div><pre><span class="ctx">     ...listing,</span>
+<span class="ctx">     comparison: computeComparison(listing, expectedParts),</span>
+<span class="ctx">     identifyPartsStatus: job ? { stage: job.stage, errorMessage: job.errorMessage } : null,</span>
+<span class="del">-    // Req 8, 11: true the moment any fetched Expected Part has a null</span>
+<span class="del">-    // estimatedResaleValue. `.some` on an empty array is `false` by</span>
+<span class="del">-    // definition, which is exactly the Req 11 zero-parts case — a Listing</span>
+<span class="del">-    // with no Expected Parts yet has nothing unpriced to flag, so this</span>
+<span class="del">-    // falls out of `.some`&#x27;s own semantics rather than needing a separate</span>
+<span class="del">-    // empty-array branch.</span>
+<span class="del">-    hasUnpricedParts: expectedParts.some((part) =&gt; part.estimatedResaleValue === null),</span>
+<span class="add">+    // Req 8, 11: the shared four-way computePricingStatus helper handles</span>
+<span class="add">+    // the Req 11 zero-parts case (&#x27;not_priced&#x27;) the same way it handles a</span>
+<span class="add">+    // non-empty set where every part is still unpriced — both fall out of</span>
+<span class="add">+    // its own zero-priced-count branch rather than needing a separate</span>
+<span class="add">+    // empty-array branch here.</span>
+<span class="add">+    pricingStatus: computePricingStatus(expectedParts),</span>
+<span class="ctx">   };</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -98,14 +121,15 @@ const SORT_KEYS: Record&lt;ListingSortField, (listing: ListingSummary, sourceNamesB</div><pre><span class="ctx">   expectedResale: (listing) =&gt; listing.comparison.totalExpectedResaleValue,</span>
+<span class="ctx">   difference: (listing) =&gt; listing.comparison.difference,</span>
+<span class="ctx">   identifyParts: (listing) =&gt; listing.identifyPartsStatus?.stage ?? &#x27;&#x27;,</span>
+<span class="del">-  // Req 10: deliberately inverted vs. every extractor above, which returns</span>
+<span class="del">-  // the column&#x27;s own literal value. The shared comparator sorts ascending</span>
+<span class="del">-  // via `Number(keyA) - Number(keyB)`, so the *smaller* key sorts first;</span>
+<span class="del">-  // returning 0 for `hasUnpricedParts: true` (and 1 for false) is what</span>
+<span class="del">-  // makes ascending &quot;unpriced&quot; sort put unpriced rows first, matching the</span>
+<span class="del">-  // confirmed &quot;unpriced ascending = unpriced first&quot; direction rather than</span>
+<span class="del">-  // the literal `false &lt; true` ordering a non-inverted boolean would give.</span>
+<span class="del">-  unpriced: (listing) =&gt; (listing.hasUnpricedParts ? 0 : 1),</span>
+<span class="add">+  // Req 7, 10: an ordinal mapping, not the old binary one. The shared</span>
+<span class="add">+  // comparator sorts ascending via `Number(keyA) - Number(keyB)`, so the</span>
+<span class="add">+  // *smaller* key sorts first; mapping not_priced -&gt; 0, partially_priced</span>
+<span class="add">+  // -&gt; 1, fully_priced -&gt; 2 is what makes ascending &quot;unpriced&quot; sort read</span>
+<span class="add">+  // Not Priced, then Partially Priced, then Fully Priced (Req 7), and a</span>
+<span class="add">+  // descending sort (this same sort key, reversed after the comparator</span>
+<span class="add">+  // runs — see listSortedListingsPage) reverses that to Fully Priced,</span>
+<span class="add">+  // then Partially Priced, then Not Priced.</span>
+<span class="add">+  unpriced: (listing) =&gt; ({ not_priced: 0, partially_priced: 1, fully_priced: 2 })[listing.pricingStatus],</span>
+<span class="ctx"> };</span>
+<span class="ctx"> </span>
+<span class="ctx"> // The allow-list of accepted `sortBy` query values, derived from SORT_KEYS</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -170,11 +194,12 @@ async function toDetail(listing: Listing): Promise&lt;ListingDetail&gt; {</div><pre><span class="ctx">     expectedParts,</span>
+<span class="ctx">     comparison: computeComparison(listing, expectedParts),</span>
+<span class="ctx">     identifyPartsStatus: job ? { stage: job.stage, errorMessage: job.errorMessage } : null,</span>
+<span class="del">-    // See toSummary&#x27;s identical computation above for the Req 8, 11</span>
+<span class="del">-    // reasoning; duplicated here rather than factored out since the two</span>
+<span class="del">-    // functions fetch `expectedParts` independently and neither should</span>
+<span class="del">-    // depend on the other&#x27;s shape.</span>
+<span class="del">-    hasUnpricedParts: expectedParts.some((part) =&gt; part.estimatedResaleValue === null),</span>
+<span class="add">+    // Req 8, 11: calls the same shared computePricingStatus helper as</span>
+<span class="add">+    // toSummary above — see its doc comment for the four-way reasoning.</span>
+<span class="add">+    // Unlike the old simpler boolean computation (which WAS intentionally</span>
+<span class="add">+    // duplicated between the two functions), this logic is non-trivial</span>
+<span class="add">+    // enough that a single shared implementation is the right call.</span>
+<span class="add">+    pricingStatus: computePricingStatus(expectedParts),</span>
+<span class="ctx">   };</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">the existing two-bucket &quot;unpriced mix&quot; sort test rewritten into a six-listing, three-bucket test proving both routes to Not Priced (zero parts and all-unpriced parts), ascending grouping, exact-reverse descending, and pagination composing correctly across a boundary that falls mid-page.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/test/listings.test.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -833,77 +833,114 @@ describe(&#x27;Reference photo promotion hook — DB-verified (T2)&#x27;, () =&gt; {</div><pre><span class="ctx">       expect(firstDesc.body.listings.map((listing) =&gt; listing.askingPrice)).toEqual([50, 40]);</span>
+<span class="ctx">     }, 30_000);</span>
+<span class="ctx"> </span>
+<span class="del">-    it(&#x27;groups unpriced listings before priced/zero-parts listings ascending (Req 10, 11), exactly reverses descending, and composes with pagination across page boundaries (Req 8)&#x27;, async () =&gt; {</span>
+<span class="del">-      const mixSource = await hookDb.createSource({ name: &#x27;Unpriced Mix Source&#x27;, platformType: &#x27;ebay&#x27;, url: null, notes: null, connectorConfig: null });</span>
+<span class="del">-      // Five listings scrambled across priced/zero/unpriced so a correct</span>
+<span class="del">-      // sort must actually regroup them, not merely preserve insertion</span>
+<span class="del">-      // order: two have at least one null estimatedResaleValue, one has</span>
+<span class="del">-      // zero Expected Parts at all (Req 11: must group with the priced</span>
+<span class="del">-      // ones, never treated as unpriced itself), and two are fully priced.</span>
+<span class="del">-      const mixSeeds = [</span>
+<span class="del">-        { title: &#x27;Unpriced Mix Priced One&#x27;, listingDate: &#x27;2026-07-01&#x27;, expectedParts: [{ componentCategory: &#x27;GPU&#x27;, brand: null, partNumber: null, description: &#x27;Priced&#x27;, estimatedResaleValue: 100 }], unpriced: false },</span>
+<span class="add">+    it(&#x27;groups not_priced listings before partially_priced before fully_priced ascending (Req 7, 2-5), exactly reverses descending (Req 8), and composes with pagination across a bucket boundary that falls mid-page (Req 9)&#x27;, async () =&gt; {</span>
+<span class="add">+      const statusSource = await hookDb.createSource({ name: &#x27;Pricing Status Mix Source&#x27;, platformType: &#x27;ebay&#x27;, url: null, notes: null, connectorConfig: null });</span>
+<span class="add">+      // Six listings, two per bucket, scrambled relative to both the</span>
+<span class="add">+      // not_priced/partially_priced/fully_priced grouping AND listingDate,</span>
+<span class="add">+      // so a correct sort must actually regroup them, not merely preserve</span>
+<span class="add">+      // insertion or date order. The not_priced bucket itself covers both</span>
+<span class="add">+      // of Req 2/3&#x27;s two distinct routes to &#x27;not_priced&#x27; — a listing with</span>
+<span class="add">+      // zero Expected Parts at all, and a separate listing with one or</span>
+<span class="add">+      // more Expected Parts that are every one of them unpriced — so a</span>
+<span class="add">+      // computation that only implemented the zero-parts case could not</span>
+<span class="add">+      // pass this test.</span>
+<span class="add">+      const statusSeeds = [</span>
+<span class="add">+        { title: &#x27;Status Mix Zero Parts&#x27;, listingDate: &#x27;2026-07-03&#x27;, expectedParts: [], bucket: &#x27;not_priced&#x27; },</span>
+<span class="ctx">         {</span>
+<span class="del">-          title: &#x27;Unpriced Mix Null One&#x27;,</span>
+<span class="add">+          title: &#x27;Status Mix All Unpriced&#x27;,</span>
+<span class="add">+          listingDate: &#x27;2026-07-06&#x27;,</span>
+<span class="add">+          expectedParts: [</span>
+<span class="add">+            { componentCategory: &#x27;GPU&#x27;, brand: null, partNumber: null, description: &#x27;Unpriced one&#x27;, estimatedResaleValue: null },</span>
+<span class="add">+            { componentCategory: &#x27;RAM&#x27;, brand: null, partNumber: null, description: &#x27;Unpriced two&#x27;, estimatedResaleValue: null },</span>
+<span class="add">+          ],</span>
+<span class="add">+          bucket: &#x27;not_priced&#x27;,</span>
+<span class="add">+        },</span>
+<span class="add">+        {</span>
+<span class="add">+          title: &#x27;Status Mix Partial One&#x27;,</span>
+<span class="ctx">           listingDate: &#x27;2026-07-02&#x27;,</span>
+<span class="ctx">           expectedParts: [</span>
+<span class="del">-            { componentCategory: &#x27;GPU&#x27;, brand: null, partNumber: null, description: &#x27;Priced half&#x27;, estimatedResaleValue: 100 },</span>
+<span class="del">-            { componentCategory: &#x27;RAM&#x27;, brand: null, partNumber: null, description: &#x27;Unpriced half&#x27;, estimatedResaleValue: null },</span>
+<span class="add">+            { componentCategory: &#x27;CPU&#x27;, brand: null, partNumber: null, description: &#x27;Priced&#x27;, estimatedResaleValue: 80 },</span>
+<span class="add">+            { componentCategory: &#x27;RAM&#x27;, brand: null, partNumber: null, description: &#x27;Unpriced&#x27;, estimatedResaleValue: null },</span>
+<span class="ctx">           ],</span>
+<span class="del">-          unpriced: true,</span>
+<span class="add">+          bucket: &#x27;partially_priced&#x27;,</span>
+<span class="ctx">         },</span>
+<span class="del">-        { title: &#x27;Unpriced Mix Zero Parts&#x27;, listingDate: &#x27;2026-07-03&#x27;, expectedParts: [], unpriced: false },</span>
+<span class="del">-        { title: &#x27;Unpriced Mix Null Two&#x27;, listingDate: &#x27;2026-07-04&#x27;, expectedParts: [{ componentCategory: &#x27;RAM&#x27;, brand: null, partNumber: null, description: &#x27;Unpriced only&#x27;, estimatedResaleValue: null }], unpriced: true },</span>
+<span class="del">-        { title: &#x27;Unpriced Mix Priced Two&#x27;, listingDate: &#x27;2026-07-05&#x27;, expectedParts: [{ componentCategory: &#x27;CPU&#x27;, brand: null, partNumber: null, description: &#x27;Priced&#x27;, estimatedResaleValue: 50 }], unpriced: false },</span>
+<span class="del">-      ];</span>
+<span class="add">+        {</span>
+<span class="add">+          title: &#x27;Status Mix Partial Two&#x27;,</span>
+<span class="add">+          listingDate: &#x27;2026-07-05&#x27;,</span>
+<span class="add">+          expectedParts: [</span>
+<span class="add">+            { componentCategory: &#x27;Storage&#x27;, brand: null, partNumber: null, description: &#x27;Priced&#x27;, estimatedResaleValue: 20 },</span>
+<span class="add">+            { componentCategory: &#x27;GPU&#x27;, brand: null, partNumber: null, description: &#x27;Unpriced&#x27;, estimatedResaleValue: null },</span>
+<span class="add">+          ],</span>
+<span class="add">+          bucket: &#x27;partially_priced&#x27;,</span>
+<span class="add">+        },</span>
+<span class="add">+        { title: &#x27;Status Mix Fully One&#x27;, listingDate: &#x27;2026-07-01&#x27;, expectedParts: [{ componentCategory: &#x27;GPU&#x27;, brand: null, partNumber: null, description: &#x27;Priced&#x27;, estimatedResaleValue: 100 }], bucket: &#x27;fully_priced&#x27; },</span>
+<span class="add">+        {</span>
+<span class="add">+          title: &#x27;Status Mix Fully Two&#x27;,</span>
+<span class="add">+          listingDate: &#x27;2026-07-04&#x27;,</span>
+<span class="add">+          expectedParts: [</span>
+<span class="add">+            { componentCategory: &#x27;CPU&#x27;, brand: null, partNumber: null, description: &#x27;Priced one&#x27;, estimatedResaleValue: 50 },</span>
+<span class="add">+            { componentCategory: &#x27;RAM&#x27;, brand: null, partNumber: null, description: &#x27;Priced two&#x27;, estimatedResaleValue: 30 },</span>
+<span class="add">+          ],</span>
+<span class="add">+          bucket: &#x27;fully_priced&#x27;,</span>
+<span class="add">+        },</span>
+<span class="add">+      ] as const;</span>
+<span class="ctx">       // Creation order deliberately scrambled relative to both the</span>
+<span class="del">-      // unpriced/priced grouping and the listingDate order above.</span>
+<span class="del">-      const creationOrder = [mixSeeds[2], mixSeeds[4], mixSeeds[0], mixSeeds[3], mixSeeds[1]];</span>
+<span class="add">+      // not_priced/partially_priced/fully_priced grouping and the</span>
+<span class="add">+      // listingDate order above.</span>
+<span class="add">+      const creationOrder = [statusSeeds[4], statusSeeds[2], statusSeeds[0], statusSeeds[5], statusSeeds[1], statusSeeds[3]];</span>
+<span class="ctx">       for (const seed of creationOrder) {</span>
+<span class="ctx">         const created = await postJson&lt;ListingDetail&gt;(</span>
+<span class="ctx">           `${HOOK_BASE_URL}/api/listings`,</span>
+<span class="del">-          listingBody(mixSource.id, { title: seed.title, listingDate: seed.listingDate, expectedParts: seed.expectedParts }),</span>
+<span class="add">+          listingBody(statusSource.id, { title: seed.title, listingDate: seed.listingDate, expectedParts: [...seed.expectedParts] }),</span>
+<span class="ctx">         );</span>
+<span class="del">-        expect(created.status, `mix seed failed: ${JSON.stringify(created.body)}`).toBe(201);</span>
+<span class="add">+        expect(created.status, `status mix seed failed: ${JSON.stringify(created.body)}`).toBe(201);</span>
+<span class="ctx">       }</span>
+<span class="del">-      const unpricedTitles = new Set(mixSeeds.filter((seed) =&gt; seed.unpriced).map((seed) =&gt; seed.title));</span>
+<span class="add">+      // Plain arrays, not Set, since membership is only ever checked</span>
+<span class="add">+      // against this small static six-row seed list below.</span>
+<span class="add">+      const notPricedTitles = statusSeeds.filter((seed) =&gt; seed.bucket === &#x27;not_priced&#x27;).map((seed) =&gt; seed.title);</span>
+<span class="add">+      const partiallyPricedTitles = statusSeeds.filter((seed) =&gt; seed.bucket === &#x27;partially_priced&#x27;).map((seed) =&gt; seed.title);</span>
+<span class="add">+      const fullyPricedTitles = statusSeeds.filter((seed) =&gt; seed.bucket === &#x27;fully_priced&#x27;).map((seed) =&gt; seed.title);</span>
+<span class="ctx"> </span>
+<span class="del">-      const ascendingRes = await getJson&lt;ListListingsResponse&gt;(`${HOOK_BASE_URL}/api/listings?sourceId=${mixSource.id}&amp;sortBy=unpriced&amp;sortDirection=asc&amp;limit=50`);</span>
+<span class="add">+      const ascendingRes = await getJson&lt;ListListingsResponse&gt;(`${HOOK_BASE_URL}/api/listings?sourceId=${statusSource.id}&amp;sortBy=unpriced&amp;sortDirection=asc&amp;limit=50`);</span>
+<span class="ctx">       expect(ascendingRes.status).toBe(200);</span>
+<span class="add">+      // Confirms the computed pricingStatus itself matches every seed&#x27;s</span>
+<span class="add">+      // intended bucket (Req 2-5) before trusting the sort order built on</span>
+<span class="add">+      // top of it below.</span>
+<span class="add">+      expect(ascendingRes.body.listings.every((listing) =&gt; listing.pricingStatus === statusSeeds.find((seed) =&gt; seed.title === listing.title)?.bucket)).toBe(true);</span>
+<span class="ctx">       const ascendingTitles = ascendingRes.body.listings.map((listing) =&gt; listing.title);</span>
+<span class="del">-      expect(ascendingTitles).toHaveLength(5);</span>
+<span class="del">-      // Req 10, 11: every one of the two unpriced titles must sit at a</span>
+<span class="del">-      // lower index than every one of the three non-unpriced titles</span>
+<span class="del">-      // (the zero-parts listing grouped with the fully-priced pair) — not</span>
+<span class="del">-      // merely that one particular row sorts correctly.</span>
+<span class="del">-      const unpricedIndices = ascendingTitles.map((title, index) =&gt; (unpricedTitles.has(title) ? index : -1)).filter((index) =&gt; index &gt;= 0);</span>
+<span class="del">-      const pricedIndices = ascendingTitles.map((title, index) =&gt; (unpricedTitles.has(title) ? -1 : index)).filter((index) =&gt; index &gt;= 0);</span>
+<span class="del">-      expect(unpricedIndices).toHaveLength(2);</span>
+<span class="del">-      expect(pricedIndices).toHaveLength(3);</span>
+<span class="del">-      expect(Math.max(...unpricedIndices)).toBeLessThan(Math.min(...pricedIndices));</span>
+<span class="del">-      expect(ascendingTitles.slice(0, 2).every((title) =&gt; unpricedTitles.has(title))).toBe(true);</span>
+<span class="del">-      expect(ascendingTitles.slice(2).some((title) =&gt; unpricedTitles.has(title))).toBe(false);</span>
+<span class="del">-</span>
+<span class="del">-      // Req 10: descending must be the exact reverse of ascending (the</span>
+<span class="del">-      // same proof the &#x27;status&#x27; field&#x27;s own tie-reversal test above</span>
+<span class="del">-      // gives), not merely &quot;unpriced last&quot; checked at a single index.</span>
+<span class="del">-      const descendingRes = await getJson&lt;ListListingsResponse&gt;(`${HOOK_BASE_URL}/api/listings?sourceId=${mixSource.id}&amp;sortBy=unpriced&amp;sortDirection=desc&amp;limit=50`);</span>
+<span class="add">+      expect(ascendingTitles).toHaveLength(6);</span>
+<span class="add">+      // Req 7: an index-based proof across the WHOLE six-row result, not a</span>
+<span class="add">+      // single-row spot check — with exactly two listings per bucket, the</span>
+<span class="add">+      // correct ascending order places the two not_priced titles at</span>
+<span class="add">+      // indices 0-1, the two partially_priced titles at indices 2-3, and</span>
+<span class="add">+      // the two fully_priced titles at indices 4-5, in that order.</span>
+<span class="add">+      expect(ascendingTitles.slice(0, 2).every((title) =&gt; notPricedTitles.includes(title))).toBe(true);</span>
+<span class="add">+      expect(ascendingTitles.slice(2, 4).every((title) =&gt; partiallyPricedTitles.includes(title))).toBe(true);</span>
+<span class="add">+      expect(ascendingTitles.slice(4, 6).every((title) =&gt; fullyPricedTitles.includes(title))).toBe(true);</span>
+<span class="add">+</span>
+<span class="add">+      // Req 8: descending must be the exact reverse of ascending (the same</span>
+<span class="add">+      // proof the &#x27;status&#x27; field&#x27;s own tie-reversal test above gives), not</span>
+<span class="add">+      // merely &quot;not_priced last&quot; checked at a single index.</span>
+<span class="add">+      const descendingRes = await getJson&lt;ListListingsResponse&gt;(`${HOOK_BASE_URL}/api/listings?sourceId=${statusSource.id}&amp;sortBy=unpriced&amp;sortDirection=desc&amp;limit=50`);</span>
+<span class="ctx">       expect(descendingRes.status).toBe(200);</span>
+<span class="ctx">       expect(descendingRes.body.listings.map((listing) =&gt; listing.title)).toEqual([...ascendingTitles].reverse());</span>
+<span class="ctx"> </span>
+<span class="del">-      // Req 8: composes with pagination exactly the way askingPrice&#x27;s own</span>
+<span class="del">-      // cross-page-boundary test above proved — the unpriced/priced</span>
+<span class="del">-      // boundary (index 2 of 5) must fall exactly between page one and</span>
+<span class="del">-      // page two, not be re-sorted independently per page.</span>
+<span class="del">-      const pageOne = await getJson&lt;ListListingsResponse&gt;(`${HOOK_BASE_URL}/api/listings?sourceId=${mixSource.id}&amp;sortBy=unpriced&amp;sortDirection=asc&amp;limit=2&amp;offset=0`);</span>
+<span class="del">-      const pageTwo = await getJson&lt;ListListingsResponse&gt;(`${HOOK_BASE_URL}/api/listings?sourceId=${mixSource.id}&amp;sortBy=unpriced&amp;sortDirection=asc&amp;limit=2&amp;offset=2`);</span>
+<span class="del">-      const pageThree = await getJson&lt;ListListingsResponse&gt;(`${HOOK_BASE_URL}/api/listings?sourceId=${mixSource.id}&amp;sortBy=unpriced&amp;sortDirection=asc&amp;limit=2&amp;offset=4`);</span>
+<span class="add">+      // Req 9: composes with pagination across a bucket boundary that</span>
+<span class="add">+      // falls MID-PAGE, not just at a page edge — with page size 3 against</span>
+<span class="add">+      // two-per-bucket data, page one (indices 0-2) spans the</span>
+<span class="add">+      // not_priced/partially_priced boundary (which falls after index 1,</span>
+<span class="add">+      // inside the page) and page two (indices 3-5) spans the</span>
+<span class="add">+      // partially_priced/fully_priced boundary (which falls after index 3,</span>
+<span class="add">+      // inside the page). Neither boundary lines up with a page edge, so</span>
+<span class="add">+      // a per-page re-sort (instead of sorting the whole filtered set</span>
+<span class="add">+      // before slicing) could not reproduce this split.</span>
+<span class="add">+      const pageOne = await getJson&lt;ListListingsResponse&gt;(`${HOOK_BASE_URL}/api/listings?sourceId=${statusSource.id}&amp;sortBy=unpriced&amp;sortDirection=asc&amp;limit=3&amp;offset=0`);</span>
+<span class="add">+      const pageTwo = await getJson&lt;ListListingsResponse&gt;(`${HOOK_BASE_URL}/api/listings?sourceId=${statusSource.id}&amp;sortBy=unpriced&amp;sortDirection=asc&amp;limit=3&amp;offset=3`);</span>
+<span class="ctx">       expect(pageOne.status).toBe(200);</span>
+<span class="ctx">       expect(pageTwo.status).toBe(200);</span>
+<span class="del">-      expect(pageThree.status).toBe(200);</span>
+<span class="del">-      expect(pageOne.body.listings.map((listing) =&gt; listing.title)).toEqual(ascendingTitles.slice(0, 2));</span>
+<span class="del">-      expect(pageTwo.body.listings.map((listing) =&gt; listing.title)).toEqual(ascendingTitles.slice(2, 4));</span>
+<span class="del">-      expect(pageThree.body.listings.map((listing) =&gt; listing.title)).toEqual(ascendingTitles.slice(4, 5));</span>
+<span class="del">-      expect([pageOne.body.total, pageTwo.body.total, pageThree.body.total]).toEqual([5, 5, 5]);</span>
+<span class="add">+      expect(pageOne.body.listings.map((listing) =&gt; listing.title)).toEqual(ascendingTitles.slice(0, 3));</span>
+<span class="add">+      expect(pageTwo.body.listings.map((listing) =&gt; listing.title)).toEqual(ascendingTitles.slice(3, 6));</span>
+<span class="add">+      expect([pageOne.body.total, pageTwo.body.total]).toEqual([6, 6]);</span>
+<span class="ctx">     }, 30_000);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> });</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Client badge and wiring</span><span class="meta">3 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">Updates the Pricing Status pill to render one of three visually distinct states instead</p>
+<p class="note">Tasks: T3</p>
+<ul class="files"><li class="file-group">
+<p class="file-note">`PricingStatusBadgeProps` changed from `{ hasUnpricedParts: boolean }` to `{ pricingStatus: PricingStatus }`; now renders three pills — a new neutral/muted &quot;Not Priced&quot; pill alongside the existing red &quot;Partially Priced&quot; and teal &quot;Fully Priced&quot; pills — with an updated doc comment describing all three states.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/features/listings/pricing-status-badge.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -1,22 +1,37 @@</div><pre><span class="add">+import type { PricingStatus } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> import { cn } from &#x27;@/lib/utils&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> interface PricingStatusBadgeProps {</span>
+<span class="del">-  hasUnpricedParts: boolean;</span>
+<span class="add">+  pricingStatus: PricingStatus;</span>
+<span class="ctx">   className?: string;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="ctx"> /**</span>
+<span class="ctx">  * Pill marking a Listing&#x27;s pricing state in the &quot;Pricing Status&quot; column of</span>
+<span class="del">- * the listings queue table, keyed on listing.hasUnpricedParts. Always</span>
+<span class="add">+ * the listings queue table, keyed on listing.pricingStatus. Always</span>
+<span class="ctx">  * renders — unlike the badges it sits beside (EbayScanBadge, NonWorkingBadge,</span>
+<span class="del">- * AiSuggestedBadge) it is never absent, just one of two states: &quot;Partially</span>
+<span class="del">- * Priced&quot; (destructive/red, matching the old &quot;Unpriced&quot; pill&#x27;s styling) when</span>
+<span class="del">- * at least one identified part has no resale price set, or &quot;Fully Priced&quot;</span>
+<span class="del">- * (teal, matching IdentifyPartsStatusBadge&#x27;s &quot;completed&quot;-stage pill) once</span>
+<span class="del">- * every identified part has a price.</span>
+<span class="add">+ * AiSuggestedBadge) it is never absent, just one of three states:</span>
+<span class="add">+ * &quot;Not Priced&quot; (neutral/muted) when no identified part has a resale price</span>
+<span class="add">+ * set, &quot;Partially Priced&quot; (destructive/red) when some but not all</span>
+<span class="add">+ * identified parts have a price, or &quot;Fully Priced&quot; (teal, matching</span>
+<span class="add">+ * IdentifyPartsStatusBadge&#x27;s &quot;completed&quot;-stage pill) once every identified</span>
+<span class="add">+ * part has a price.</span>
+<span class="ctx">  */</span>
+<span class="del">-export function PricingStatusBadge({ hasUnpricedParts, className }: PricingStatusBadgeProps) {</span>
+<span class="del">-  if (hasUnpricedParts) {</span>
+<span class="add">+export function PricingStatusBadge({ pricingStatus, className }: PricingStatusBadgeProps) {</span>
+<span class="add">+  if (pricingStatus === &#x27;not_priced&#x27;) {</span>
+<span class="add">+    return (</span>
+<span class="add">+      &lt;span</span>
+<span class="add">+        className={cn(</span>
+<span class="add">+          &#x27;inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground&#x27;,</span>
+<span class="add">+          className,</span>
+<span class="add">+        )}</span>
+<span class="add">+      &gt;</span>
+<span class="add">+        Not Priced</span>
+<span class="add">+      &lt;/span&gt;</span>
+<span class="add">+    );</span>
+<span class="add">+  }</span>
+<span class="add">+</span>
+<span class="add">+  if (pricingStatus === &#x27;partially_priced&#x27;) {</span>
+<span class="ctx">     return (</span>
+<span class="ctx">       &lt;span</span>
+<span class="ctx">         className={cn(</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">the one `&lt;PricingStatusBadge&gt;` call site updated from `hasUnpricedParts={listing.hasUnpricedParts}` to `pricingStatus={listing.pricingStatus}`.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/features/listings/listing-list.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -255,7 +255,7 @@ export function ListingList({</div><pre><span class="ctx">                     &lt;IdentifyPartsStatusBadge status={listing.identifyPartsStatus} /&gt;</span>
+<span class="ctx">                   &lt;/td&gt;</span>
+<span class="ctx">                   &lt;td className=&quot;px-4 py-3&quot;&gt;</span>
+<span class="del">-                    &lt;PricingStatusBadge hasUnpricedParts={listing.hasUnpricedParts} /&gt;</span>
+<span class="add">+                    &lt;PricingStatusBadge pricingStatus={listing.pricingStatus} /&gt;</span>
+<span class="ctx">                   &lt;/td&gt;</span>
+<span class="ctx">                   &lt;td className=&quot;whitespace-nowrap px-4 py-3 text-right&quot;&gt;</span>
+<span class="ctx">                     {listing.status === &#x27;open&#x27; &amp;&amp; (</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">the Pricing Status badge test extended from two cases to three (Not Priced, Partially Priced, Fully Priced), asserting each renders distinct text and a genuinely distinct className, not a shared style relabeled.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/listing-list.test.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -20,10 +20,10 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;</div><pre><span class="ctx"> </span>
+<span class="ctx"> // Builds one open ListingSummary, overridable per test — matches the</span>
+<span class="ctx"> // fields the table/comparison columns and the photo icon render.</span>
+<span class="del">-// `hasUnpricedParts` defaults to false (the common case: a fully-priced</span>
+<span class="del">-// listing) so the pre-existing tests below, which never set it, render the</span>
+<span class="del">-// unpriced column&#x27;s badge as empty exactly like every other untouched</span>
+<span class="del">-// column default.</span>
+<span class="add">+// `pricingStatus` defaults to &#x27;fully_priced&#x27; (the common case: a</span>
+<span class="add">+// fully-priced listing) so the pre-existing tests below, which never set</span>
+<span class="add">+// it, render the Pricing Status column&#x27;s badge exactly like every other</span>
+<span class="add">+// untouched column default.</span>
+<span class="ctx"> function makeListing(overrides: Partial&lt;ListingSummary&gt; = {}): ListingSummary {</span>
+<span class="ctx">   return {</span>
+<span class="ctx">     id: &#x27;listing-1&#x27;,</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -42,7 +42,7 @@ function makeListing(overrides: Partial&lt;ListingSummary&gt; = {}): ListingSummary {</div><pre><span class="ctx">     updatedAt: &#x27;2024-01-01&#x27;,</span>
+<span class="ctx">     comparison: { totalExpectedResaleValue: 150, totalCost: 100, difference: 50 },</span>
+<span class="ctx">     identifyPartsStatus: null,</span>
+<span class="del">-    hasUnpricedParts: false,</span>
+<span class="add">+    pricingStatus: &#x27;fully_priced&#x27;,</span>
+<span class="ctx">     ...overrides,</span>
+<span class="ctx">   };</span>
+<span class="ctx"> }</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -425,29 +425,44 @@ describe(&#x27;ListingList sortable column headers&#x27;, () =&gt; {</div><pre><span class="ctx">   });</span>
+<span class="ctx"> });</span>
+<span class="ctx"> </span>
+<span class="del">-// The renamed Pricing Status column&#x27;s badge cell (Req 3-4). The column</span>
+<span class="del">-// sits immediately after Sourcing Status and before the trailing</span>
+<span class="del">-// Accept/Reject actions column, so in each row&#x27;s &lt;td&gt; list (checkbox,</span>
+<span class="del">-// title, source, status, askingPrice, expectedResale, difference,</span>
+<span class="del">-// identifyParts, unpriced, actions) it is always index 8 — pinned here as</span>
+<span class="del">-// a literal, not derived from SORTABLE_COLUMNS, so a header/body position</span>
+<span class="del">-// drift between the two would actually fail this test rather than</span>
+<span class="del">-// silently agree with itself.</span>
+<span class="del">-describe(&#x27;ListingList Pricing Status column badge (Req 3-4)&#x27;, () =&gt; {</span>
+<span class="add">+// The Pricing Status column&#x27;s badge cell (Req 6). The column sits</span>
+<span class="add">+// immediately after Sourcing Status and before the trailing Accept/Reject</span>
+<span class="add">+// actions column, so in each row&#x27;s &lt;td&gt; list (checkbox, title, source,</span>
+<span class="add">+// status, askingPrice, expectedResale, difference, identifyParts, unpriced,</span>
+<span class="add">+// actions) it is always index 8 — pinned here as a literal, not derived</span>
+<span class="add">+// from SORTABLE_COLUMNS, so a header/body position drift between the two</span>
+<span class="add">+// would actually fail this test rather than silently agree with itself.</span>
+<span class="add">+describe(&#x27;ListingList Pricing Status column badge (Req 6)&#x27;, () =&gt; {</span>
+<span class="ctx">   const PRICING_STATUS_CELL_INDEX = 8;</span>
+<span class="ctx"> </span>
+<span class="del">-  it(&#x27;renders &quot;Partially Priced&quot; for a listing with at least one unpriced part, and &quot;Fully Priced&quot; for one with none — never blank&#x27;, async () =&gt; {</span>
+<span class="del">-    const partial = makeListing({ id: &#x27;listing-partial&#x27;, title: &#x27;Partial Listing&#x27;, hasUnpricedParts: true });</span>
+<span class="del">-    const full = makeListing({ id: &#x27;listing-full&#x27;, title: &#x27;Full Listing&#x27;, hasUnpricedParts: false });</span>
+<span class="del">-    const el = await mount([partial, full]);</span>
+<span class="add">+  it(&#x27;renders &quot;Not Priced&quot;, &quot;Partially Priced&quot;, or &quot;Fully Priced&quot; depending on pricingStatus — never blank, each visually distinct&#x27;, async () =&gt; {</span>
+<span class="add">+    const notPriced = makeListing({ id: &#x27;listing-not-priced&#x27;, title: &#x27;Not Priced Listing&#x27;, pricingStatus: &#x27;not_priced&#x27; });</span>
+<span class="add">+    const partial = makeListing({ id: &#x27;listing-partial&#x27;, title: &#x27;Partial Listing&#x27;, pricingStatus: &#x27;partially_priced&#x27; });</span>
+<span class="add">+    const full = makeListing({ id: &#x27;listing-full&#x27;, title: &#x27;Full Listing&#x27;, pricingStatus: &#x27;fully_priced&#x27; });</span>
+<span class="add">+    const el = await mount([notPriced, partial, full]);</span>
+<span class="ctx"> </span>
+<span class="add">+    const notPricedRow = findListingRow(el, &#x27;Not Priced Listing&#x27;);</span>
+<span class="ctx">     const partialRow = findListingRow(el, &#x27;Partial Listing&#x27;);</span>
+<span class="ctx">     const fullRow = findListingRow(el, &#x27;Full Listing&#x27;);</span>
+<span class="ctx"> </span>
+<span class="add">+    const notPricedSpan = notPricedRow.cells[PRICING_STATUS_CELL_INDEX].querySelector(&#x27;span&#x27;);</span>
+<span class="add">+    const partialSpan = partialRow.cells[PRICING_STATUS_CELL_INDEX].querySelector(&#x27;span&#x27;);</span>
+<span class="add">+    const fullSpan = fullRow.cells[PRICING_STATUS_CELL_INDEX].querySelector(&#x27;span&#x27;);</span>
+<span class="add">+</span>
+<span class="add">+    expect(notPricedRow.cells[PRICING_STATUS_CELL_INDEX].textContent?.trim()).toBe(&#x27;Not Priced&#x27;);</span>
+<span class="ctx">     expect(partialRow.cells[PRICING_STATUS_CELL_INDEX].textContent?.trim()).toBe(&#x27;Partially Priced&#x27;);</span>
+<span class="del">-    expect(partialRow.cells[PRICING_STATUS_CELL_INDEX].querySelector(&#x27;span&#x27;)).not.toBeNull();</span>
+<span class="ctx">     expect(fullRow.cells[PRICING_STATUS_CELL_INDEX].textContent?.trim()).toBe(&#x27;Fully Priced&#x27;);</span>
+<span class="del">-    expect(fullRow.cells[PRICING_STATUS_CELL_INDEX].querySelector(&#x27;span&#x27;)).not.toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    expect(notPricedSpan).not.toBeNull();</span>
+<span class="add">+    expect(partialSpan).not.toBeNull();</span>
+<span class="add">+    expect(fullSpan).not.toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    // Each pill&#x27;s rendered className is genuinely distinct from the other</span>
+<span class="add">+    // two — not just a shared class string under a different label — so a</span>
+<span class="add">+    // regression that collapses two states onto the same styling fails</span>
+<span class="add">+    // here even though the text assertions above would still pass.</span>
+<span class="add">+    const classNames = [notPricedSpan?.className, partialSpan?.className, fullSpan?.className];</span>
+<span class="add">+    expect(new Set(classNames).size).toBe(3);</span>
+<span class="ctx">   });</span>
+<span class="ctx"> });</span>
+<span class="ctx"> </span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+</main><script>
+function toggleSection(btn){
+  var body = btn.nextElementSibling;
+  body.hidden = !body.hidden;
+  btn.setAttribute('aria-expanded', String(!body.hidden));
+}
+function toggleFile(btn){
+  var body = btn.nextElementSibling;
+  body.hidden = !body.hidden;
+  btn.setAttribute('aria-expanded', String(!body.hidden));
+}
+</script>

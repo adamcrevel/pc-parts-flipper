@@ -1,7 +1,7 @@
 // Type-shape consistency proof for T1's part-notes-and-unpriced-indicator
 // changes: ExpectedPart.notes / ExpectedPartInput.notes (listings.ts),
 // AiIdentifiedPart.notes (aiIdentification.ts), and the new
-// ListingSortField 'unpriced' member / ListingSummary.hasUnpricedParts
+// ListingSortField 'unpriced' member / ListingSummary.pricingStatus
 // (listings.ts). Follows bulkIdentifyPartsTypes.test.ts's convention: these
 // are pure `type`/`interface` declarations with no runtime representation
 // of their own, so `vitest run`'s esbuild transform strips every type
@@ -15,7 +15,7 @@
 // files, same caveat bulkIdentifyPartsTypes.test.ts documents).
 import { describe, expect, it } from 'vitest';
 import type { AiIdentifiedPart } from './aiIdentification.js';
-import type { ExpectedPart, ExpectedPartInput, ListingSortField, ListingSummary } from './listings.js';
+import type { ExpectedPart, ExpectedPartInput, ListingSortField, ListingSummary, PricingStatus } from './listings.js';
 
 /** Minimal valid ExpectedPart base (notes omitted), reused by each notes
  * variant below. Typed as `Omit<ExpectedPart, 'notes'>` (rather than
@@ -166,20 +166,28 @@ describe('ListingSortField', () => {
   });
 });
 
-describe('ListingSummary.hasUnpricedParts', () => {
-  it('is a required, non-optional boolean (both true and false are valid, omitting the key is not)', () => {
-    const unpriced: Pick<ListingSummary, 'hasUnpricedParts'> = { hasUnpricedParts: true };
-    const priced: Pick<ListingSummary, 'hasUnpricedParts'> = { hasUnpricedParts: false };
-    expect(unpriced.hasUnpricedParts).toBe(true);
-    expect(priced.hasUnpricedParts).toBe(false);
+describe('ListingSummary.pricingStatus', () => {
+  it('is a required, non-optional PricingStatus (all 3 members are valid, omitting the key is not)', () => {
+    const notPriced: Pick<ListingSummary, 'pricingStatus'> = { pricingStatus: 'not_priced' };
+    const partiallyPriced: Pick<ListingSummary, 'pricingStatus'> = { pricingStatus: 'partially_priced' };
+    const fullyPriced: Pick<ListingSummary, 'pricingStatus'> = { pricingStatus: 'fully_priced' };
+    expect(notPriced.pricingStatus).toBe('not_priced');
+    expect(partiallyPriced.pricingStatus).toBe('partially_priced');
+    expect(fullyPriced.pricingStatus).toBe('fully_priced');
   });
 
-  it('rejects an object literal that omits hasUnpricedParts (required, not optional)', () => {
-    // If a future edit makes this field optional (`hasUnpricedParts?:
-    // boolean`), this omission stops erroring and the directive below
+  it('rejects an object literal that omits pricingStatus (required, not optional)', () => {
+    // If a future edit makes this field optional (`pricingStatus?:
+    // PricingStatus`), this omission stops erroring and the directive below
     // becomes "unused", which tsc reports as its own error.
-    // @ts-expect-error - hasUnpricedParts is required; omitting the key entirely must fail.
-    const missingField: Pick<ListingSummary, 'hasUnpricedParts'> = {};
+    // @ts-expect-error - pricingStatus is required; omitting the key entirely must fail.
+    const missingField: Pick<ListingSummary, 'pricingStatus'> = {};
     expect(missingField).toEqual({});
+  });
+
+  it('rejects a string literal that is not one of the 3 PricingStatus members', () => {
+    // @ts-expect-error - 'unpriced' is not a member of PricingStatus; proves the union is closed to exactly the 3 documented values.
+    const invalidStatus: PricingStatus = 'unpriced';
+    expect(invalidStatus).toBeTruthy();
   });
 });
