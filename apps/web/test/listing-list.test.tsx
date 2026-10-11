@@ -20,6 +20,10 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 // Builds one open ListingSummary, overridable per test — matches the
 // fields the table/comparison columns and the photo icon render.
+// `hasUnpricedParts` defaults to false (the common case: a fully-priced
+// listing) so the pre-existing tests below, which never set it, render the
+// unpriced column's badge as empty exactly like every other untouched
+// column default.
 function makeListing(overrides: Partial<ListingSummary> = {}): ListingSummary {
   return {
     id: 'listing-1',
@@ -38,6 +42,7 @@ function makeListing(overrides: Partial<ListingSummary> = {}): ListingSummary {
     updatedAt: '2024-01-01',
     comparison: { totalExpectedResaleValue: 150, totalCost: 100, difference: 50 },
     identifyPartsStatus: null,
+    hasUnpricedParts: false,
     ...overrides,
   };
 }
@@ -186,7 +191,7 @@ describe('ListingList title click -> inline edit row', () => {
     // it's inline (an accordion row under the clicked Listing) rather than
     // rendered anywhere else, e.g. above the table.
     expect(formRowIndex).toBe(listingARowIndex + 1);
-    expect(rows[formRowIndex].querySelector('td')?.getAttribute('colspan')).toBe('9');
+    expect(rows[formRowIndex].querySelector('td')?.getAttribute('colspan')).toBe('10');
   });
 
   it('opening a second Listing closes the first — only one inline edit row at a time', async () => {
@@ -310,7 +315,7 @@ describe('ListingList Accept/Reject gating and per-row in-flight disable (Req 4)
 // are clickable, which field each one reports, and that the direction
 // arrow appears on the active column only.
 describe('ListingList sortable column headers', () => {
-  const SORTABLE_LABELS = ['Title', 'Source', 'Status', 'Asking Price', 'Expected Resale', 'Difference', 'Identify Parts'];
+  const SORTABLE_LABELS = ['Title', 'Source', 'Status', 'Asking Price', 'Expected Resale', 'Difference', 'Identify Parts', 'Unpriced'];
 
   function headerCells(el: HTMLElement): HTMLTableCellElement[] {
     return Array.from(el.querySelectorAll('thead th'));
@@ -324,20 +329,20 @@ describe('ListingList sortable column headers', () => {
     return button as HTMLButtonElement;
   }
 
-  it('makes exactly the 7 data-bearing headers clickable, each reporting its own sort field, and leaves the checkbox and actions columns plain', async () => {
+  it('makes exactly the 8 data-bearing headers clickable, each reporting its own sort field, and leaves the checkbox and actions columns plain', async () => {
     const clicked: string[] = [];
     const el = await mount([makeListing()], { onSortChange: (field) => clicked.push(field) });
 
     const cells = headerCells(el);
-    expect(cells).toHaveLength(9);
+    expect(cells).toHaveLength(10);
     // Req 10: neither the leading selection column nor the trailing
     // actions column carries a comparable value, so neither is clickable.
     expect(cells[0].querySelector('button')).toBeNull();
-    expect(cells[8].querySelector('button')).toBeNull();
+    expect(cells[9].querySelector('button')).toBeNull();
     expect(cells[0].getAttribute('aria-sort')).toBeNull();
-    expect(cells[8].getAttribute('aria-sort')).toBeNull();
-    expect(el.querySelectorAll('thead button')).toHaveLength(7);
-    expect(cells.slice(1, 8).map((cell) => cell.textContent?.trim())).toEqual(SORTABLE_LABELS);
+    expect(cells[9].getAttribute('aria-sort')).toBeNull();
+    expect(el.querySelectorAll('thead button')).toHaveLength(8);
+    expect(cells.slice(1, 9).map((cell) => cell.textContent?.trim())).toEqual(SORTABLE_LABELS);
 
     for (const label of SORTABLE_LABELS) {
       await act(async () => {
@@ -347,14 +352,14 @@ describe('ListingList sortable column headers', () => {
     // Each header must report its own field, in the shared
     // ListingSortField vocabulary — not a label string or a neighbour's
     // field.
-    expect(clicked).toEqual(['title', 'source', 'status', 'askingPrice', 'expectedResale', 'difference', 'identifyParts']);
+    expect(clicked).toEqual(['title', 'source', 'status', 'askingPrice', 'expectedResale', 'difference', 'identifyParts', 'unpriced']);
   });
 
   it('renders no direction arrow on any header while nothing is sorted', async () => {
     const el = await mount([makeListing()]);
     expect(el.querySelectorAll('thead [aria-label^="Sorted"]')).toHaveLength(0);
     expect(headerCells(el).map((cell) => cell.getAttribute('aria-sort'))).toEqual([
-      null, 'none', 'none', 'none', 'none', 'none', 'none', 'none', null,
+      null, 'none', 'none', 'none', 'none', 'none', 'none', 'none', 'none', null,
     ]);
   });
 
@@ -368,7 +373,7 @@ describe('ListingList sortable column headers', () => {
     // in the row.
     expect(headerButton(el, 'Asking Price').contains(arrows[0])).toBe(true);
     expect(headerCells(el).map((cell) => cell.getAttribute('aria-sort'))).toEqual([
-      null, 'none', 'none', 'none', 'ascending', 'none', 'none', 'none', null,
+      null, 'none', 'none', 'none', 'ascending', 'none', 'none', 'none', 'none', null,
     ]);
   });
 
@@ -394,7 +399,49 @@ describe('ListingList sortable column headers', () => {
     expect(ascendingGlyph).not.toBe('');
     expect(arrows[0].innerHTML).not.toBe(ascendingGlyph);
     expect(headerCells(el).map((cell) => cell.getAttribute('aria-sort'))).toEqual([
-      null, 'none', 'none', 'none', 'none', 'none', 'descending', 'none', null,
+      null, 'none', 'none', 'none', 'none', 'none', 'descending', 'none', 'none', null,
     ]);
+  });
+
+  // Req 8, 9: clicking the new Unpriced header reports 'unpriced' to the
+  // page exactly like every other header — no direction is attached to the
+  // click itself (that's the page's own first-click-is-ascending logic,
+  // already covered above for the other 7 columns and not re-tested here),
+  // this pins only that the new column's own click wiring is correct.
+  it('clicking the Unpriced header while inactive reports sortBy "unpriced" and nothing else', async () => {
+    const clicked: string[] = [];
+    const el = await mount([makeListing()], { onSortChange: (field) => clicked.push(field) });
+
+    await act(async () => {
+      headerButton(el, 'Unpriced').click();
+    });
+
+    expect(clicked).toEqual(['unpriced']);
+  });
+});
+
+// The new Unpriced column's badge cell (Req 8). The column sits
+// immediately after Identify Parts and before the trailing Accept/Reject
+// actions column, so in each row's <td> list (checkbox, title, source,
+// status, askingPrice, expectedResale, difference, identifyParts,
+// unpriced, actions) it is always index 8 — pinned here as a literal, not
+// derived from SORTABLE_COLUMNS, so a header/body position drift between
+// the two would actually fail this test rather than silently agree with
+// itself.
+describe('ListingList Unpriced column badge (Req 8)', () => {
+  const UNPRICED_CELL_INDEX = 8;
+
+  it('renders the "Unpriced" badge text for a listing with at least one unpriced part, and renders nothing for one with none', async () => {
+    const unpriced = makeListing({ id: 'listing-unpriced', title: 'Unpriced Listing', hasUnpricedParts: true });
+    const priced = makeListing({ id: 'listing-priced', title: 'Priced Listing', hasUnpricedParts: false });
+    const el = await mount([unpriced, priced]);
+
+    const unpricedRow = findListingRow(el, 'Unpriced Listing');
+    const pricedRow = findListingRow(el, 'Priced Listing');
+
+    expect(unpricedRow.cells[UNPRICED_CELL_INDEX].textContent?.trim()).toBe('Unpriced');
+    expect(unpricedRow.cells[UNPRICED_CELL_INDEX].querySelector('span')).not.toBeNull();
+    expect(pricedRow.cells[UNPRICED_CELL_INDEX].textContent?.trim()).toBe('');
+    expect(pricedRow.cells[UNPRICED_CELL_INDEX].querySelector('span')).toBeNull();
   });
 });

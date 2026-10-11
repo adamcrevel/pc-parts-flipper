@@ -355,6 +355,7 @@ describe('persistIdentifiedParts dedupe & job-failure data integrity (T1, Req 1-
           confidence: 'high',
           source: 'text',
           identityCandidates: [],
+          notes: '',
         },
       ],
       notes: 'rerun',
@@ -393,6 +394,7 @@ describe('persistIdentifiedParts dedupe & job-failure data integrity (T1, Req 1-
       aiSource: 'text',
       priceSource: 'auto',
       workingStatus: 'working',
+      notes: null,
     });
 
     // The store (standing in for the Listing's real Expected Parts) now
@@ -474,6 +476,119 @@ describe('persistIdentifiedParts dedupe & job-failure data integrity (T1, Req 1-
 
     // Same ids, same rows — nothing deleted or added.
     expect(store.get('listing-fail-keep')).toEqual(original);
+  });
+
+  // TE4 proof: identifyPartsWorkerPool.ts's persistIdentifiedParts (Req 6)
+  // carries the model's per-part `notes` through to the created Expected
+  // Part, applying the same empty-string-to-null conversion T2 established
+  // on the DB layer's own nullable `notes` column. The two cases below
+  // (non-empty -> stored verbatim, '' -> stored null) are each proven to
+  // fail on the exact production line they guard via the mutation runner;
+  // see this task's own digest.
+  it("persists a non-empty per-part notes value to the created Expected Part's own notes field", async () => {
+    const listing = listingFixture('listing-notes-present');
+    const job = jobFixture('job-notes-present', 'listing-notes-present');
+
+    let created: CreateExpectedPartInput | null = null;
+    createExpectedPart.mockImplementation(async (input) => {
+      created = input;
+      return {
+        id: 'new-notes-present',
+        listingId: input.listingId,
+        componentCategory: input.componentCategory,
+        brand: input.brand,
+        partNumber: input.partNumber,
+        description: input.description,
+        estimatedResaleValue: input.estimatedResaleValue,
+        identityCandidates: input.identityCandidates,
+        aiConfidence: input.aiConfidence,
+        aiSource: input.aiSource,
+        priceSource: input.priceSource ?? null,
+        workingStatus: input.workingStatus ?? 'working',
+        notes: input.notes ?? null,
+        createdAt: '2026-02-01T00:00:00.000Z',
+        updatedAt: '2026-02-01T00:00:00.000Z',
+      };
+    });
+
+    const result: IdentifyPartsResponse = {
+      parts: [
+        {
+          category: 'GPU',
+          brand: 'NVIDIA',
+          partNumber: 'RTX-NOTED',
+          description: 'GPU with a noted defect',
+          confidence: 'high',
+          source: 'text',
+          identityCandidates: [],
+          notes: 'Fan makes grinding noise on spin-up',
+        },
+      ],
+      notes: '',
+    };
+
+    claimNextQueuedJob.mockResolvedValueOnce(job).mockResolvedValue(null);
+    getListingById.mockResolvedValue(listing);
+    identifyListingParts.mockResolvedValue(result);
+
+    activeHandle = startIdentifyPartsWorkerPool();
+    await vi.waitFor(() => expect(completeJob).toHaveBeenCalledTimes(1));
+
+    expect(created).not.toBeNull();
+    expect(created!.notes).toBe('Fan makes grinding noise on spin-up');
+  });
+
+  it("persists a part whose AI result carries notes: '' as null (not the empty string) on the created Expected Part", async () => {
+    const listing = listingFixture('listing-notes-empty');
+    const job = jobFixture('job-notes-empty', 'listing-notes-empty');
+
+    let created: CreateExpectedPartInput | null = null;
+    createExpectedPart.mockImplementation(async (input) => {
+      created = input;
+      return {
+        id: 'new-notes-empty',
+        listingId: input.listingId,
+        componentCategory: input.componentCategory,
+        brand: input.brand,
+        partNumber: input.partNumber,
+        description: input.description,
+        estimatedResaleValue: input.estimatedResaleValue,
+        identityCandidates: input.identityCandidates,
+        aiConfidence: input.aiConfidence,
+        aiSource: input.aiSource,
+        priceSource: input.priceSource ?? null,
+        workingStatus: input.workingStatus ?? 'working',
+        notes: input.notes ?? null,
+        createdAt: '2026-02-01T00:00:00.000Z',
+        updatedAt: '2026-02-01T00:00:00.000Z',
+      };
+    });
+
+    const result: IdentifyPartsResponse = {
+      parts: [
+        {
+          category: 'CPU',
+          brand: 'Intel',
+          partNumber: 'i5-13600K',
+          description: 'CPU, nothing noted',
+          confidence: 'high',
+          source: 'text',
+          identityCandidates: [],
+          notes: '',
+        },
+      ],
+      notes: '',
+    };
+
+    claimNextQueuedJob.mockResolvedValueOnce(job).mockResolvedValue(null);
+    getListingById.mockResolvedValue(listing);
+    identifyListingParts.mockResolvedValue(result);
+
+    activeHandle = startIdentifyPartsWorkerPool();
+    await vi.waitFor(() => expect(completeJob).toHaveBeenCalledTimes(1));
+
+    expect(created).not.toBeNull();
+    expect(created!.notes).toBeNull();
   });
 });
 

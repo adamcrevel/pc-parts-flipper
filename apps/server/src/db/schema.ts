@@ -278,6 +278,7 @@ export const ALTER_STATEMENTS: readonly string[] = [
   `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS price_source VARCHAR`,
   `ALTER TABLE listings ADD COLUMN IF NOT EXISTS non_working BOOLEAN DEFAULT false`,
   `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS working_status VARCHAR DEFAULT 'working'`,
+  `ALTER TABLE expected_parts ADD COLUMN IF NOT EXISTS notes VARCHAR`,
   // sourcing-resilience feature (Req 1, 3, 5, 6, 10): backoff bookkeeping
   // for infrastructure-failure retries. `blocked`/`attempt_count`/
   // `next_retry_at` on the two sourcing-attempt tables let a combo whose

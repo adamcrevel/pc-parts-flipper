@@ -58,6 +58,7 @@ function manualRow(overrides: Partial<ExpectedPartRow> = {}): ExpectedPartRow {
     brand: 'AMD',
     partNumber: 'Ryzen 5 5600X',
     description: 'boxed, with cooler',
+    notes: '',
     estimatedResaleValue: '90',
     identityCandidates: [],
     ...overrides,

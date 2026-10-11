@@ -111,6 +111,7 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
         brand: row.brand.trim() || null,
         partNumber: row.partNumber.trim() || null,
         description: row.description.trim(),
+        notes: row.notes.trim() || null,
         estimatedResaleValue: row.estimatedResaleValue.trim() === '' ? null : Number(row.estimatedResaleValue),
         identityCandidates: row.identityCandidates,
         aiConfidence: row.aiSuggested ? (row.aiConfidence ?? null) : null,
@@ -199,7 +200,7 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
         />
       </CollapsibleSection>
 
-      <ExpectedPartsEditor rows={rows} rowErrors={rowErrors} onChange={setRows} listingNonWorking={initialValue?.nonWorking} />
+      <ExpectedPartsEditor rows={rows} rowErrors={rowErrors} onChange={setRows} listingNonWorking={initialValue?.nonWorking} isExistingListing={Boolean(saved)} />
 
       {/* Takes `saved` as-is and renders its own save-first hint while it's undefined, so there's no create/edit branch to carry here. */}
       <IdentifyPartsButton listing={saved} onPartsSaved={handlePartsSaved} />

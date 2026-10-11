@@ -17,6 +17,19 @@ import type { CreateExpectedPartInput, ExpectedPart, Listing } from '../src/db/i
 const claimNextQueuedJob = vi.fn<[], Promise<IdentifyPartsJob | null>>();
 const completeJob = vi.fn<[string, IdentifyPartsResponse], Promise<void>>();
 const failJob = vi.fn<[string, string], Promise<void>>();
+// T4 Cycle-0 test-fix: this file's db/index.js mock predated the
+// sourcing-resilience feature's retryOrFailJob requeue-with-backoff path
+// (identifyPartsWorkerPool.ts's processJob catches any thrown error and
+// always routes it through retryOrFailJob, never failJob). Before this
+// feature, nothing in this suite's own path ever threw, so the gap in the
+// mock never mattered; a part missing the now-required `notes` field used
+// to throw inside persistIdentifiedParts's `part.notes.trim()`, which (with
+// retryOrFailJob undefined on the mock) surfaced as an unrelated-looking
+// "No retryOrFailJob export is defined on mock" error instead of the real
+// TypeError. Mocking it here, matching identifyPartsWorkerPool.test.ts's
+// own pattern, keeps this suite correct regardless of which error path a
+// future change exercises.
+const retryOrFailJob = vi.fn<[string, string], Promise<void>>();
 const resetOrphanedJobsToQueued = vi.fn<[], Promise<string[]>>();
 const updateJobStage = vi.fn<[string, 'sourcing_references' | 'comparing'], Promise<void>>();
 const getListingById = vi.fn<[string], Promise<Listing | null>>();
@@ -32,6 +45,7 @@ vi.mock('../src/db/index.js', () => ({
   claimNextQueuedJob: (...args: []) => claimNextQueuedJob(...args),
   completeJob: (...args: [string, IdentifyPartsResponse]) => completeJob(...args),
   failJob: (...args: [string, string]) => failJob(...args),
+  retryOrFailJob: (...args: [string, string]) => retryOrFailJob(...args),
   resetOrphanedJobsToQueued: (...args: []) => resetOrphanedJobsToQueued(...args),
   updateJobStage: (...args: [string, 'sourcing_references' | 'comparing']) => updateJobStage(...args),
   getListingById: (...args: [string]) => getListingById(...args),
@@ -153,6 +167,7 @@ describe('persistIdentifiedParts — Req 13 ($1 override) on the identify-parts 
           // both its branches, since its own signal is specifically
           // "non_working" (Req 8's rule).
           workingStatus: 'non_working',
+          notes: '',
         },
       ],
       notes: '',
@@ -206,6 +221,7 @@ describe('persistIdentifiedParts — Req 13 ($1 override) on the identify-parts 
           confidence: 'high',
           source: 'text',
           identityCandidates: [],
+          notes: '',
           // No workingStatus signal at all (the field identifyPartsWorkerPool
           // never asks the AI pipeline to set on a non-flagged Listing,
           // mirroring buildIdentificationPrompt only appending the rule

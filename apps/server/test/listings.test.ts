@@ -304,6 +304,77 @@ describe('Listing CRUD + Expected Parts + Req-3 comparison (T6)', () => {
     expect(fetched.body.expectedParts).toHaveLength(1);
     expect(fetched.body.expectedParts[0].description).toBe('GTX 1660');
   });
+
+  // T8 proof (UAT-found bug fix, Requirement 1): expectedParts[].notes was
+  // declared on neither ExpectedPartRequestBody nor the object literal
+  // validateExpectedPartInput returns, so it was silently dropped before
+  // ever reaching the db layer on both POST and PUT. A unit test against
+  // validateExpectedPartInput alone would have missed this exact bug (the
+  // function itself was never exercised end-to-end through the real route),
+  // so these three cases go through the actual HTTP POST/PUT/GET routes.
+  it('persists a non-null expectedParts[].notes value via POST and round-trips it via a follow-up GET (Req 1)', async () => {
+    const created = await postJson<ListingDetail>(`${server.baseUrl}/api/listings`, listingBody(sourceId, {
+      expectedParts: [{ componentCategory: 'CPU', brand: 'Intel', partNumber: 'i7-10700', description: 'Pulled from a working machine', estimatedResaleValue: 60, notes: 'Missing a heatsink screw' }],
+    }));
+    expect(created.status, `create failed: ${JSON.stringify(created.body)}`).toBe(201);
+    // Asserted on the POST response first, but that alone cannot prove
+    // persistence — a route can echo request input back unchanged even if
+    // it never reached the db layer, which is exactly the shape of bug
+    // UAT found here. The follow-up GET below is what actually proves it.
+    expect(created.body.expectedParts[0].notes).toBe('Missing a heatsink screw');
+
+    const fetched = await getJson<ListingDetail>(`${server.baseUrl}/api/listings/${created.body.id}`);
+    expect(fetched.status).toBe(200);
+    expect(fetched.body.expectedParts[0].notes).toBe('Missing a heatsink screw');
+  });
+
+  it('persists a non-null expectedParts[].notes value via PUT on an existing Listing and round-trips it via a follow-up GET (Req 1)', async () => {
+    const created = await postJson<ListingDetail>(`${server.baseUrl}/api/listings`, listingBody(sourceId));
+    expect(created.status).toBe(201);
+
+    const updated = await putJson<ListingDetail>(`${server.baseUrl}/api/listings/${created.body.id}`, {
+      ...listingBody(sourceId),
+      expectedParts: [{ componentCategory: 'GPU', description: 'GTX 1660', estimatedResaleValue: 90, notes: 'Fan rattles on spin-up' }],
+    });
+    expect(updated.status, `update failed: ${JSON.stringify(updated.body)}`).toBe(200);
+    // Same reasoning as the POST case above: the PUT response echo alone
+    // cannot prove persistence, so this is confirmed via a follow-up GET too.
+    expect(updated.body.expectedParts[0].notes).toBe('Fan rattles on spin-up');
+
+    const fetched = await getJson<ListingDetail>(`${server.baseUrl}/api/listings/${created.body.id}`);
+    expect(fetched.status).toBe(200);
+    expect(fetched.body.expectedParts[0].notes).toBe('Fan rattles on spin-up');
+  });
+
+  it('normalizes an absent expectedParts[].notes field to null (never dropped as undefined, never defaulted to "") on both POST and PUT', async () => {
+    // Deliberately built as an untyped object, like the brand/partNumber-
+    // omitted test above: the point is a wire body genuinely lacking the
+    // "notes" key, which the typed CreateListingInput cannot express.
+    const createBody = {
+      ...listingBody(sourceId),
+      expectedParts: [{ componentCategory: 'PSU', description: '650W, no notes taken', estimatedResaleValue: 25 }],
+    };
+    const created = await postJson<ListingDetail>(`${server.baseUrl}/api/listings`, createBody);
+    expect(created.status, `create failed: ${JSON.stringify(created.body)}`).toBe(201);
+    expect(created.body.expectedParts[0].notes).toBeNull();
+    expect('notes' in created.body.expectedParts[0]).toBe(true);
+
+    const fetchedAfterCreate = await getJson<ListingDetail>(`${server.baseUrl}/api/listings/${created.body.id}`);
+    expect(fetchedAfterCreate.status).toBe(200);
+    expect(fetchedAfterCreate.body.expectedParts[0].notes).toBeNull();
+
+    const updateBody = {
+      ...listingBody(sourceId),
+      expectedParts: [{ componentCategory: 'Storage', description: '512GB NVMe, no notes taken', estimatedResaleValue: 20 }],
+    };
+    const updated = await putJson<ListingDetail>(`${server.baseUrl}/api/listings/${created.body.id}`, updateBody);
+    expect(updated.status, `update failed: ${JSON.stringify(updated.body)}`).toBe(200);
+    expect(updated.body.expectedParts[0].notes).toBeNull();
+
+    const fetchedAfterUpdate = await getJson<ListingDetail>(`${server.baseUrl}/api/listings/${created.body.id}`);
+    expect(fetchedAfterUpdate.status).toBe(200);
+    expect(fetchedAfterUpdate.body.expectedParts[0].notes).toBeNull();
+  });
 });
 
 // T2 proof (promotion hooks wired into listings.ts, Requirements 2 & 4, plus
@@ -760,6 +831,79 @@ describe('Reference photo promotion hook — DB-verified (T2)', () => {
       const firstDesc = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${pagingSource.id}&sortBy=askingPrice&sortDirection=desc&limit=2&offset=0`);
       expect(firstDesc.status).toBe(200);
       expect(firstDesc.body.listings.map((listing) => listing.askingPrice)).toEqual([50, 40]);
+    }, 30_000);
+
+    it('groups unpriced listings before priced/zero-parts listings ascending (Req 10, 11), exactly reverses descending, and composes with pagination across page boundaries (Req 8)', async () => {
+      const mixSource = await hookDb.createSource({ name: 'Unpriced Mix Source', platformType: 'ebay', url: null, notes: null, connectorConfig: null });
+      // Five listings scrambled across priced/zero/unpriced so a correct
+      // sort must actually regroup them, not merely preserve insertion
+      // order: two have at least one null estimatedResaleValue, one has
+      // zero Expected Parts at all (Req 11: must group with the priced
+      // ones, never treated as unpriced itself), and two are fully priced.
+      const mixSeeds = [
+        { title: 'Unpriced Mix Priced One', listingDate: '2026-07-01', expectedParts: [{ componentCategory: 'GPU', brand: null, partNumber: null, description: 'Priced', estimatedResaleValue: 100 }], unpriced: false },
+        {
+          title: 'Unpriced Mix Null One',
+          listingDate: '2026-07-02',
+          expectedParts: [
+            { componentCategory: 'GPU', brand: null, partNumber: null, description: 'Priced half', estimatedResaleValue: 100 },
+            { componentCategory: 'RAM', brand: null, partNumber: null, description: 'Unpriced half', estimatedResaleValue: null },
+          ],
+          unpriced: true,
+        },
+        { title: 'Unpriced Mix Zero Parts', listingDate: '2026-07-03', expectedParts: [], unpriced: false },
+        { title: 'Unpriced Mix Null Two', listingDate: '2026-07-04', expectedParts: [{ componentCategory: 'RAM', brand: null, partNumber: null, description: 'Unpriced only', estimatedResaleValue: null }], unpriced: true },
+        { title: 'Unpriced Mix Priced Two', listingDate: '2026-07-05', expectedParts: [{ componentCategory: 'CPU', brand: null, partNumber: null, description: 'Priced', estimatedResaleValue: 50 }], unpriced: false },
+      ];
+      // Creation order deliberately scrambled relative to both the
+      // unpriced/priced grouping and the listingDate order above.
+      const creationOrder = [mixSeeds[2], mixSeeds[4], mixSeeds[0], mixSeeds[3], mixSeeds[1]];
+      for (const seed of creationOrder) {
+        const created = await postJson<ListingDetail>(
+          `${HOOK_BASE_URL}/api/listings`,
+          listingBody(mixSource.id, { title: seed.title, listingDate: seed.listingDate, expectedParts: seed.expectedParts }),
+        );
+        expect(created.status, `mix seed failed: ${JSON.stringify(created.body)}`).toBe(201);
+      }
+      const unpricedTitles = new Set(mixSeeds.filter((seed) => seed.unpriced).map((seed) => seed.title));
+
+      const ascendingRes = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${mixSource.id}&sortBy=unpriced&sortDirection=asc&limit=50`);
+      expect(ascendingRes.status).toBe(200);
+      const ascendingTitles = ascendingRes.body.listings.map((listing) => listing.title);
+      expect(ascendingTitles).toHaveLength(5);
+      // Req 10, 11: every one of the two unpriced titles must sit at a
+      // lower index than every one of the three non-unpriced titles
+      // (the zero-parts listing grouped with the fully-priced pair) — not
+      // merely that one particular row sorts correctly.
+      const unpricedIndices = ascendingTitles.map((title, index) => (unpricedTitles.has(title) ? index : -1)).filter((index) => index >= 0);
+      const pricedIndices = ascendingTitles.map((title, index) => (unpricedTitles.has(title) ? -1 : index)).filter((index) => index >= 0);
+      expect(unpricedIndices).toHaveLength(2);
+      expect(pricedIndices).toHaveLength(3);
+      expect(Math.max(...unpricedIndices)).toBeLessThan(Math.min(...pricedIndices));
+      expect(ascendingTitles.slice(0, 2).every((title) => unpricedTitles.has(title))).toBe(true);
+      expect(ascendingTitles.slice(2).some((title) => unpricedTitles.has(title))).toBe(false);
+
+      // Req 10: descending must be the exact reverse of ascending (the
+      // same proof the 'status' field's own tie-reversal test above
+      // gives), not merely "unpriced last" checked at a single index.
+      const descendingRes = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${mixSource.id}&sortBy=unpriced&sortDirection=desc&limit=50`);
+      expect(descendingRes.status).toBe(200);
+      expect(descendingRes.body.listings.map((listing) => listing.title)).toEqual([...ascendingTitles].reverse());
+
+      // Req 8: composes with pagination exactly the way askingPrice's own
+      // cross-page-boundary test above proved — the unpriced/priced
+      // boundary (index 2 of 5) must fall exactly between page one and
+      // page two, not be re-sorted independently per page.
+      const pageOne = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${mixSource.id}&sortBy=unpriced&sortDirection=asc&limit=2&offset=0`);
+      const pageTwo = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${mixSource.id}&sortBy=unpriced&sortDirection=asc&limit=2&offset=2`);
+      const pageThree = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${mixSource.id}&sortBy=unpriced&sortDirection=asc&limit=2&offset=4`);
+      expect(pageOne.status).toBe(200);
+      expect(pageTwo.status).toBe(200);
+      expect(pageThree.status).toBe(200);
+      expect(pageOne.body.listings.map((listing) => listing.title)).toEqual(ascendingTitles.slice(0, 2));
+      expect(pageTwo.body.listings.map((listing) => listing.title)).toEqual(ascendingTitles.slice(2, 4));
+      expect(pageThree.body.listings.map((listing) => listing.title)).toEqual(ascendingTitles.slice(4, 5));
+      expect([pageOne.body.total, pageTwo.body.total, pageThree.body.total]).toEqual([5, 5, 5]);
     }, 30_000);
   });
 });

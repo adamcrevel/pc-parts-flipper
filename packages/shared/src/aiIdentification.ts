@@ -71,6 +71,8 @@ export interface AiIdentifiedPart {
   source: AiPartSource;
   identityCandidates: IdentityCandidate[];
   workingStatus?: AiPartWorkingStatus;
+  /** Per-part notes (non-nullable, empty string if none). Distinct from IdentifyPartsResponse.notes (response-level caveats for the whole identification). */
+  notes: string;
 }
 
 /**

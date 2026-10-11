@@ -68,6 +68,13 @@ async function toSummary(listing: Listing): Promise<ListingSummary> {
     ...listing,
     comparison: computeComparison(listing, expectedParts),
     identifyPartsStatus: job ? { stage: job.stage, errorMessage: job.errorMessage } : null,
+    // Req 8, 11: true the moment any fetched Expected Part has a null
+    // estimatedResaleValue. `.some` on an empty array is `false` by
+    // definition, which is exactly the Req 11 zero-parts case — a Listing
+    // with no Expected Parts yet has nothing unpriced to flag, so this
+    // falls out of `.some`'s own semantics rather than needing a separate
+    // empty-array branch.
+    hasUnpricedParts: expectedParts.some((part) => part.estimatedResaleValue === null),
   };
 }
 
@@ -91,6 +98,14 @@ const SORT_KEYS: Record<ListingSortField, (listing: ListingSummary, sourceNamesB
   expectedResale: (listing) => listing.comparison.totalExpectedResaleValue,
   difference: (listing) => listing.comparison.difference,
   identifyParts: (listing) => listing.identifyPartsStatus?.stage ?? '',
+  // Req 10: deliberately inverted vs. every extractor above, which returns
+  // the column's own literal value. The shared comparator sorts ascending
+  // via `Number(keyA) - Number(keyB)`, so the *smaller* key sorts first;
+  // returning 0 for `hasUnpricedParts: true` (and 1 for false) is what
+  // makes ascending "unpriced" sort put unpriced rows first, matching the
+  // confirmed "unpriced ascending = unpriced first" direction rather than
+  // the literal `false < true` ordering a non-inverted boolean would give.
+  unpriced: (listing) => (listing.hasUnpricedParts ? 0 : 1),
 };
 
 // The allow-list of accepted `sortBy` query values, derived from SORT_KEYS
@@ -155,6 +170,11 @@ async function toDetail(listing: Listing): Promise<ListingDetail> {
     expectedParts,
     comparison: computeComparison(listing, expectedParts),
     identifyPartsStatus: job ? { stage: job.stage, errorMessage: job.errorMessage } : null,
+    // See toSummary's identical computation above for the Req 8, 11
+    // reasoning; duplicated here rather than factored out since the two
+    // functions fetch `expectedParts` independently and neither should
+    // depend on the other's shape.
+    hasUnpricedParts: expectedParts.some((part) => part.estimatedResaleValue === null),
   };
 }
 
