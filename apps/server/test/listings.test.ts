@@ -833,77 +833,114 @@ describe('Reference photo promotion hook — DB-verified (T2)', () => {
       expect(firstDesc.body.listings.map((listing) => listing.askingPrice)).toEqual([50, 40]);
     }, 30_000);
 
-    it('groups unpriced listings before priced/zero-parts listings ascending (Req 10, 11), exactly reverses descending, and composes with pagination across page boundaries (Req 8)', async () => {
-      const mixSource = await hookDb.createSource({ name: 'Unpriced Mix Source', platformType: 'ebay', url: null, notes: null, connectorConfig: null });
-      // Five listings scrambled across priced/zero/unpriced so a correct
-      // sort must actually regroup them, not merely preserve insertion
-      // order: two have at least one null estimatedResaleValue, one has
-      // zero Expected Parts at all (Req 11: must group with the priced
-      // ones, never treated as unpriced itself), and two are fully priced.
-      const mixSeeds = [
-        { title: 'Unpriced Mix Priced One', listingDate: '2026-07-01', expectedParts: [{ componentCategory: 'GPU', brand: null, partNumber: null, description: 'Priced', estimatedResaleValue: 100 }], unpriced: false },
+    it('groups not_priced listings before partially_priced before fully_priced ascending (Req 7, 2-5), exactly reverses descending (Req 8), and composes with pagination across a bucket boundary that falls mid-page (Req 9)', async () => {
+      const statusSource = await hookDb.createSource({ name: 'Pricing Status Mix Source', platformType: 'ebay', url: null, notes: null, connectorConfig: null });
+      // Six listings, two per bucket, scrambled relative to both the
+      // not_priced/partially_priced/fully_priced grouping AND listingDate,
+      // so a correct sort must actually regroup them, not merely preserve
+      // insertion or date order. The not_priced bucket itself covers both
+      // of Req 2/3's two distinct routes to 'not_priced' — a listing with
+      // zero Expected Parts at all, and a separate listing with one or
+      // more Expected Parts that are every one of them unpriced — so a
+      // computation that only implemented the zero-parts case could not
+      // pass this test.
+      const statusSeeds = [
+        { title: 'Status Mix Zero Parts', listingDate: '2026-07-03', expectedParts: [], bucket: 'not_priced' },
         {
-          title: 'Unpriced Mix Null One',
+          title: 'Status Mix All Unpriced',
+          listingDate: '2026-07-06',
+          expectedParts: [
+            { componentCategory: 'GPU', brand: null, partNumber: null, description: 'Unpriced one', estimatedResaleValue: null },
+            { componentCategory: 'RAM', brand: null, partNumber: null, description: 'Unpriced two', estimatedResaleValue: null },
+          ],
+          bucket: 'not_priced',
+        },
+        {
+          title: 'Status Mix Partial One',
           listingDate: '2026-07-02',
           expectedParts: [
-            { componentCategory: 'GPU', brand: null, partNumber: null, description: 'Priced half', estimatedResaleValue: 100 },
-            { componentCategory: 'RAM', brand: null, partNumber: null, description: 'Unpriced half', estimatedResaleValue: null },
+            { componentCategory: 'CPU', brand: null, partNumber: null, description: 'Priced', estimatedResaleValue: 80 },
+            { componentCategory: 'RAM', brand: null, partNumber: null, description: 'Unpriced', estimatedResaleValue: null },
           ],
-          unpriced: true,
+          bucket: 'partially_priced',
         },
-        { title: 'Unpriced Mix Zero Parts', listingDate: '2026-07-03', expectedParts: [], unpriced: false },
-        { title: 'Unpriced Mix Null Two', listingDate: '2026-07-04', expectedParts: [{ componentCategory: 'RAM', brand: null, partNumber: null, description: 'Unpriced only', estimatedResaleValue: null }], unpriced: true },
-        { title: 'Unpriced Mix Priced Two', listingDate: '2026-07-05', expectedParts: [{ componentCategory: 'CPU', brand: null, partNumber: null, description: 'Priced', estimatedResaleValue: 50 }], unpriced: false },
-      ];
+        {
+          title: 'Status Mix Partial Two',
+          listingDate: '2026-07-05',
+          expectedParts: [
+            { componentCategory: 'Storage', brand: null, partNumber: null, description: 'Priced', estimatedResaleValue: 20 },
+            { componentCategory: 'GPU', brand: null, partNumber: null, description: 'Unpriced', estimatedResaleValue: null },
+          ],
+          bucket: 'partially_priced',
+        },
+        { title: 'Status Mix Fully One', listingDate: '2026-07-01', expectedParts: [{ componentCategory: 'GPU', brand: null, partNumber: null, description: 'Priced', estimatedResaleValue: 100 }], bucket: 'fully_priced' },
+        {
+          title: 'Status Mix Fully Two',
+          listingDate: '2026-07-04',
+          expectedParts: [
+            { componentCategory: 'CPU', brand: null, partNumber: null, description: 'Priced one', estimatedResaleValue: 50 },
+            { componentCategory: 'RAM', brand: null, partNumber: null, description: 'Priced two', estimatedResaleValue: 30 },
+          ],
+          bucket: 'fully_priced',
+        },
+      ] as const;
       // Creation order deliberately scrambled relative to both the
-      // unpriced/priced grouping and the listingDate order above.
-      const creationOrder = [mixSeeds[2], mixSeeds[4], mixSeeds[0], mixSeeds[3], mixSeeds[1]];
+      // not_priced/partially_priced/fully_priced grouping and the
+      // listingDate order above.
+      const creationOrder = [statusSeeds[4], statusSeeds[2], statusSeeds[0], statusSeeds[5], statusSeeds[1], statusSeeds[3]];
       for (const seed of creationOrder) {
         const created = await postJson<ListingDetail>(
           `${HOOK_BASE_URL}/api/listings`,
-          listingBody(mixSource.id, { title: seed.title, listingDate: seed.listingDate, expectedParts: seed.expectedParts }),
+          listingBody(statusSource.id, { title: seed.title, listingDate: seed.listingDate, expectedParts: [...seed.expectedParts] }),
         );
-        expect(created.status, `mix seed failed: ${JSON.stringify(created.body)}`).toBe(201);
+        expect(created.status, `status mix seed failed: ${JSON.stringify(created.body)}`).toBe(201);
       }
-      const unpricedTitles = new Set(mixSeeds.filter((seed) => seed.unpriced).map((seed) => seed.title));
+      // Plain arrays, not Set, since membership is only ever checked
+      // against this small static six-row seed list below.
+      const notPricedTitles = statusSeeds.filter((seed) => seed.bucket === 'not_priced').map((seed) => seed.title);
+      const partiallyPricedTitles = statusSeeds.filter((seed) => seed.bucket === 'partially_priced').map((seed) => seed.title);
+      const fullyPricedTitles = statusSeeds.filter((seed) => seed.bucket === 'fully_priced').map((seed) => seed.title);
 
-      const ascendingRes = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${mixSource.id}&sortBy=unpriced&sortDirection=asc&limit=50`);
+      const ascendingRes = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${statusSource.id}&sortBy=unpriced&sortDirection=asc&limit=50`);
       expect(ascendingRes.status).toBe(200);
+      // Confirms the computed pricingStatus itself matches every seed's
+      // intended bucket (Req 2-5) before trusting the sort order built on
+      // top of it below.
+      expect(ascendingRes.body.listings.every((listing) => listing.pricingStatus === statusSeeds.find((seed) => seed.title === listing.title)?.bucket)).toBe(true);
       const ascendingTitles = ascendingRes.body.listings.map((listing) => listing.title);
-      expect(ascendingTitles).toHaveLength(5);
-      // Req 10, 11: every one of the two unpriced titles must sit at a
-      // lower index than every one of the three non-unpriced titles
-      // (the zero-parts listing grouped with the fully-priced pair) — not
-      // merely that one particular row sorts correctly.
-      const unpricedIndices = ascendingTitles.map((title, index) => (unpricedTitles.has(title) ? index : -1)).filter((index) => index >= 0);
-      const pricedIndices = ascendingTitles.map((title, index) => (unpricedTitles.has(title) ? -1 : index)).filter((index) => index >= 0);
-      expect(unpricedIndices).toHaveLength(2);
-      expect(pricedIndices).toHaveLength(3);
-      expect(Math.max(...unpricedIndices)).toBeLessThan(Math.min(...pricedIndices));
-      expect(ascendingTitles.slice(0, 2).every((title) => unpricedTitles.has(title))).toBe(true);
-      expect(ascendingTitles.slice(2).some((title) => unpricedTitles.has(title))).toBe(false);
+      expect(ascendingTitles).toHaveLength(6);
+      // Req 7: an index-based proof across the WHOLE six-row result, not a
+      // single-row spot check — with exactly two listings per bucket, the
+      // correct ascending order places the two not_priced titles at
+      // indices 0-1, the two partially_priced titles at indices 2-3, and
+      // the two fully_priced titles at indices 4-5, in that order.
+      expect(ascendingTitles.slice(0, 2).every((title) => notPricedTitles.includes(title))).toBe(true);
+      expect(ascendingTitles.slice(2, 4).every((title) => partiallyPricedTitles.includes(title))).toBe(true);
+      expect(ascendingTitles.slice(4, 6).every((title) => fullyPricedTitles.includes(title))).toBe(true);
 
-      // Req 10: descending must be the exact reverse of ascending (the
-      // same proof the 'status' field's own tie-reversal test above
-      // gives), not merely "unpriced last" checked at a single index.
-      const descendingRes = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${mixSource.id}&sortBy=unpriced&sortDirection=desc&limit=50`);
+      // Req 8: descending must be the exact reverse of ascending (the same
+      // proof the 'status' field's own tie-reversal test above gives), not
+      // merely "not_priced last" checked at a single index.
+      const descendingRes = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${statusSource.id}&sortBy=unpriced&sortDirection=desc&limit=50`);
       expect(descendingRes.status).toBe(200);
       expect(descendingRes.body.listings.map((listing) => listing.title)).toEqual([...ascendingTitles].reverse());
 
-      // Req 8: composes with pagination exactly the way askingPrice's own
-      // cross-page-boundary test above proved — the unpriced/priced
-      // boundary (index 2 of 5) must fall exactly between page one and
-      // page two, not be re-sorted independently per page.
-      const pageOne = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${mixSource.id}&sortBy=unpriced&sortDirection=asc&limit=2&offset=0`);
-      const pageTwo = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${mixSource.id}&sortBy=unpriced&sortDirection=asc&limit=2&offset=2`);
-      const pageThree = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${mixSource.id}&sortBy=unpriced&sortDirection=asc&limit=2&offset=4`);
+      // Req 9: composes with pagination across a bucket boundary that
+      // falls MID-PAGE, not just at a page edge — with page size 3 against
+      // two-per-bucket data, page one (indices 0-2) spans the
+      // not_priced/partially_priced boundary (which falls after index 1,
+      // inside the page) and page two (indices 3-5) spans the
+      // partially_priced/fully_priced boundary (which falls after index 3,
+      // inside the page). Neither boundary lines up with a page edge, so
+      // a per-page re-sort (instead of sorting the whole filtered set
+      // before slicing) could not reproduce this split.
+      const pageOne = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${statusSource.id}&sortBy=unpriced&sortDirection=asc&limit=3&offset=0`);
+      const pageTwo = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${statusSource.id}&sortBy=unpriced&sortDirection=asc&limit=3&offset=3`);
       expect(pageOne.status).toBe(200);
       expect(pageTwo.status).toBe(200);
-      expect(pageThree.status).toBe(200);
-      expect(pageOne.body.listings.map((listing) => listing.title)).toEqual(ascendingTitles.slice(0, 2));
-      expect(pageTwo.body.listings.map((listing) => listing.title)).toEqual(ascendingTitles.slice(2, 4));
-      expect(pageThree.body.listings.map((listing) => listing.title)).toEqual(ascendingTitles.slice(4, 5));
-      expect([pageOne.body.total, pageTwo.body.total, pageThree.body.total]).toEqual([5, 5, 5]);
+      expect(pageOne.body.listings.map((listing) => listing.title)).toEqual(ascendingTitles.slice(0, 3));
+      expect(pageTwo.body.listings.map((listing) => listing.title)).toEqual(ascendingTitles.slice(3, 6));
+      expect([pageOne.body.total, pageTwo.body.total]).toEqual([6, 6]);
     }, 30_000);
   });
 });
