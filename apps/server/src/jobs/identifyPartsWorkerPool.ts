@@ -109,7 +109,11 @@ async function pump(): Promise<void> {
  * never be researched, so there is nothing for the pipeline to own.
  * Once every row is in, the full set is handed to triggerPriceLookups,
  * which decides per combo between an instant cached value and a queued
- * research job (Req 5-7).
+ * research job (Req 5-7). `notes` is carried straight across too (empty
+ * string becomes null, matching this column's own nullable convention):
+ * this is what lets a human correction from a previous identification
+ * survive a re-run once the model has carried it forward onto its new
+ * output (see identificationPrompt.ts's PREVIOUS IDENTIFICATION section).
  */
 async function persistIdentifiedParts(listingId: string, listing: Listing, result: IdentifyPartsResponse): Promise<void> {
   // Full replace: a rerun of Identify Parts must not duplicate previously
@@ -150,6 +154,7 @@ async function persistIdentifiedParts(listingId: string, listing: Listing, resul
         aiSource: part.source,
         priceSource,
         workingStatus,
+        notes: part.notes.trim() || null,
       });
     }),
   );

@@ -86,11 +86,13 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
   // (AI-suggestion provenance) were added via ALTER_STATEMENTS after the
   // original CREATE TABLE, so DuckDB reports them last rather than beside
   // component_category where the TypeScript row type places them.
-  // working_status (ebay-condition-filter feature, T1) was appended last of
-  // all — this is the column migrateExpectedPartsNullablePrice's hardcoded
+  // working_status (ebay-condition-filter feature, T1) was appended next —
+  // this is the column migrateExpectedPartsNullablePrice's hardcoded
   // rebuild (migrate.ts) drops on a genuinely fresh database; this fixture
   // is what makes that regression visible here (see the dedicated T1
-  // describe block below for the direct proof).
+  // describe block below for the direct proof). notes (part-notes-and-
+  // unpriced-indicator feature, T2) was appended last of all, after
+  // working_status.
   expected_parts: [
     'id',
     'listing_id',
@@ -106,6 +108,7 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'ai_source',
     'price_source',
     'working_status',
+    'notes',
   ],
   purchases: ['id', 'listing_id', 'status', 'price_paid', 'purchase_date', 'created_at', 'updated_at'],
   teardown_results: [
@@ -478,6 +481,57 @@ describe('non_working / working_status across a fresh database vs. an already-mi
       instance.closeSync();
     } finally {
       await rm(upgradeDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// T2 proof: notes was added to expected_parts via ALTER_STATEMENTS, but
+// every fresh database (no estimated_resale_value NOT NULL relaxation yet)
+// also runs migrateExpectedPartsNullablePrice's table-rebuild, whose
+// hand-written CREATE TABLE/INSERT column lists (migrate.ts) are the only
+// thing standing between that ALTER and actually surviving the rebuild —
+// exactly the failure mode the working_status comment above this block
+// documents happening for real once already. This proves notes was not
+// missed the same way: a brand-new database, migrated start to finish
+// through the real runMigrations path (not a hand-reproduced schema), has
+// a queryable notes column that round-trips an actual value, not just a
+// column that exists with nothing provable about its contents.
+describe('expected_parts.notes across a fresh database (T2)', () => {
+  it('a genuinely fresh database created via the full runMigrations path has a queryable notes column on expected_parts that round-trips a value', async () => {
+    const freshDir = await mkdtemp(path.join(tmpdir(), 'pc-parts-flipper-db-test-fresh-notes-'));
+    try {
+      const instance = await DuckDBInstance.create(path.join(freshDir, 'pc-parts-flipper.duckdb'));
+      const connection = await instance.connect();
+
+      // The real migration path a brand-new database goes through — no
+      // pre-existing state at all.
+      await runMigrations(connection);
+
+      await connection.run(
+        `INSERT INTO sources (id, name, platform_type) VALUES ('11111111-1111-1111-1111-111111111111', 'x', 'other')`,
+      );
+      await connection.run(
+        `INSERT INTO listings (id, source_id, title, asking_price, listing_date, photo_paths)
+         VALUES ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'x', 5, '2024-01-01', '[]')`,
+      );
+      // Bypasses the query-function layer entirely (raw SQL against the
+      // freshly-migrated connection), same as this file's other fresh-DB
+      // proofs above, so what fails here is schema.ts/migrate.ts's own
+      // column lists, not anything query-layer code could paper over.
+      await connection.run(
+        `INSERT INTO expected_parts (id, listing_id, component_category, description, estimated_resale_value, notes)
+         VALUES ('33333333-3333-3333-3333-333333333333', '22222222-2222-2222-2222-222222222222', 'CPU', 'fresh db notes check', NULL, 'missing a screw')`,
+      );
+
+      const row = await connection.runAndReadAll(
+        `SELECT notes FROM expected_parts WHERE id = '33333333-3333-3333-3333-333333333333'`,
+      );
+      expect(row.getRowObjectsJson()).toEqual([{ notes: 'missing a screw' }]);
+
+      connection.closeSync();
+      instance.closeSync();
+    } finally {
+      await rm(freshDir, { recursive: true, force: true });
     }
   });
 });
@@ -1122,5 +1176,110 @@ describe('identity_candidates round-trips through expected_parts and parts (T2)'
 
     const listed = await db.listPartsWithContext({ purchaseId: purchase.id });
     expect(listed.find((p) => p.id === created.id)?.identityCandidates).toEqual(candidates);
+  });
+});
+
+// T2 proof: notes (apps/server/src/db/queries/expectedParts.ts) round-trips
+// through create/update/read, with the same three-state discipline every
+// other optional Expected Part column in this file already proves:
+// non-null stays exactly as written, omitted comes back database-null (not
+// '' and not undefined), and updating it through updateExpectedPart's
+// buildSetClause branch touches nothing else on the row.
+describe('Expected Part notes (T2)', () => {
+  // Seeds the minimum chain (source -> listing) an Expected Part needs.
+  async function seedListing(): Promise<string> {
+    const source = await db.createSource({ name: 'eBay search', platformType: 'ebay', url: null, notes: null });
+    const listing = await db.createListing({
+      sourceId: source.id,
+      title: 'Dell OptiPlex bundle',
+      description: null,
+      listingUrl: null,
+      askingPrice: 100,
+      listingDate: '2024-05-01',
+      acquisitionFees: 0,
+      photoPaths: [],
+    });
+    return listing.id;
+  }
+
+  it('createExpectedPart stores a non-null notes value and getExpectedPartById reads it back unchanged', async () => {
+    const listingId = await seedListing();
+    const created = await db.createExpectedPart({
+      listingId,
+      componentCategory: 'PSU',
+      brand: null,
+      partNumber: null,
+      description: 'Bronze-rated unit, condition unclear',
+      estimatedResaleValue: 25,
+      identityCandidates: [],
+      aiConfidence: null,
+      aiSource: null,
+      notes: 'missing mounting screws',
+    });
+    expect(created.notes).toBe('missing mounting screws');
+
+    // Separate SELECT (not the INSERT ... RETURNING row), so this proves
+    // the value was actually persisted, not merely echoed back.
+    const fetched = await db.getExpectedPartById(created.id);
+    expect(fetched?.notes).toBe('missing mounting screws');
+  });
+
+  it('createExpectedPart with notes omitted reads back database-null, not an empty string or undefined', async () => {
+    const listingId = await seedListing();
+    const created = await db.createExpectedPart({
+      listingId,
+      componentCategory: 'Cooler',
+      brand: null,
+      partNumber: null,
+      description: 'Omitted notes',
+      estimatedResaleValue: 10,
+      identityCandidates: [],
+      aiConfidence: null,
+      aiSource: null,
+    });
+    expect(created.notes).toBeNull();
+    expect(created.notes).not.toBe('');
+
+    const fetched = await db.getExpectedPartById(created.id);
+    expect(fetched?.notes).toBeNull();
+    expect(fetched?.notes).not.toBe('');
+  });
+
+  it('updateExpectedPart updates only notes, leaving every other field on the row unchanged', async () => {
+    const listingId = await seedListing();
+    const created = await db.createExpectedPart({
+      listingId,
+      componentCategory: 'GPU',
+      brand: 'NVIDIA',
+      partNumber: 'RTX 3060',
+      description: 'Known-good card',
+      estimatedResaleValue: 220,
+      identityCandidates: [{ brand: 'NVIDIA', partNumber: 'RTX 3060 Ti' }],
+      aiConfidence: 'high',
+      aiSource: 'image',
+      priceSource: 'manual',
+      workingStatus: 'non_working',
+      notes: 'original note',
+    });
+
+    const updated = await db.updateExpectedPart(created.id, { notes: 'fan rattles on startup' });
+    expect(updated?.notes).toBe('fan rattles on startup');
+    expect(updated?.componentCategory).toBe('GPU');
+    expect(updated?.brand).toBe('NVIDIA');
+    expect(updated?.partNumber).toBe('RTX 3060');
+    expect(updated?.description).toBe('Known-good card');
+    expect(updated?.estimatedResaleValue).toBe(220);
+    expect(updated?.identityCandidates).toEqual([{ brand: 'NVIDIA', partNumber: 'RTX 3060 Ti' }]);
+    expect(updated?.aiConfidence).toBe('high');
+    expect(updated?.aiSource).toBe('image');
+    expect(updated?.priceSource).toBe('manual');
+    expect(updated?.workingStatus).toBe('non_working');
+
+    // An omitted notes key must leave the column untouched (buildSetClause's
+    // undefined contract) — proves notes participates in the same
+    // undefined-vs-explicit-value branch as brand/partNumber/
+    // identityCandidates above, rather than always being overwritten.
+    const untouched = await db.updateExpectedPart(created.id, { description: 'Still known-good' });
+    expect(untouched?.notes).toBe('fan rattles on startup');
   });
 });

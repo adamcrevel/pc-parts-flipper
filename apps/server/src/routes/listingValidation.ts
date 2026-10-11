@@ -30,6 +30,7 @@ interface ExpectedPartRequestBody {
   aiSource?: unknown;
   priceSource?: unknown;
   workingStatus?: unknown;
+  notes?: unknown;
 }
 export interface ListingRequestBody {
   sourceId?: unknown;
@@ -190,6 +191,7 @@ function validateExpectedPartInput(raw: unknown, index: number): ExpectedPartInp
     aiSource: validateOptionalEnum(body.aiSource, VALID_AI_SOURCES, `expectedParts[${index}].aiSource`),
     priceSource: validateOptionalEnum(body.priceSource, VALID_PRICE_SOURCES, `expectedParts[${index}].priceSource`),
     workingStatus: validateOptionalEnum(body.workingStatus, VALID_WORKING_STATUSES, `expectedParts[${index}].workingStatus`),
+    notes: trimmedOrNull(body.notes),
   };
 }
 

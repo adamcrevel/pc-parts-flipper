@@ -84,6 +84,7 @@ interface RawPart {
   source?: unknown;
   identityCandidates?: unknown;
   workingStatus?: unknown;
+  notes?: unknown;
 }
 
 // Coerces an unrecognized category to 'Other' rather than rejecting the whole
@@ -182,6 +183,7 @@ function normalizePart(raw: RawPart): AiIdentifiedPart {
     confidence,
     source,
     identityCandidates: coerceIdentityCandidates(raw.identityCandidates),
+    notes: typeof raw.notes === 'string' ? raw.notes.trim() : '',
   };
 
   // Only include workingStatus if it was present in the raw input (even if it

@@ -7,6 +7,7 @@ import { ListingForm } from '@/features/listings/listing-form';
 import { EbayScanBadge } from '@/features/listings/ebay-scan-badge';
 import { NonWorkingBadge } from '@/features/listings/non-working-badge';
 import { IdentifyPartsStatusBadge } from '@/features/listings/identify-parts-status-badge';
+import { UnpricedPartsBadge } from '@/features/listings/unpriced-parts-badge';
 import { cn } from '@/lib/utils';
 
 interface ListingListProps {
@@ -56,7 +57,7 @@ interface ListingListProps {
 // directly beneath it holding the edit form — an inline "accordion" row
 // rather than a separate top-of-page panel, so the form appears next to the
 // Listing it edits regardless of scroll position.
-const COLUMN_COUNT = 9;
+const COLUMN_COUNT = 10;
 
 // Every sortable column, in the left-to-right order the table renders them:
 // the shared `ListingSortField` value sent to the server paired with the
@@ -71,6 +72,7 @@ const SORTABLE_COLUMNS: { field: ListingSortField; label: string }[] = [
   { field: 'expectedResale', label: 'Expected Resale' },
   { field: 'difference', label: 'Difference' },
   { field: 'identifyParts', label: 'Identify Parts' },
+  { field: 'unpriced', label: 'Unpriced' },
 ];
 
 /**
@@ -230,6 +232,9 @@ export function ListingList({
                   </td>
                   <td className="px-4 py-3">
                     <IdentifyPartsStatusBadge status={listing.identifyPartsStatus} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <UnpricedPartsBadge hasUnpricedParts={listing.hasUnpricedParts} />
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right">
                     {listing.status === 'open' && (

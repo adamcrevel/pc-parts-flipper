@@ -60,6 +60,8 @@ export interface ExpectedPart {
   priceSource?: 'auto' | 'manual' | null;
   /** The working/non-working status of this component. */
   workingStatus: 'working' | 'non_working';
+  /** Per-part notes (separate from response-level IdentifyPartsResponse.notes which carries whole-identification caveats). */
+  notes: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -107,6 +109,8 @@ export interface ListingComparison {
 export type ListingSummary = Listing & {
   comparison: ListingComparison;
   identifyPartsStatus: { stage: IdentifyPartsJobStage; errorMessage: string | null } | null;
+  /** True if at least one Expected Part has estimatedResaleValue === null; false for a listing with zero Expected Parts. */
+  hasUnpricedParts: boolean;
 };
 
 /** `GET /api/listings/:id` shape: a Listing with its full Expected Parts set. */
@@ -128,7 +132,8 @@ export type ListingSortField =
   | 'askingPrice'
   | 'expectedResale'
   | 'difference'
-  | 'identifyParts';
+  | 'identifyParts'
+  | 'unpriced'; // Derived boolean column, not a raw stored field (true means at least one Expected Part with estimatedResaleValue === null)
 
 /**
  * Sort order for whichever `ListingSortField` is currently active. Clicking
@@ -182,6 +187,8 @@ export interface ExpectedPartInput {
   priceSource?: 'auto' | 'manual' | null;
   /** The working/non-working status of this component; omitted defaults to 'working'. */
   workingStatus?: 'working' | 'non_working' | null;
+  /** Per-part notes (optional, matching the backward-compatible pattern for priceSource/workingStatus). */
+  notes?: string | null;
 }
 
 /**

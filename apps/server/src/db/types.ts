@@ -102,6 +102,8 @@ export interface ExpectedPart {
   priceSource: 'auto' | 'manual' | null;
   /** The working/non-working status of this component. */
   workingStatus: 'working' | 'non_working';
+  /** Free-text notes about this Expected Part (e.g. condition quirks, missing hardware); null when none were recorded. */
+  notes: string | null;
   createdAt: string;
   updatedAt: string;
 }

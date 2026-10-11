@@ -19,7 +19,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { ComponentCategory, Listing } from '../src/db/types.js';
+import type { ComponentCategory, ExpectedPart, Listing } from '../src/db/types.js';
 import type { AiIdentifiedPart } from '@pc-parts-flipper/shared';
 import type * as PromptModule from '../src/ai/identificationPrompt.js';
 import type * as ParserModule from '../src/ai/identificationParser.js';
@@ -49,7 +49,13 @@ let sourcingRunner: typeof SourcingRunnerModule;
 // (title, description, photoPaths, id) matter, the rest are filler.
 function listingFixture(overrides: Partial<Listing> = {}): Listing {
   return {
-    id: 'listing-1',
+    // A well-formed (but non-existent) UUID, not an arbitrary string: since
+    // identifyListingParts now queries expected_parts by listing.id (a real
+    // UUID column) on every call, a non-UUID literal here previously worked
+    // only by accident, dependent on which test query DuckDB saw first for
+    // that prepared statement — see the identifyListingParts describe block
+    // below for the test that surfaced this.
+    id: '00000000-0000-0000-0000-000000000001',
     sourceId: 'source-1',
     title: 'Gaming PC - Ryzen 5 5600X, RTX 3060',
     description: '16GB DDR4, 1TB NVMe, 650W PSU. Runs great.',
@@ -79,6 +85,31 @@ function partFixture(overrides: Partial<AiIdentifiedPart> = {}): AiIdentifiedPar
     confidence: 'high',
     source: 'text',
     identityCandidates: [],
+    ...overrides,
+  };
+}
+
+// Builds an ExpectedPart fixture for buildIdentificationPrompt's
+// PREVIOUS IDENTIFICATION-section tests; only category/brand/partNumber/notes
+// are read by formatPreviousIdentification, the rest is filler that
+// satisfies the type.
+function expectedPartFixture(overrides: Partial<ExpectedPart> = {}): ExpectedPart {
+  return {
+    id: 'expected-part-1',
+    listingId: 'listing-1',
+    componentCategory: 'GPU',
+    brand: 'NVIDIA',
+    partNumber: 'RTX 3060',
+    description: '',
+    estimatedResaleValue: null,
+    identityCandidates: [],
+    aiConfidence: null,
+    aiSource: null,
+    priceSource: null,
+    workingStatus: 'working',
+    notes: null,
+    createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-01T00:00:00.000Z',
     ...overrides,
   };
 }
@@ -251,6 +282,36 @@ describe('buildIdentificationPrompt', () => {
     expect(text).not.toContain('workingStatus');
     expect(text).not.toContain('non_working');
   });
+
+  it('includes a PREVIOUS IDENTIFICATION section listing every existing part\'s category/brand/partNumber/notes when existingParts is non-empty', () => {
+    const existingParts = [
+      expectedPartFixture({ componentCategory: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3060', notes: 'Fan rattles, verify before resale' }),
+      expectedPartFixture({ id: 'expected-part-2', componentCategory: 'RAM', brand: null, partNumber: null, notes: null }),
+    ];
+
+    const text = prompt.buildIdentificationPrompt(listingFixture(), existingParts);
+
+    expect(text).toContain('PREVIOUS IDENTIFICATION (from an earlier pass on this same listing):');
+    // Every existing part is listed, not filtered to only the noted ones —
+    // the second part carries no note and still appears, with "(none)".
+    expect(text).toContain('- GPU / NVIDIA / RTX 3060 — note: Fan rattles, verify before resale');
+    expect(text).toContain('- RAM / (brand unknown) / (part number unknown) — note: (none)');
+    // The two carry-forward rules are appended only for a re-identification.
+    expect(text).toContain('Treat each note as a human correction or clarification for that specific part');
+    expect(text).toContain('carry that part\'s note forward into THIS part\'s own "notes" field');
+  });
+
+  it('is byte-for-byte unchanged from a first-ever identification (no PREVIOUS IDENTIFICATION section or carry-forward rules) when existingParts is empty or omitted', () => {
+    const listing = listingFixture();
+
+    const withOmittedArg = prompt.buildIdentificationPrompt(listing);
+    const withExplicitEmptyArray = prompt.buildIdentificationPrompt(listing, []);
+
+    expect(withOmittedArg).toBe(withExplicitEmptyArray);
+    expect(withOmittedArg).not.toContain('PREVIOUS IDENTIFICATION');
+    expect(withOmittedArg).not.toContain('Treat each note as a human correction');
+    expect(withOmittedArg).not.toContain('carry that part\'s note forward');
+  });
 });
 
 describe('parseIdentificationResponse', () => {
@@ -261,7 +322,7 @@ describe('parseIdentificationResponse', () => {
     });
 
     expect(parser.parseIdentificationResponse(raw)).toEqual({
-      parts: [{ category: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3060', description: '12GB, tested working', confidence: 'high', source: 'both', identityCandidates: [] }],
+      parts: [{ category: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3060', description: '12GB, tested working', confidence: 'high', source: 'both', identityCandidates: [], notes: '' }],
       notes: 'Photos look like stock images.',
     });
   });
@@ -432,7 +493,7 @@ describe('parseIdentificationResponse', () => {
 
     const result = parser.parseIdentificationResponse(raw);
 
-    expect(result.parts).toEqual([{ category: 'GPU', brand: null, partNumber: null, description: '', confidence: 'high', source: 'image', identityCandidates: [] }]);
+    expect(result.parts).toEqual([{ category: 'GPU', brand: null, partNumber: null, description: '', confidence: 'high', source: 'image', identityCandidates: [], notes: '' }]);
     expect(warnSpy).toHaveBeenCalledWith(
       expect.objectContaining({ entry: 'RTX 3060' }),
       expect.stringContaining('non-object part entry'),
@@ -460,6 +521,33 @@ describe('parseIdentificationResponse', () => {
     expect(() => parser.parseIdentificationResponse('{"notes":"nothing found"}')).toThrow(
       expect.objectContaining({ statusCode: 502, message: expect.stringContaining('missing a "parts" array') }),
     );
+  });
+
+  it('defaults a missing per-part notes field to an empty string', () => {
+    const raw = JSON.stringify({
+      parts: [{ category: 'GPU', description: 'RTX 3060', confidence: 'high', source: 'image' }],
+      notes: '',
+    });
+
+    expect(parser.parseIdentificationResponse(raw).parts[0].notes).toBe('');
+  });
+
+  it('passes a present per-part notes string through unchanged', () => {
+    const raw = JSON.stringify({
+      parts: [{ category: 'GPU', description: 'RTX 3060', confidence: 'high', source: 'image', notes: 'Matches prior brand note.' }],
+      notes: '',
+    });
+
+    expect(parser.parseIdentificationResponse(raw).parts[0].notes).toBe('Matches prior brand note.');
+  });
+
+  it('trims surrounding whitespace from a present per-part notes string', () => {
+    const raw = JSON.stringify({
+      parts: [{ category: 'GPU', description: 'RTX 3060', confidence: 'high', source: 'image', notes: '  Matches prior brand note.  ' }],
+      notes: '',
+    });
+
+    expect(parser.parseIdentificationResponse(raw).parts[0].notes).toBe('Matches prior brand note.');
   });
 });
 
@@ -929,7 +1017,7 @@ describe('identifyListingParts', () => {
     const result = await identification.identifyListingParts(listing);
 
     expect(result).toEqual({
-      parts: [{ category: 'Storage', brand: 'Samsung', partNumber: '980 PRO', description: '1TB, serial not visible', confidence: 'medium', source: 'text', identityCandidates: [] }],
+      parts: [{ category: 'Storage', brand: 'Samsung', partNumber: '980 PRO', description: '1TB, serial not visible', confidence: 'medium', source: 'text', identityCandidates: [], notes: '' }],
       notes: 'Serial not visible.',
     });
     expect(calls).toHaveLength(1);
@@ -939,6 +1027,48 @@ describe('identifyListingParts', () => {
     ]);
     // The prompt the runner receives is the real built prompt, not a stub.
     expect(calls[0].prompt).toContain(listing.title);
+  });
+
+  it('fetches existing Expected Parts before building the prompt, so a prior note actually reaches the model — not just an assertion about the final response shape', async () => {
+    const source = await db.createSource({ name: 'ordering-test-source', platformType: 'other', url: null, notes: null });
+    const seededListing = await db.createListing({
+      sourceId: source.id,
+      title: 'Gaming PC - Ryzen 5 5600X, RTX 3060',
+      description: '16GB DDR4, 1TB NVMe, 650W PSU. Runs great.',
+      listingUrl: null,
+      askingPrice: 650,
+      listingDate: '2024-05-01',
+      acquisitionFees: 0,
+      photoPaths: [],
+    });
+    await db.createExpectedPart({
+      listingId: seededListing.id,
+      componentCategory: 'GPU',
+      brand: 'NVIDIA',
+      partNumber: 'RTX 3060',
+      description: '',
+      estimatedResaleValue: null,
+      identityCandidates: [],
+      aiConfidence: null,
+      aiSource: null,
+      notes: 'Confirmed working in prior teardown pass',
+    });
+
+    const calls: Array<{ prompt: string }> = [];
+    runner.setOmpRunnerOverride(async (promptText) => {
+      calls.push({ prompt: promptText });
+      return '{"parts":[],"notes":""}';
+    });
+
+    await identification.identifyListingParts(seededListing);
+
+    expect(calls).toHaveLength(1);
+    // If the fetch ran after building the prompt (or its result were never
+    // passed through), the prompt actually sent to the model could never
+    // carry this seeded note — this is the fetch-before-build ordering
+    // contract, proved on the real built prompt text, not the final result.
+    expect(calls[0].prompt).toContain('PREVIOUS IDENTIFICATION (from an earlier pass on this same listing):');
+    expect(calls[0].prompt).toContain('- GPU / NVIDIA / RTX 3060 — note: Confirmed working in prior teardown pass');
   });
 
   it('calls the model with no images for a listing that has no photos', async () => {
@@ -1532,6 +1662,7 @@ describe('identifyListingParts', () => {
       confidence: 'high',
       source: 'text',
       identityCandidates: [],
+      notes: '',
     };
 
     const ompCalls: Array<{ prompt: string; images: readonly string[] }> = [];
@@ -1749,6 +1880,7 @@ describe('identifyListingParts', () => {
       confidence: 'low',
       source: 'image',
       identityCandidates: [{ brand: 'TestE-Cooler-Brand', partNumber: null }],
+      notes: '',
     };
 
     const ompCalls: Array<{ prompt: string; images: readonly string[] }> = [];
@@ -1939,6 +2071,7 @@ describe('identifyListingParts', () => {
       confidence: 'low',
       source: 'image',
       identityCandidates: [{ brand: 'TestTrim0-GPU', partNumber: null }],
+      notes: '',
     };
 
     const ompCalls: Array<{ prompt: string; images: readonly string[] }> = [];

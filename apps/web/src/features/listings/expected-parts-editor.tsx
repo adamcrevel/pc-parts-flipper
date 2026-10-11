@@ -24,6 +24,11 @@ export interface ExpectedPartRow {
   // optional-and-never-guessed rule as `brand`.
   partNumber: string;
   description: string;
+  // Free-text per-part notes (Req 1), separate from `description` which
+  // holds condition notes shown alongside the AI badge. Round-trips
+  // through listing-form-state.ts's expectedPartToRow and
+  // listing-form.tsx's persistListing, same treatment as description.
+  notes: string;
   estimatedResaleValue: string;
   // Client-only draft state, never part of CreateListingInput/
   // UpdateListingInput: true while this row is an unreviewed AI suggestion
@@ -76,7 +81,7 @@ export interface ExpectedPartRowErrors {
 
 /** An empty draft row, used both for the initial row and "Add Part". */
 export function emptyExpectedPartRow(): ExpectedPartRow {
-  return { componentCategory: '', brand: '', partNumber: '', description: '', estimatedResaleValue: '', identityCandidates: [], collapsed: false };
+  return { componentCategory: '', brand: '', partNumber: '', description: '', estimatedResaleValue: '', notes: '', identityCandidates: [], collapsed: false };
 }
 
 /** Human-readable wording for which evidence the model drew a suggestion from. */
@@ -99,6 +104,12 @@ interface ExpectedPartsEditorProps {
   // Whether the listing has nonWorking status, gating visibility of
   // the per-row working-status control.
   listingNonWorking?: boolean;
+  // Whether this editor is for an existing (already-created) Listing
+  // rather than a brand-new one (Req 13). Gates the "not priced" row
+  // highlight below: an unpriced row is expected and unremarkable while
+  // still drafting a new listing, but worth flagging once the listing is
+  // saved and the user may be reviewing/finishing it later.
+  isExistingListing?: boolean;
 }
 
 /**
@@ -107,7 +118,7 @@ interface ExpectedPartsEditorProps {
  * Split out of listing-form.tsx to keep that file under the ~200-line
  * standing check and because this row-editing logic is self-contained.
  */
-export function ExpectedPartsEditor({ rows, rowErrors, onChange, listingNonWorking }: ExpectedPartsEditorProps) {
+export function ExpectedPartsEditor({ rows, rowErrors, onChange, listingNonWorking, isExistingListing }: ExpectedPartsEditorProps) {
   // Two independent triggers claim this row's price for the user, so the
   // server can tell "never claimed" apart from "typed then cleared":
   // directly editing the price field itself — typed into OR cleared —
@@ -191,6 +202,11 @@ export function ExpectedPartsEditor({ rows, rowErrors, onChange, listingNonWorki
       {rows.map((row, index) => {
         const errors = rowErrors[index] ?? {};
         const rowHasError = Boolean(errors.componentCategory || errors.description || errors.estimatedResaleValue);
+        // Req 13: flags a row with no estimated resale value yet, but only
+        // once the listing itself already exists — an unpriced row on a
+        // brand-new, not-yet-saved listing is just the normal unfilled
+        // starting state, not something worth highlighting.
+        const rowUnpriced = Boolean(isExistingListing) && row.estimatedResaleValue.trim() === '';
         return (
           <div key={index} className="space-y-1">
             <CollapsibleSection
@@ -207,6 +223,7 @@ export function ExpectedPartsEditor({ rows, rowErrors, onChange, listingNonWorki
                 // only the chevron (outside this div) does that.
                 <div className="flex flex-1 flex-wrap items-start gap-2" onClick={(e) => e.stopPropagation()}>
                   {rowHasError && <AlertCircle className="mt-2 h-4 w-4 shrink-0 text-destructive" aria-label={`Expected part ${index + 1} has an error`} />}
+                  {rowUnpriced && <AlertCircle className="mt-2 h-4 w-4 shrink-0 text-destructive" aria-label={`Expected part ${index + 1} is not priced`} />}
                   <div className="space-y-1">
                     <select
                       value={row.componentCategory}
@@ -308,6 +325,16 @@ export function ExpectedPartsEditor({ rows, rowErrors, onChange, listingNonWorki
                     aria-label={`Expected part ${index + 1} description`}
                   />
                   {errors.description && <p className="text-xs text-destructive">{errors.description}</p>}
+                </div>
+
+                <div className="space-y-1">
+                  <input
+                    value={row.notes}
+                    onChange={(e) => updateRow(index, { notes: e.target.value })}
+                    placeholder="Notes"
+                    className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                    aria-label={`Expected part ${index + 1} notes`}
+                  />
                 </div>
               </div>
             </CollapsibleSection>

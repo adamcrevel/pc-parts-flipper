@@ -167,6 +167,7 @@ function autoPricedRow(overrides: Partial<ExpectedPartRow> = {}): ExpectedPartRo
     brand: 'NVIDIA',
     partNumber: 'RTX 3070',
     description: 'pulled from a working rig',
+    notes: '',
     estimatedResaleValue: '300',
     identityCandidates: [],
     priceSource: 'auto',

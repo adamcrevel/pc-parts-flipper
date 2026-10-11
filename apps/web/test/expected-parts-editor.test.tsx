@@ -60,9 +60,17 @@ function inputsLabelled(el: HTMLElement, suffix: string): HTMLInputElement[] {
 
 // Holds the rows in state so the controlled editor's onChange actually
 // round-trips, exactly as ListingForm's own `setRows` does.
-function EditorHarness({ initialRows, rowErrors = [] }: { initialRows: ExpectedPartRow[]; rowErrors?: ExpectedPartRowErrors[] }) {
+function EditorHarness({
+  initialRows,
+  rowErrors = [],
+  isExistingListing,
+}: {
+  initialRows: ExpectedPartRow[];
+  rowErrors?: ExpectedPartRowErrors[];
+  isExistingListing?: boolean;
+}) {
   const [rows, setRows] = useState<ExpectedPartRow[]>(initialRows);
-  return <ExpectedPartsEditor rows={rows} rowErrors={rowErrors} onChange={setRows} />;
+  return <ExpectedPartsEditor rows={rows} rowErrors={rowErrors} onChange={setRows} isExistingListing={isExistingListing} />;
 }
 
 function aiRow(overrides: Partial<ExpectedPartRow> = {}): ExpectedPartRow {
@@ -71,6 +79,7 @@ function aiRow(overrides: Partial<ExpectedPartRow> = {}): ExpectedPartRow {
     brand: 'NVIDIA',
     partNumber: 'RTX 3070',
     description: 'pulled from a working rig',
+    notes: '',
     estimatedResaleValue: '',
     identityCandidates: [],
     aiSuggested: true,
@@ -86,6 +95,7 @@ function manualRow(overrides: Partial<ExpectedPartRow> = {}): ExpectedPartRow {
     brand: 'AMD',
     partNumber: 'Ryzen 5 5600X',
     description: 'boxed, with cooler',
+    notes: '',
     estimatedResaleValue: '90',
     identityCandidates: [],
     ...overrides,
@@ -347,5 +357,61 @@ describe('ExpectedPartsEditor collapsible rows (T3)', () => {
     expect(inputsLabelled(el, 'description')[0].value).toBe('pulled from a working rig');
     expect(badgeCount(el)).toBe(1);
     expect(el.textContent).toContain('Also possible:');
+  });
+});
+
+describe('ExpectedPartsEditor notes field (Req 1)', () => {
+  it('renders the notes input seeded from the row, and edits route through updateRow like every other field', async () => {
+    const el = await mount(<EditorHarness initialRows={[manualRow({ notes: 'from the original owner' })]} />);
+
+    const notesInputs = inputsLabelled(el, 'notes');
+    expect(notesInputs).toHaveLength(1);
+    expect(notesInputs[0].value).toBe('from the original owner');
+
+    // Edit it on an AI-suggested row: updateRow's shared "any edit reviews
+    // the suggestion and claims the price" behavior must fire for notes
+    // exactly as it does for description/category/brand (Req 1 wires notes
+    // through the same handler, not a one-off setter).
+    const aiEl = await mount(<EditorHarness initialRows={[aiRow({ priceSource: 'auto', estimatedResaleValue: '150' })]} />);
+    await act(async () => setValue(inputsLabelled(aiEl, 'notes')[0], 'light scratches on the shroud'));
+
+    expect(badgeCount(aiEl)).toBe(0);
+    expect(inputsLabelled(aiEl, 'notes')[0].value).toBe('light scratches on the shroud');
+  });
+});
+
+describe('ExpectedPartsEditor unpriced-row indicator (Req 13)', () => {
+  function unpricedIcon(el: HTMLElement, index: number): Element | null {
+    return el.querySelector(`[aria-label="Expected part ${index + 1} is not priced"]`);
+  }
+
+  it('shows the unpriced indicator for a row with no estimated resale value, only once the listing already exists', async () => {
+    const el = await mount(<EditorHarness initialRows={[manualRow({ estimatedResaleValue: '' })]} isExistingListing={true} />);
+    expect(unpricedIcon(el, 0)).not.toBeNull();
+  });
+
+  it('never shows the unpriced indicator on a brand-new (not-yet-saved) listing, even with an unpriced row', async () => {
+    const elUndefined = await mount(<EditorHarness initialRows={[manualRow({ estimatedResaleValue: '' })]} />);
+    expect(unpricedIcon(elUndefined, 0)).toBeNull();
+
+    const elFalse = await mount(<EditorHarness initialRows={[manualRow({ estimatedResaleValue: '' })]} isExistingListing={false} />);
+    expect(unpricedIcon(elFalse, 0)).toBeNull();
+  });
+
+  it('hides the unpriced indicator on an existing listing once the row has a price', async () => {
+    const el = await mount(<EditorHarness initialRows={[manualRow({ estimatedResaleValue: '150' })]} isExistingListing={true} />);
+    expect(unpricedIcon(el, 0)).toBeNull();
+  });
+
+  it('renders both the validation-error and unpriced indicators together on the same row, neither suppressing the other', async () => {
+    const el = await mount(
+      <EditorHarness
+        initialRows={[manualRow({ estimatedResaleValue: '', componentCategory: '' })]}
+        rowErrors={[{ componentCategory: 'Category is required.' }]}
+        isExistingListing={true}
+      />,
+    );
+    expect(el.querySelector('[aria-label="Expected part 1 has an error"]')).not.toBeNull();
+    expect(unpricedIcon(el, 0)).not.toBeNull();
   });
 });

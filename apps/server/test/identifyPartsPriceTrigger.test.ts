@@ -136,9 +136,9 @@ describe('persistIdentifiedParts — price pipeline hand-off (Req 1, 3)', () => 
     getListingById.mockResolvedValue(listing);
     identifyListingParts.mockResolvedValue({
       parts: [
-        { category: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3060', description: 'Card', confidence: 'high', source: 'image', identityCandidates: [] },
-        { category: 'Storage', brand: 'Samsung', partNumber: null, description: 'NVMe', confidence: 'low', source: 'text', identityCandidates: [] },
-        { category: 'RAM', brand: null, partNumber: null, description: '16GB', confidence: 'low', source: 'text', identityCandidates: [] },
+        { category: 'GPU', brand: 'NVIDIA', partNumber: 'RTX 3060', description: 'Card', confidence: 'high', source: 'image', identityCandidates: [], notes: '' },
+        { category: 'Storage', brand: 'Samsung', partNumber: null, description: 'NVMe', confidence: 'low', source: 'text', identityCandidates: [], notes: '' },
+        { category: 'RAM', brand: null, partNumber: null, description: '16GB', confidence: 'low', source: 'text', identityCandidates: [], notes: '' },
       ],
       notes: 'done',
     });
@@ -173,7 +173,7 @@ describe('persistIdentifiedParts — price pipeline hand-off (Req 1, 3)', () => 
     getListingById.mockResolvedValue(listing);
     identifyListingParts.mockResolvedValue({
       parts: [
-        { category: 'CPU', brand: 'Intel', partNumber: 'i7-9700K', description: 'Chip', confidence: 'high', source: 'text', identityCandidates: [] },
+        { category: 'CPU', brand: 'Intel', partNumber: 'i7-9700K', description: 'Chip', confidence: 'high', source: 'text', identityCandidates: [], notes: '' },
       ],
       notes: '',
     });

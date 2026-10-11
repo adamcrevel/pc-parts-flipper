@@ -65,6 +65,7 @@ function expectedPartToRow(part: ExpectedPart): ExpectedPartRow {
     brand: part.brand ?? '',
     partNumber: part.partNumber ?? '',
     description: part.description,
+    notes: part.notes ?? '',
     estimatedResaleValue: part.estimatedResaleValue === null ? '' : String(part.estimatedResaleValue),
     identityCandidates: part.identityCandidates ?? [],
     collapsed: true,

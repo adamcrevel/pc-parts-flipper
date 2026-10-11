@@ -75,6 +75,7 @@ function pricedRow(overrides: Partial<ExpectedPartRow> = {}): ExpectedPartRow {
     brand: 'NVIDIA',
     partNumber: 'RTX 3070',
     description: 'pulled from a working rig',
+    notes: '',
     estimatedResaleValue: '150.00',
     identityCandidates: [],
     workingStatus: 'working',

@@ -39,6 +39,13 @@ export interface CreateExpectedPartInput {
    * the component works, so they stay correct untouched.
    */
   workingStatus?: 'working' | 'non_working';
+  /**
+   * Free-text notes about this Expected Part (e.g. "missing a screw",
+   * "needs cleaning"). Optional, defaulting to null: every caller predating
+   * this field means no notes were recorded, which is exactly what null
+   * says, so they stay correct untouched.
+   */
+  notes?: string | null;
 }
 
 /** Fields that may be edited on an existing Expected Part; omitted keys are left unchanged. */
@@ -51,6 +58,7 @@ export interface UpdateExpectedPartInput {
   identityCandidates?: IdentityCandidate[];
   aiConfidence?: AiPartConfidence | null;
   aiSource?: AiPartSource | null;
+  notes?: string | null;
 }
 
 // Converts one raw JSON row into the camelCase ExpectedPart shape.
@@ -68,6 +76,7 @@ function mapRow(row: Record<string, unknown>): ExpectedPart {
     aiSource: (row.ai_source as AiPartSource | null) ?? null,
     priceSource: (row.price_source as 'auto' | 'manual' | null) ?? null,
     workingStatus: (row.working_status as 'working' | 'non_working' | null) ?? 'working',
+    notes: (row.notes as string | null) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -77,8 +86,8 @@ function mapRow(row: Record<string, unknown>): ExpectedPart {
 export async function createExpectedPart(input: CreateExpectedPartInput): Promise<ExpectedPart> {
   const connection = await getConnection();
   const reader = await connection.runAndReadAll(
-    `INSERT INTO expected_parts (id, listing_id, component_category, brand, part_number, description, estimated_resale_value, identity_candidates, ai_confidence, ai_source, price_source, working_status)
-     VALUES ($id, $listing_id, $component_category, $brand, $part_number, $description, $estimated_resale_value, $identity_candidates, $ai_confidence, $ai_source, $price_source, $working_status)
+    `INSERT INTO expected_parts (id, listing_id, component_category, brand, part_number, description, estimated_resale_value, identity_candidates, ai_confidence, ai_source, price_source, working_status, notes)
+     VALUES ($id, $listing_id, $component_category, $brand, $part_number, $description, $estimated_resale_value, $identity_candidates, $ai_confidence, $ai_source, $price_source, $working_status, $notes)
      RETURNING *`,
     {
       id: newId(),
@@ -93,6 +102,7 @@ export async function createExpectedPart(input: CreateExpectedPartInput): Promis
       ai_source: input.aiSource,
       price_source: input.priceSource ?? null,
       working_status: input.workingStatus ?? 'working',
+      notes: input.notes ?? null,
     },
   );
   return mapRow(reader.getRowObjectsJson()[0]);
@@ -137,6 +147,7 @@ export async function updateExpectedPart(
     description: patch.description,
     estimated_resale_value: patch.estimatedResaleValue,
     identity_candidates: patch.identityCandidates !== undefined ? JSON.stringify(patch.identityCandidates) : undefined,
+    notes: patch.notes,
   });
   await connection.run(`UPDATE expected_parts SET ${setSql} WHERE id = $id`, { ...params, id });
   return getExpectedPartById(id);

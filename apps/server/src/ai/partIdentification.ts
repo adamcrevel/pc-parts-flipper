@@ -14,8 +14,8 @@
 // photo availability, so this is never run automatically during a scan.
 import path from 'node:path';
 import type { IdentifyPartsResponse } from '@pc-parts-flipper/shared';
-import type { Listing, ReferencePhoto } from '../db/index.js';
-import { findReferencePhotosForLeads } from '../db/index.js';
+import type { ExpectedPart, Listing, ReferencePhoto } from '../db/index.js';
+import { findReferencePhotosForLeads, listExpectedPartsByListing } from '../db/index.js';
 import { logger } from '../logger.js';
 import { DATA_DIR, PHOTOS_DIR } from '../photos/photoStorage.js';
 import { buildIdentificationPrompt } from './identificationPrompt.js';
@@ -105,7 +105,10 @@ export async function identifyListingParts(listing: Listing, options?: OmpRunOpt
   const imagePaths = resolvePhotoPaths(listing.photoPaths);
   logger.info({ listingId: listing.id, photoCount: imagePaths.length }, 'Starting AI part identification');
 
-  const prompt = buildIdentificationPrompt(listing);
+  // Fetches the live Expected Parts breakdown so a re-identification can
+  // carry forward any per-part notes a human already recorded (Req 2-5).
+  const existingParts: ExpectedPart[] = await listExpectedPartsByListing(listing.id);
+  const prompt = buildIdentificationPrompt(listing, existingParts);
 
   try {
     const rawStdout = await getOmpRunner()(prompt, imagePaths, options);

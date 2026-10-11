@@ -10,7 +10,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
-import type { ListingDetail, Source } from '@pc-parts-flipper/shared';
+import type { ExpectedPart, ListingDetail, Source } from '@pc-parts-flipper/shared';
 import { ListingForm } from '../src/features/listings/listing-form';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -464,3 +464,47 @@ describe('ListingForm Listing URL input (regression: value/onChange/error render
     expect(onSubmit).not.toHaveBeenCalled();
   });
 });
+
+// Proof for T6's Req 12-13 wiring in listing-form.tsx: ExpectedPartsEditor's
+// `isExistingListing` prop is derived from `Boolean(saved)`, which starts as
+// `initialValue` and is otherwise undefined until a create-flow save
+// returns. This observes the resulting AlertCircle highlight end-to-end
+// through ListingForm itself (not just ExpectedPartsEditor in isolation,
+// which expected-parts-editor.test.tsx already covers) so a regression in
+// the `Boolean(saved)` wiring itself — not just the editor's own internal
+// `isExistingListing` branch — would be caught here.
+describe('ListingForm unpriced-row highlight (Req 12-13)', () => {
+  it('never shows the unpriced highlight while creating a new listing, even though the starter row has no price', async () => {
+    const el = await mount(
+      <ListingForm sources={[mockSource()]} onSubmit={vi.fn()} onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    expect(el.querySelector('[aria-label="Expected part 1 is not priced"]')).toBeNull();
+  });
+
+  it('shows the unpriced highlight for an existing listing whose expected part has no estimated resale value', async () => {
+    const listing = mockListingDetail();
+    const unpricedPart: ExpectedPart = {
+      id: 'part-1',
+      listingId: listing.id,
+      componentCategory: 'GPU',
+      brand: 'NVIDIA',
+      partNumber: 'RTX 3070',
+      description: 'pulled from a working rig',
+      estimatedResaleValue: null,
+      identityCandidates: [],
+      workingStatus: 'working',
+      notes: null,
+      createdAt: '2024-01-01',
+      updatedAt: '2024-01-01',
+    };
+    const listingWithUnpricedPart: ListingDetail = { ...listing, expectedParts: [unpricedPart] };
+
+    const el = await mount(
+      <ListingForm initialValue={listingWithUnpricedPart} sources={[mockSource()]} onSubmit={vi.fn()} onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    expect(el.querySelector('[aria-label="Expected part 1 is not priced"]')).not.toBeNull();
+  });
+});
+
