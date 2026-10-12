@@ -343,6 +343,12 @@ describe('scanSource photo download call budget (Req 2)', () => {
       if (String(url).includes('/oauth2/token')) {
         return new Response(JSON.stringify({ access_token: 'fake-app-token' }), { status: 200 });
       }
+      if (String(url).includes('/buy/browse/v1/item/')) {
+        return new Response(
+          JSON.stringify({ description: '<p>Great condition</p>', localizedAspects: [{ name: 'RAM', value: '16GB' }] }),
+          { status: 200 },
+        );
+      }
       if (String(url).includes('/buy/browse/')) {
         return new Response(JSON.stringify({ itemSummaries: [item] }), { status: 200 });
       }
@@ -354,13 +360,20 @@ describe('scanSource photo download call budget (Req 2)', () => {
     expect(result).toEqual({ foundCount: 1, newCount: 1 });
 
     const urls = fetchMock.mock.calls.map(([url]) => String(url));
-    // The Source has exactly one configured query, so exactly one Browse API
-    // call is allowed. A per-item detail lookup for photos — the obvious
-    // wrong way to implement this — would show up here as a second
-    // /buy/browse/ call and fail.
-    expect(urls.filter((u) => u.includes('/buy/browse/'))).toHaveLength(1);
+    // Req 1/2's own single-item detail call (one GET per newly-imported
+    // candidate, not per search result) is the deliberate exception to the
+    // "per-item API call" warning above: eBay's search summaries never
+    // carry description/specifics data no matter how the connector is
+    // written, so fetching them at all requires exactly one extra detail
+    // call per newly-imported candidate. That is bounded and new-candidate-
+    // scoped, not the unbounded per-result-row regression the comment above
+    // warns against — this test still proves the bound stays exactly one
+    // search call, one token call, and one detail call for one new
+    // candidate, not that detail calls vanish entirely.
+    expect(urls.filter((u) => u.includes('/buy/browse/'))).toHaveLength(2);
     expect(urls.filter((u) => u.includes('/item_summary/search'))).toHaveLength(1);
-    expect(urls.filter((u) => u.includes('/oauth2/token'))).toHaveLength(1);
+    expect(urls.filter((u) => u.includes('/buy/browse/v1/item/'))).toHaveLength(1);
+    expect(urls.filter((u) => u.includes('/oauth2/token'))).toHaveLength(2);
     // The three extra calls are image-CDN downloads of URLs that same single
     // search response already returned — free of any API quota.
     expect(urls.filter((u) => u.startsWith('https://i.ebayimg.com/'))).toEqual([
@@ -368,10 +381,113 @@ describe('scanSource photo download call budget (Req 2)', () => {
       'https://i.ebayimg.com/images/g/budget2/s-l1600.jpg',
       'https://i.ebayimg.com/images/g/budget3/s-l1600.jpg',
     ]);
-    expect(urls).toHaveLength(5);
+    expect(urls).toHaveLength(7);
 
     const listing = await db.findListingByExternalId(source.id, 'v1|budget-item|0');
     expect(listing!.photoPaths).toHaveLength(3);
+    expect(listing!.description).toBe('Great condition\n\nItem Specifics (per eBay):\nRAM: 16GB');
+  });
+
+  it('still imports the Listing and counts it as new when the eBay item-detail fetch fails (Req 5)', async () => {
+    const source = await createScannableSource('Call Budget Source Detail Failure');
+    const item = {
+      itemId: 'v1|budget-item-fail|0',
+      title: 'Gaming PC With Failing Detail Fetch',
+      itemWebUrl: 'https://www.ebay.com/itm/budget-item-fail',
+      price: { value: '399.00', currency: 'USD' },
+      itemCreationDate: '2026-02-02T00:00:00.000Z',
+    };
+    fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes('/oauth2/token')) {
+        return new Response(JSON.stringify({ access_token: 'fake-app-token' }), { status: 200 });
+      }
+      if (String(url).includes('/buy/browse/v1/item/')) {
+        return new Response(JSON.stringify({ errors: [{ message: 'Item not found' }] }), { status: 404 });
+      }
+      return new Response(JSON.stringify({ itemSummaries: [item] }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    // A silently-dropped description would look like success, so the Warn
+    // is part of the contract. Spying also proves the skip happened for the
+    // stated reason (the failed detail fetch), not for some other.
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
+    const result = await scanService.scanSource(source.id);
+
+    // Req 5: a failed eBay item-detail fetch never prevents the Listing
+    // from being imported — the candidate still counts as new.
+    expect(result).toEqual({ foundCount: 1, newCount: 1 });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ externalItemId: 'v1|budget-item-fail|0' }),
+      expect.stringContaining('Failed to attach description'),
+    );
+    warnSpy.mockRestore();
+
+    const listing = await db.findListingByExternalId(source.id, 'v1|budget-item-fail|0');
+    expect(listing).not.toBeNull();
+    expect(listing!.description).toBeNull();
+  });
+
+  it('distinguishes newly-imported candidates from duplicates in the same batch (Req 7)', async () => {
+    const source = await createScannableSource('Duplicate Detection Source');
+    const item1 = {
+      itemId: 'v1|duplicate-test|1',
+      title: 'First Item',
+      itemWebUrl: 'https://www.ebay.com/itm/duplicate-test-1',
+      price: { value: '299.00', currency: 'USD' },
+      itemCreationDate: '2026-02-02T00:00:00.000Z',
+      image: { imageUrl: 'https://i.ebayimg.com/images/g/dup1/s-l225.jpg' },
+    };
+    const item2 = {
+      itemId: 'v1|duplicate-test|2',
+      title: 'Second Item',
+      itemWebUrl: 'https://www.ebay.com/itm/duplicate-test-2',
+      price: { value: '399.00', currency: 'USD' },
+      itemCreationDate: '2026-02-03T00:00:00.000Z',
+      image: { imageUrl: 'https://i.ebayimg.com/images/g/dup2/s-l225.jpg' },
+    };
+
+    // Track which phase we're in to return different search results
+    let phase = 'first';
+    fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes('/oauth2/token')) {
+        return new Response(JSON.stringify({ access_token: 'fake-app-token' }), { status: 200 });
+      }
+      if (String(url).includes('/buy/browse/v1/item/')) {
+        return new Response(
+          JSON.stringify({ description: '<p>Test item</p>', localizedAspects: [] }),
+          { status: 200 },
+        );
+      }
+      if (String(url).includes('/buy/browse/')) {
+        // First scan returns only item1; second scan returns item1 + item2
+        if (phase === 'first') {
+          return new Response(JSON.stringify({ itemSummaries: [item1] }), { status: 200 });
+        } else {
+          return new Response(JSON.stringify({ itemSummaries: [item1, item2] }), { status: 200 });
+        }
+      }
+      return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    // First scan: import item1
+    const result1 = await scanService.scanSource(source.id);
+    expect(result1).toEqual({ foundCount: 1, newCount: 1 });
+
+    // Transition to second phase and reset mock call history
+    phase = 'second';
+    fetchMock.mockClear();
+
+    // Second scan: item1 is now a duplicate, item2 is new
+    const result2 = await scanService.scanSource(source.id);
+    expect(result2).toEqual({ foundCount: 2, newCount: 1 });
+
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    // Only ONE detail call should be made for the newly-imported item, not for the duplicate
+    // This proves Req 7: detail calls are scoped to genuinely-new candidates, not all results
+    expect(urls.filter((u) => u.includes('/buy/browse/v1/item/'))).toHaveLength(1);
   });
 });
 

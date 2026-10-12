@@ -145,6 +145,25 @@ export async function listListingsMissingPhotos(externalSource: string): Promise
   return reader.getRowObjectsJson().map(mapRow);
 }
 
+/**
+ * Lists every Listing auto-imported from `externalSource` that still has no
+ * description stored locally, oldest first. Backs the one-time description
+ * backfill (apps/server/src/scan/descriptionBackfill.ts) for Listings
+ * imported before scans fetched eBay's description and item specifics.
+ */
+export async function listListingsMissingDescription(externalSource: string): Promise<Listing[]> {
+  const connection = await getConnection();
+  const reader = await connection.runAndReadAll(
+    `SELECT * FROM listings
+     WHERE external_source = $external_source
+       AND external_item_id IS NOT NULL
+       AND description IS NULL
+     ORDER BY created_at ASC, id ASC`,
+    { external_source: externalSource },
+  );
+  return reader.getRowObjectsJson().map(mapRow);
+}
+
 // Shared WHERE-clause builder for listListings/countListings, so the
 // pagination total always reflects the same status/Source filters as the
 // page of rows it corresponds to (Req 12, 15).

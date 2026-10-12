@@ -8,7 +8,7 @@
 // ever made, and no real eBay credentials are required.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppError } from '../src/error-handler.js';
-import { createEbayItemDetailClient } from '../src/connectors/ebayConnector.js';
+import { createEbayItemDetailClient, formatEbayItemDetails } from '../src/connectors/ebayConnector.js';
 import { getConnectorForPlatform } from '../src/connectors/registry.js';
 
 // Fixture token response, shaped like eBay's real OAuth2 client-credentials
@@ -303,6 +303,86 @@ describe('ebayConnector.search (T5, Req 6)', () => {
   });
 });
 
+// HTML description + item specifics formatting (Req 1-3): formatEbayItemDetails
+// wraps the module-private stripHtml internally (stripHtml itself is not
+// exported), so these exercise it indirectly through the description field.
+describe('formatEbayItemDetails (Req 1-3)', () => {
+  it('strips HTML (paragraphs, bold, <br>) to plain text and drops a <script> block entirely', () => {
+    const description =
+      "<p>This is a <b>great</b> laptop.</p><script>alert('xss');</script><p>Works perfectly.<br>No issues.</p>";
+
+    const result = formatEbayItemDetails({ description });
+
+    expect(result).toBe('This is a great laptop.\nWorks perfectly.\nNo issues.');
+    // Not just "no literal <script> tag": the script's *content* must also
+    // be gone, not merely unwrapped by the generic tag-strip step.
+    expect(result).not.toContain('alert');
+  });
+
+  it('decodes named and numeric HTML entities', () => {
+    const description =
+      "AT&amp;T certified &#33; 15&quot; display &lt;like new&gt; seller&#39;s item &nbsp; ready";
+
+    const result = formatEbayItemDetails({ description });
+
+    expect(result).toBe('AT&T certified ! 15" display <like new> seller\'s item ready');
+  });
+
+  it('includes both description and specifics, description first, separated by a blank line', () => {
+    const result = formatEbayItemDetails({
+      description: '<p>Barely used gaming desktop.</p>',
+      localizedAspects: [
+        { name: 'Brand', value: 'ASUS' },
+        { name: 'Processor', value: 'Intel Core i7-10700' },
+      ],
+    });
+
+    expect(result).toBe(
+      'Barely used gaming desktop.\n\nItem Specifics (per eBay):\nBrand: ASUS\nProcessor: Intel Core i7-10700',
+    );
+  });
+
+  it('omits the specifics block when localizedAspects is absent, returning only the description', () => {
+    const result = formatEbayItemDetails({ description: '<p>Barely used gaming desktop.</p>' });
+
+    expect(result).toBe('Barely used gaming desktop.');
+  });
+
+  it('omits the description when it is absent, returning only the specifics block', () => {
+    const result = formatEbayItemDetails({
+      localizedAspects: [{ name: 'Brand', value: 'ASUS' }],
+    });
+
+    expect(result).toBe('Item Specifics (per eBay):\nBrand: ASUS');
+  });
+
+  it('returns null, not an empty string, when neither description nor specifics produced content', () => {
+    expect(formatEbayItemDetails({})).toBeNull();
+    // A description that is blank only after HTML-stripping (whitespace-only
+    // markup) plus an explicit empty aspects array must fall through to null
+    // too, not just an outright-absent detail object.
+    expect(formatEbayItemDetails({ description: '<p>   </p>', localizedAspects: [] })).toBeNull();
+  });
+
+  it('returns the combined text unchanged at exactly the 5000-character cap', () => {
+    const description = 'X'.repeat(5000);
+
+    const result = formatEbayItemDetails({ description });
+
+    expect(result).toBe(description);
+    expect(result).toHaveLength(5000);
+  });
+
+  it('truncates with the trailing marker and caps the result at 5000 chars when just over the limit', () => {
+    const description = 'Y'.repeat(5001);
+
+    const result = formatEbayItemDetails({ description });
+
+    expect(result).toBe('Y'.repeat(4985) + '... [truncated]');
+    expect(result).toHaveLength(5000);
+  });
+});
+
 // Photo backfill support (Req 2): the single-item detail endpoint is the
 // only way to reach a specific already-imported item, since search cannot be
 // queried by item id and its ranking shifts between runs.
@@ -381,6 +461,65 @@ describe('createEbayItemDetailClient', () => {
 
     const client = await createEbayItemDetailClient();
     await expect(client.fetchItemImageUrls('v1|1|0')).resolves.toEqual([]);
+  });
+
+  // fetchItemDescription (Req 1-3): same shared-token client, same endpoint,
+  // distinct method — these prove it round-trips eBay's description/aspects
+  // fields through formatEbayItemDetails rather than just re-proving
+  // fetchItemImageUrls's own behavior.
+  it('fetches and formats one item\'s description and specifics via formatEbayItemDetails', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          description: '<p>Barely used gaming desktop.<br>No issues, ships fast!</p>',
+          localizedAspects: [
+            { name: 'Brand', value: 'ASUS' },
+            { name: 'Processor', value: 'Intel Core i7-10700' },
+          ],
+        }),
+        { status: 200 },
+      );
+    });
+
+    const client = await createEbayItemDetailClient();
+    const result = await client.fetchItemDescription('v1|227551136880|0');
+
+    expect(result).toBe(
+      'Barely used gaming desktop.\nNo issues, ships fast!\n\nItem Specifics (per eBay):\nBrand: ASUS\nProcessor: Intel Core i7-10700',
+    );
+  });
+
+  it('fetchItemDescription throws an AppError carrying eBay\'s own error message when the item is gone', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
+      }
+      return new Response(JSON.stringify({ errors: [{ message: 'The specified item ID was not found.' }] }), { status: 404 });
+    });
+
+    const client = await createEbayItemDetailClient();
+
+    // Asserted on the message, not just the AppError type, for the same
+    // reason as the equivalent fetchItemImageUrls case above: the message
+    // assertion is what proves this is the detail-fetch error branch and
+    // not some other AppError this module happens to also throw.
+    await expect(client.fetchItemDescription('v1|000000000000|0')).rejects.toThrow('The specified item ID was not found.');
+    await expect(client.fetchItemDescription('v1|000000000000|0')).rejects.toBeInstanceOf(AppError);
+  });
+
+  it('resolves null for an item with neither a description nor specifics, rather than throwing', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
+      }
+      return new Response(JSON.stringify({ itemId: 'v1|1|0' }), { status: 200 });
+    });
+
+    const client = await createEbayItemDetailClient();
+    await expect(client.fetchItemDescription('v1|1|0')).resolves.toBeNull();
   });
 });
 
