@@ -63,6 +63,7 @@ export function PhotoLightbox({ photoPaths, index, onClose, onIndexChange }: Pho
         <DialogOverlay />
         <DialogContent
           onOpenAutoFocus={(event) => event.preventDefault()}
+          onClick={onClose}
           aria-describedby={undefined}
           className="left-0 top-0 flex h-screen w-screen max-w-none translate-x-0 translate-y-0 items-center justify-center border-none bg-transparent p-0 shadow-none outline-none"
         >
@@ -73,7 +74,10 @@ export function PhotoLightbox({ photoPaths, index, onClose, onIndexChange }: Pho
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose();
+            }}
             aria-label="Close"
             className="absolute right-4 top-4 rounded-full bg-background/80 p-2 text-foreground transition-colors hover:bg-background"
           >
@@ -83,7 +87,10 @@ export function PhotoLightbox({ photoPaths, index, onClose, onIndexChange }: Pho
           {count > 1 && (
             <button
               type="button"
-              onClick={() => goTo(index - 1)}
+              onClick={(event) => {
+                event.stopPropagation();
+                goTo(index - 1);
+              }}
               aria-label="Previous photo"
               className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-background/80 p-2 text-foreground transition-colors hover:bg-background"
             >
@@ -91,12 +98,20 @@ export function PhotoLightbox({ photoPaths, index, onClose, onIndexChange }: Pho
             </button>
           )}
 
-          <img src={url} alt="Listing photo" className="max-h-[85vh] max-w-[90vw] rounded-md object-contain" />
+          <img
+            src={url}
+            alt="Listing photo"
+            onClick={(event) => event.stopPropagation()}
+            className="max-h-[85vh] max-w-[90vw] rounded-md object-contain"
+          />
 
           {count > 1 && (
             <button
               type="button"
-              onClick={() => goTo(index + 1)}
+              onClick={(event) => {
+                event.stopPropagation();
+                goTo(index + 1);
+              }}
               aria-label="Next photo"
               className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-background/80 p-2 text-foreground transition-colors hover:bg-background"
             >

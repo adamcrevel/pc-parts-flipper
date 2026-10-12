@@ -1,0 +1,291 @@
+<title>Feature</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--radius:8px;
+--autorefresh-bg:rgba(31,95,79,.14);--refresh-bg:rgba(42,95,143,.14);--refresh-ink:#2a5f8f}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74;
+--autorefresh-bg:rgba(79,181,154,.18);--refresh-bg:rgba(111,168,220,.18);--refresh-ink:#8fc1ef}}
+*{box-sizing:border-box;overflow-wrap:break-word}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+/* Grid tracks default to fitting their content's full, unbroken width -- a single
+   long token (a file path, a backtick-quoted identifier) anywhere in a panel would
+   otherwise stretch the whole page past max-width, no matter how long the gap or how
+   small every other panel is. min-width:0 is what lets a grid item shrink below that
+   and actually wrap instead. Confirmed live: this is what was making every real plan
+   (which is full of exactly these long tokens) render many times wider than the
+   viewport, independent of the DOCTYPE/viewport fix. */
+main{max-width:1300px;margin:0 auto;padding:24px;display:grid;gap:20px}
+main>*{min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);
+border-radius:var(--radius);padding:20px 22px}
+h1{margin:0 0 4px;font-size:21px;letter-spacing:-.01em}
+h2{margin:22px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+h2:first-of-type{margin-top:14px}
+.panel>p{line-height:1.65;margin:0 0 4px}
+.totals{display:flex;gap:32px;flex-wrap:wrap;margin:12px 0}
+.total .n{font-size:26px;font-variant-numeric:tabular-nums}
+.total .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+details{margin-top:8px}summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;
+border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--good);border-color:var(--good);color:var(--panel)}
+.scroll{overflow-x:auto}
+/* table-layout:auto (the default) sizes a column from its content's own natural
+   width -- for a nowrap+ellipsis cell, that is the FULL unwrapped text, which is
+   exactly the width ellipsis is meant to avoid ever reaching. It is a well-known
+   gap in the auto algorithm, not a quirk of this page: the standard fix is
+   table-layout:fixed, with every narrow column given an explicit width so the
+   description column (the one left unset) absorbs the rest and actually holds
+   .desc to it. Confirmed live: without this, a single real task description
+   dragged the whole table into a wide horizontal scrollbar regardless of how
+   short every other column's content was. */
+table{width:100%;border-collapse:collapse;font-size:14px;table-layout:fixed}
+/* The status column's own text ("In progress &middot; running long.") is real
+   prose, not a single short token -- 28px forced it to wrap, and the page's own
+   global overflow-wrap:break-word (needed elsewhere, see main>* above) then broke
+   it mid-word instead of at a space. Wide enough for the longest badge on two
+   lines, with normal word-wrapping restored just for this column. */
+th:first-child,td:first-child{width:112px;overflow-wrap:normal}
+th:nth-child(2),td:nth-child(2){width:52px}
+th:nth-child(4),td:nth-child(4){width:160px}
+th:nth-child(5),td:nth-child(5){width:300px}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.good .dot,.dot.good{background:var(--good)}.bad .dot,.dot.bad{background:var(--bad)}
+.neutral .dot,.dot.neutral{background:var(--muted)}
+.sub td{border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);padding-top:0}
+/* .desc is a <span> -- inline by default, and width/overflow/text-overflow are all
+   spec-ignored on a plain inline box, so none of this ever actually truncated
+   anything on its own. display:block (now that its <td> has a real fixed width to
+   fill, from table-layout:fixed above) is what makes the rest of this rule do
+   anything at all. */
+.desc{display:block;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.desc.open{white-space:normal;overflow:visible}
+.more{font:inherit;font-size:11px;border:none;background:none;color:var(--muted);cursor:pointer}
+.tag{display:inline-block;padding:0 6px;margin-right:4px;border:1px solid var(--line);
+border-radius:999px;font-size:11px;font-variant-numeric:tabular-nums}
+.banner{border-left:3px solid var(--bad);padding:10px 14px;background:var(--panel);
+border-radius:var(--radius);margin-bottom:14px}
+.fail{background:rgba(163,49,42,.09);padding:6px 9px;border-radius:6px;margin-top:6px}
+ul,ol{margin:8px 0;padding-left:24px}
+li{margin:8px 0;line-height:1.6}
+/* Requirements and Assumptions are both "one short id, one longer text" --
+   the same shape a table row has, so they get the same row-grid treatment
+   the task table already uses (a border between rows, an aligned label
+   column), instead of reading as a looser bulleted paragraph. Plain bullet
+   lists (Findings, UAT checks) keep the plainer rule above. The id badge
+   reuses .tag -- the exact same pill the task table's own id column uses now
+   -- so a reader learns one visual language for "this is an id" instead of
+   three different ones. */
+.items{list-style:none;margin:8px 0;padding:0;display:grid;gap:0}
+.items li{margin:0;display:grid;grid-template-columns:34px 1fr;gap:10px;
+padding:10px 2px;border-bottom:1px solid var(--line);line-height:1.6}
+.items li:last-child{border-bottom:none}
+/* A grid item's own display:inline-block is not enough to stop it stretching
+   to fill its whole cell -- CSS Grid stretches an item's box to its area by
+   default regardless, so the pill's border was being drawn around the full
+   34px-by-row-height cell instead of snugly around "A1". justify/align-self
+   opt back out of that stretch. */
+.items li>:first-child{justify-self:start;align-self:start}
+.note{font-size:12px;color:var(--muted)}
+.btn{display:inline-block;padding:8px 16px;margin:2px 0;border-radius:8px;
+background:var(--good);color:var(--panel);text-decoration:none;font-size:13px;font-weight:600}
+.btn:hover{opacity:.85}
+/* Same shape for both so they read as a pair of related controls; a different
+   background on each is the only thing telling them apart at a glance -- a toggle
+   and an immediate action should not look identical. */
+.ghost-btn{font:inherit;font-size:12px;padding:4px 12px;border-radius:999px;
+border:none;cursor:pointer}
+.ghost-btn.autorefresh{background:var(--autorefresh-bg);color:var(--good)}
+.ghost-btn.refresh-now{background:var(--refresh-bg);color:var(--refresh-ink)}
+.ghost-btn:hover{opacity:.8}
+.refresh-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+pre{font-family:inherit;white-space:pre-wrap;word-break:break-word;margin:0;line-height:1.65}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9em;
+background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+/* A retrospective's own markdown headings nest two levels below this section's own
+   h2, so "What happened" reads as a sub-heading of "Retrospective", never a peer of
+   it or of another panel's h2 entirely. */
+.prose h3{margin:18px 0 8px;font-size:15px}
+.prose h4,.prose h5,.prose h6{margin:14px 0 6px;font-size:14px;color:var(--muted)}
+.prose p{margin:8px 0;line-height:1.65}
+/* A bullet whose own text opens with a bold phrase is using it as the item's own
+   title, not as mid-sentence emphasis -- block-level + its own line is what actually
+   separates the two instead of letting the body run on immediately after it. */
+.prose .bullet-title{display:block;margin-bottom:2px}
+.prose .bullet-body{display:block}
+</style>
+<main>
+<section class="panel">
+<h1>Feature</h1>
+<p class="note">Status done &middot; cycle 1 of 3</p>
+<p class="note refresh-controls" data-feature-done><button type="button" id="autorefresh" class="ghost-btn autorefresh" aria-pressed="false">Auto refresh off</button> <button type="button" id="refresh-now" class="ghost-btn refresh-now">Refresh now</button> &middot; <span data-refresh-in>5m 0s</span><span data-refresh-off-note hidden>Auto-refresh is off.</span></p>
+<h2>Goal</h2><p>The full-screen photo viewer a Listing&#x27;s photo thumbnails open
+(<code>apps/web/src/features/listings/photo-lightbox.tsx</code>) only closes via its own X button today —
+clicking the empty space around the photo does nothing, even though the component&#x27;s own doc
+comment says it is &quot;built on the shared Dialog primitive (Radix), which already owns ... click-
+outside-to-close.&quot; Root cause, confirmed by reading the component: <code>DialogContent</code>&#x27;s own
+<code>className</code> sets <code>h-screen w-screen</code> with <code>flex items-center justify-center</code>, so its DOM bounding
+box covers the entire viewport — there is no pixel on screen actually &quot;outside&quot; <code>DialogContent</code> for
+Radix&#x27;s own outside-click detection to ever fire against. The empty-looking space around the
+centered photo is visually background, but structurally still inside <code>DialogContent</code>.
+
+This fixes that: clicking anywhere in that empty space (not the photo, not the Close/Previous/Next
+buttons) closes the lightbox, the way a user expects a click on an image lightbox&#x27;s backdrop to
+behave.</p>
+<h2>Requirements</h2><ul class="items"><li><span class="tag">1</span><span>Clicking anywhere in the lightbox&#x27;s visible area that is not the photo itself and not one of its
+   three buttons (Close, Previous, Next) closes the lightbox.</span></li><li><span class="tag">2</span><span>Clicking the photo itself does not close the lightbox — this is the one thing a user is actually
+   looking at; an accidental click on it should not dismiss the view, matching the conventional
+   lightbox pattern (click the image to inspect it, click away from it to leave).</span></li><li><span class="tag">3</span><span>Clicking Close continues to close the lightbox exactly as it does today (and does not fire the
+   close logic twice).</span></li><li><span class="tag">4</span><span>Clicking Previous or Next continues to navigate to the adjacent photo exactly as today, and does
+   not also close the lightbox — a navigation click must never be mistaken for a backdrop click.</span></li><li><span class="tag">5</span><span>Everything else about the lightbox is unchanged: Escape still closes it (unaffected, since this
+   is Radix&#x27;s own keyboard handling, untouched by this fix), Left/Right arrow-key navigation and
+   wraparound are unchanged, the photo counter badge&#x27;s own appearance/position is unchanged.</span></li></ul>
+<p><a class="btn" href="https://gist.githack.com/adamcrevel/7916dd1ca70c6abcef0452df61d57434/raw/prototype.html" target="_blank" rel="noopener noreferrer">Prototype</a></p>
+<div class="totals">
+<div class="total"><div class="n" data-since="2026-10-12T18:00:00Z">&mdash;</div><div class="l">total time</div></div>
+<div class="total"><div class="n">1,613,333</div><div class="l">total tokens</div></div>
+</div>
+<details><summary>Where that token figure comes from</summary><p class="note">input 0 + output 21,575 + cache-write 444,783 + cache-read 522,804, across 116 turns</p><p class="note">Most of a long conversation's token count is cache-read: the accumulated context is resent on every turn and billed at a fraction of the normal rate. A high total reflects the turn count over time, not necessarily a large bill.</p></details>
+<h2>Retrospective</h2><div class="prose"><h4>What happened</h4>
+<ul>
+<li><strong class="bullet-title">Cycle 0, T1 in-place retry #1</strong><span class="bullet-body">(still cycle 0, not yet a new cycle): R1&#x27;s first pass found the new backdrop-click test (<code>photo-upload.test.tsx</code>) intermittently flaky (~10% across 31 reruns) — a timing race in the test&#x27;s own synchronous <code>expect(...).toBeNull()</code> check right after an <code>act()</code> block, not a source defect (TE1 independently confirmed the source wiring correct against all 5 Requirements). T1 was reopened in place with a <code>MUST_FIX</code> appended to its own description (stabilize with the codebase&#x27;s existing <code>waitFor(predicate, timeoutMs)</code> polling helper, per <code>bulk-identify-parts-ui.test.tsx</code>/<code>listings-page.test.tsx</code>), and T1/R1/TE1 reset to <code>not_started</code>, still inside cycle 0.</span></li>
+<li><strong class="bullet-title">Cycle 0 → Cycle 1 transition</strong><span class="bullet-body">: R1&#x27;s second pass (after the flakiness fix) verified the fix itself was correct and stable (44/44 clean reruns), but surfaced a second, independent gap: Requirement 3&#x27;s &quot;Close does not fire the close logic twice&quot; guard had zero test coverage, because <code>PhotoUpload</code>&#x27;s <code>onClose={() =&gt; setLightboxIndex(null)}</code> is idempotent — a single call and a double call produce an identical DOM outcome, so no existing test (including the pre-existing Close-button test) could distinguish them. Because T1 had already consumed its one free in-place retry this cycle (for the flakiness fix), this second finding could not be folded into a third in-place attempt and instead opened Cycle 1. Cost of Cycle 1: two new tasks, T2 (builder, <code>expected_minutes</code> 10, <code>actual_tokens</code> 39,843) and its paired R2/TE2 reviews (<code>expected_minutes</code> 10 each, <code>actual_tokens</code> 51,094 and 38,576) — all three completed in a single 4-minute window (22:26–22:48), i.e. the fix itself was trivial (a test-only addition, zero <code>photo-lightbox.tsx</code> change per T2&#x27;s own description) but still required a full builder→reviewer→tester lap plus a fresh UAT pass (U0, <code>actual_tokens</code> 91,931) because UAT had not yet run against the feature.</span></li>
+<li><strong class="bullet-title">T1&#x27;s real cost dwarfed every other task in the table.</strong><span class="bullet-body">T1 itself (<code>expected_minutes</code> 30, <code>actual_tokens</code> 34,757) looks ordinary, but R1&#x27;s review of that same T1 state (<code>expected_minutes</code> 15, <code>actual_tokens</code> 202,340) ran roughly 13x its token estimate and was, by token count, the single most expensive task in the whole feature — larger than T1, TE1, T2, R2, and TE2 combined. This is the direct cost of R1 having to re-verify all 5 Requirements from scratch twice (once after the flakiness fix, landing the Requirement-3 gap) rather than the flakiness retry being scoped narrowly enough for R1 to re-check only the changed test.</span></li>
+<li><strong class="bullet-title">No <code>model</code> escalation occurred.</strong><span class="bullet-body">Every build/review/test task ran at the plan&#x27;s default model tier; the two retries were absorbed as scope/retry events, not capability failures — the issues found (a test timing race, then a coverage gap) were review-depth findings, not mistakes a bigger model would have prevented.</span></li>
+<li><strong class="bullet-title">No <code>context_split</code> pattern.</strong><span class="bullet-body">Each task row maps to one bounded unit of work; T2&#x27;s scope (one dedicated spy-based unit test) stayed a single row through build, review, and test.</span></li>
+<li><strong class="bullet-title">Assumptions A1–A3 held without correction.</strong><span class="bullet-body">All three (literal backdrop interpretation scoping the three control buttons as an exception, no change to the shared <code>Dialog</code> primitives, combining the two new tests into one <code>it</code> block) were recorded in cycle 0 and never revisited or corrected by either cycle&#x27;s review — the thing that needed a second pass was test *coverage*, not the plan&#x27;s own assumptions about scope.</span></li>
+<li>Commit history adds no signal here: this feature&#x27;s two source/test file changes are still uncommitted on <code>feat/lightbox-click-outside-close</code> (checked via <code>git log --oneline --all | grep lightbox</code>, which returns only the prior feature that introduced the lightbox component) — there is no fixup-commit trail to read a pattern from.</li>
+</ul>
+<h4>Proposals</h4>
+<ul>
+<li><strong class="bullet-title">Have T1&#x27;s own task description require a Requirement-3 double-fire test up front, not just the stopPropagation() code change.</strong><span class="bullet-body">The gap R1 found in cycle 1 — that <code>PhotoUpload</code>&#x27;s idempotent <code>onClose</code> makes a single vs. double call indistinguishable through any <code>PhotoUpload</code>-mounted test — was knowable from the Requirements alone (R3 explicitly says &quot;does not fire the close logic twice&quot;) without touching the implementation first. Future plans for components with an idempotent callback prop should add a line to the builder task like: &quot;if the callback bound to the no-double-fire guard is itself idempotent, write the regression test by mounting the component directly with a spy, not through its idempotent caller&quot; — this would have produced T2&#x27;s test as part of T1 and skipped Cycle 1 entirely (saving roughly the T2+R2+TE2+U0 token cost, ~221,000 tokens, and the 4-minute build-review-test lap plus a second UAT pass).</span></li>
+<li><strong class="bullet-title">Size <code>R1</code>-equivalent review tasks that re-verify all N requirements after an in-place retry at a slightly higher <code>expected_minutes</code>/token budget than a first-pass review</strong><span class="bullet-body">, since this plan&#x27;s data point (15 expected minutes, 202,340 actual tokens — by far the feature&#x27;s largest single cost) shows full-requirement re-verification after a retry costs materially more than a first pass over fresh code; the estimate didn&#x27;t anticipate that a retry review re-walks every requirement, not just the one that changed.</span></li>
+</ul>
+<p class="note">This report cost approximately 8900 tokens (self-reported estimate) / not available (measured — whoever dispatched this retrospective can report the measured figure from its own tracking). Not counted in the feature&#x27;s own total — this analysis happened after the feature was already done.</p></div>
+</section>
+<nav class="tabs">
+<button data-cycle-tab="0" aria-selected="false" onclick="showCycle(0)">Cycle 0</button>
+<button data-cycle-tab="1" aria-selected="true" onclick="showCycle(1)">Cycle 1</button>
+</nav>
+<section class="panel" data-cycle-panel="0" hidden>
+<h2>Cycle 0</h2>
+<p><strong>Trigger.</strong> initial</p>
+<p><span class="neutral"><span class="dot"></span>UAT not run.</span></p>
+<p class="note">4 task(s). Estimated 75 min. Actual tokens 402,727, estimated 54,100. This never includes the driving conversation's own tokens, which cannot honestly be split by cycle.
+<div class="scroll"><table><thead><tr><th></th><th>Id</th><th>Description</th><th>Duration (Estimate)</th><th>Started At (Estimate)</th></tr></thead><tbody><tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">P1</span></td><td><span class="desc">Prototype the fix for T1: the photo lightbox opened from a Listing&#x27;s photo thumbnails, modified so clicking the backdrop (empty space around the centered photo, not the photo itself, not the Close/Previous/Next buttons) closes the lightbox — the photo and the three buttons keep their current exact behavior unchanged.</span></td><td><span data-since="2026-10-12T18:05:00Z" data-until="2026-10-12T18:10:00Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-12T18:05:00Z">&mdash;</span> (<span data-at="2026-10-12T18:05:00Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">prototype &middot; <span class="tag">UI</span> &middot; Est tokens 24300 &middot; Actual tokens 49272</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T1</span></td><td><span class="desc">In <code>apps/web/src/features/listings/photo-lightbox.tsx</code>: add <code>onClick={onClose}</code> to the <code>DialogContent</code> element (this is the backdrop region per Requirement 1). Add <code>onClick={(event) =&gt; event.stopPropagation()}</code> to the <code>&lt;img&gt;</code> element (Requirement 2 — a click landing on the photo must never bubble up to the new backdrop handler). Add <code>event.stopPropagation()</code> as the first line inside the Close button&#x27;s existing <code>onClick</code> handler, and the same inside the Previous and Next buttons&#x27; existing <code>onClick</code> handlers (Requirements 3-4 — none of the three buttons&#x27; clicks may bubble to the new backdrop handler, which would otherwise double-fire close on the Close button or wrongly close instead of navigate on Previous/Next). Update <code>apps/web/test/photo-upload.test.tsx</code>&#x27;s <code>PhotoUpload lightbox navigation</code> describe block: add a new test asserting a click on the dialog&#x27;s own root element (the backdrop, not the image or any button) closes the lightbox; add an assertion (new test or extend an existing one) that a click directly on the <code>&lt;img&gt;</code> does NOT close it; confirm the existing Next/Previous/Close tests still pass unmodified (proving Requirements 3-4 hold, not just Requirement 1). MUST_FIX (Cycle 0 retry, from R1): the new test &#x27;clicking the dialog backdrop closes the lightbox, but clicking the photo itself does not&#x27; (apps/web/test/photo-upload.test.tsx) is intermittently flaky (~10% failure rate across 31 reruns, confirmed independently) at its final assertion — expect(document.body.querySelector(&#x27;[role=&quot;dialog&quot;]&#x27;)).toBeNull() immediately after dispatching a click on the dialog root inside await act(async () =&gt; {...}). The dialog node is sometimes still present in the DOM right after the dispatch, consistent with a timing race flushing Radix&#x27;s own portal/dismissal internals rather than a source bug — R1/TE1 both independently confirmed the source wiring in photo-lightbox.tsx is correct against all 5 Requirements, and TE1&#x27;s mutation-proof confirms the test correctly fails when the fix is reverted, so the fix itself needs no change. Stabilize the test using this codebase&#x27;s own existing waitFor(predicate, timeoutMs) polling-helper pattern (see bulk-identify-parts-ui.test.tsx and listings-page.test.tsx for the exact local-helper shape already used elsewhere in this test suite) instead of asserting synchronously right after the act() block — poll for document.body.querySelector(&#x27;[role=&quot;dialog&quot;]&#x27;) === null with a short timeout rather than a bare one-shot check. After the fix, rerun the test file at least 20 times in a row (a quick shell loop is fine) and confirm zero failures, not just one clean run, given the failure rate observed was probabilistic.</span></td><td><span data-since="2026-10-12T21:30:00Z" data-until="2026-10-12T21:57:00Z">&mdash;</span> (30 min)</td><td><span data-at="2026-10-12T21:30:00Z">&mdash;</span> (<span data-at="2026-10-12T18:15:00Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; <span class="tag">UI</span> &middot; Est tokens 8000 &middot; Actual tokens 34757</td></tr>
+<tr><td><span class="bad"><span class="dot"></span>Complete &middot; found a FAIL.</span></td><td><span class="tag">R1</span></td><td><span class="desc">Review T1 against Requirements 1-5. Confirm the backdrop <code>onClick</code> is placed on <code>DialogContent</code> itself (the element whose bounding box is the thing Requirement 1 describes), not on some inner wrapper that would miss part of the empty space. Confirm every one of the three buttons&#x27; <code>stopPropagation()</code> calls actually run before (or regardless of) their own existing logic, not accidentally short-circuiting it. Confirm the image&#x27;s <code>stopPropagation()</code> is on the image element itself, not a wrapper that would also catch clicks meant for the backdrop around it. Confirm the new/updated tests in <code>photo-upload.test.tsx</code> actually exercise a real backdrop click (dispatched on the dialog root, not the image or a button) and a real image click, not just re-asserting the same prior button-click tests under a new name. Confirm Escape-to-close and arrow-key navigation are untouched (<code>git diff</code> should show only the targeted additions, no restructuring of the keydown effect or the Dialog&#x27;s <code>onOpenChange</code> wiring). FAIL: the new backdrop-click test in <code>photo-upload.test.tsx</code> is empirically flaky (~10%, 3/31 identical reruns failed at the <code>role=&quot;dialog&quot;</code> null-check), so it does not reliably guard Requirement 1 even though the source wiring itself is correct against all five requirements. FAIL: on this retry, the flakiness fix itself is verified correct and stable (44/44 clean reruns), but Requirement 3&#x27;s &quot;does not fire the close logic twice&quot; guard — the Close button&#x27;s <code>event.stopPropagation()</code> in <code>photo-lightbox.tsx</code> — has zero test coverage; removing that one line would double-fire <code>onClose</code>, which is idempotent (<code>PhotoUpload</code> wires <code>onClose={() =&gt; setLightboxIndex(null)}</code>), so the DOM outcome is identical either way and no existing test, including the pre-existing Close-button test, would catch the regression — needs a dedicated unit test mounting <code>PhotoLightbox</code> directly with a spied <code>onClose</code> and asserting <code>toHaveBeenCalledTimes(1)</code>.</span></td><td><span data-since="2026-10-12T21:40:04Z" data-until="2026-10-12T22:21:18Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-12T21:40:04Z">&mdash;</span> (<span data-at="2026-10-12T21:40:04Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 9000 &middot; Actual tokens 202340</td></tr>
+<tr><td colspan="5"><p class="fail">the new backdrop-click test in <code>photo-upload.test.tsx</code> is empirically flaky (~10%, 3/31 identical reruns failed at the <code>role=&quot;dialog&quot;</code> null-check), so it does not reliably guard Requirement 1 even though the source wiring itself is correct against all five requirements. FAIL: on this retry, the flakiness fix itself is verified correct and stable (44/44 clean reruns), but Requirement 3&#x27;s &quot;does not fire the close logic twice&quot; guard — the Close button&#x27;s <code>event.stopPropagation()</code> in <code>photo-lightbox.tsx</code> — has zero test coverage; removing that one line would double-fire <code>onClose</code>, which is idempotent (<code>PhotoUpload</code> wires <code>onClose={() =&gt; setLightboxIndex(null)}</code>), so the DOM outcome is identical either way and no existing test, including the pre-existing Close-button test, would catch the regression — needs a dedicated unit test mounting <code>PhotoLightbox</code> directly with a spied <code>onClose</code> and asserting <code>toHaveBeenCalledTimes(1)</code>.</p></td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE1</span></td><td><span class="desc">Test T1. Run <code>apps/web</code>&#x27;s test suite and confirm the new/updated <code>photo-upload.test.tsx</code> cases pass: a backdrop click closes the lightbox; a click on the image itself does not; the existing Close/Previous/Next button tests still pass exactly as before (proving the added <code>stopPropagation()</code> calls didn&#x27;t change their own behavior). Mutation-check at least one of these: temporarily removing the new backdrop <code>onClick</code> should make the new backdrop-click test fail; temporarily removing the image&#x27;s <code>stopPropagation()</code> should make the new image-click test fail. Confirm no other <code>apps/web</code> test regressed.</span></td><td><span data-since="2026-10-12T21:40:04Z" data-until="2026-10-12T22:21:18Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-12T21:40:04Z">&mdash;</span> (<span data-at="2026-10-12T21:40:04Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 12800 &middot; Actual tokens 116358</td></tr></tbody></table></div>
+<h2>Assumptions</h2><ul class="items"><li><span class="tag">A1</span><span>&quot;Anywhere outside the image&quot; is read literally per the user&#x27;s own words — the photo</span></li><li><span class="tag">A2</span><span>No change to the shared <code>Dialog</code>/<code>DialogContent</code>/<code>DialogOverlay</code> primitives</span></li><li><span class="tag">A3</span><span>The new backdrop-close test and the new image-does-not-close test were combined</span></li></ul>
+</section>
+<section class="panel" data-cycle-panel="1">
+<h2>Cycle 1</h2>
+<p><strong>Trigger.</strong> R1&#x27;s second-pass review of T1 found a real test-coverage gap, not a source defect — T1</p>
+<p><strong>Findings.</strong></p><ul><li>Requirement 3&#x27;s &quot;Close does not fire the close logic twice&quot; guard has zero test coverage —</li></ul>
+<p><span class="good"><span class="dot"></span>UAT passed.</span></p>
+<ul><li>Real Chromium (Playwright) against apps/server+apps/web started for real in the worktree on isolated ports and an isolated DuckDB data dir, never the live database.</li><li>Seeded a real Listing with 2 uploaded photos via the live API, confirmed both thumbnails present in the real UI.</li><li>Clicking the photo itself (exact pixel center of its bounding box) keeps the lightbox open (Req 2).</li><li>Clicking the backdrop at (50,50), far from the photo and all three buttons, closes the lightbox (Req 1).</li><li>Clicking the photo counter badge itself (not a button, not the photo) also closes the lightbox, confirming it behaves as backdrop (Req 1).</li><li>Clicking Next navigates from 1/2 to 2/2 without closing; clicking Previous navigates back without closing (Req 4).</li><li>Clicking Close closes the lightbox (Req 3, close-behavior half).</li><li>Req 3&#x27;s no-double-fire half is unprovable via any live UI click sequence (PhotoUpload&#x27;s onClose is idempotent) — confirmed instead via direct source inspection (stopPropagation precedes onClose in the Close handler) and by citing T2&#x27;s dedicated vi.fn()-spy unit test and its mutation-proof.</li><li>Pressing Escape closes an open lightbox (Req 5).</li><li>ArrowRight/ArrowLeft navigate between photos, and wraparound (photo 1 going back wraps to the last photo) still works (Req 5).</li><li>git diff confirms the photo counter badge&#x27;s own JSX is untouched by this feature (Req 5, badge appearance/position unchanged).</li><li>git diff --stat confirms exactly 2 files changed, both apps/web (photo-lightbox.tsx, photo-upload.test.tsx) — zero apps/server or packages/shared changes, matching the plan&#x27;s own Standing Checks.</li><li>Standing gate cited from feature-validate-lead&#x27;s Cycle 1 pass: 964/964 tests matching BaselineTests (962) plus 2 new tests, no shrinkage; lint clean.</li></ul>
+<p class="note">4 task(s). Estimated 50 min. Actual tokens 221,444, estimated 56,000. This never includes the driving conversation's own tokens, which cannot honestly be split by cycle.
+<div class="scroll"><table><thead><tr><th></th><th>Id</th><th>Description</th><th>Duration (Estimate)</th><th>Started At (Estimate)</th></tr></thead><tbody><tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T2</span></td><td><span class="desc">Cycle 1 must_fix (from R1, see Cycle Log): Requirement 3&#x27;s &quot;Close does not fire the close logic twice&quot; guard has zero test coverage — <code>PhotoUpload</code>&#x27;s <code>onClose={() =&gt; setLightboxIndex(null)}</code> is idempotent, so no existing test (including the pre-existing Close-button test) can tell a single call from a double call. Add a dedicated unit test mounting <code>PhotoLightbox</code> directly (not via <code>PhotoUpload</code>) with a <code>vi.fn()</code> spy passed as its <code>onClose</code> prop, open it at some index, click the Close button, and assert <code>expect(onClose).toHaveBeenCalledTimes(1)</code>. No change to <code>photo-lightbox.tsx</code> itself — its Close handler&#x27;s <code>stopPropagation()</code> is already correct and already reviewed twice; this is a test-coverage-only addition.</span></td><td><span data-since="2026-10-12T22:26:22Z" data-until="2026-10-12T22:30:46Z">&mdash;</span> (10 min)</td><td><span data-at="2026-10-12T22:26:22Z">&mdash;</span> (<span data-at="2026-10-12T22:26:22Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens 16000 &middot; Actual tokens 39843</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R2</span></td><td><span class="desc">Review T2. Confirm the new test actually mounts <code>PhotoLightbox</code> (not <code>PhotoUpload</code>) with a real <code>vi.fn()</code> spy as <code>onClose</code>, clicks the real Close button (not a direct function call bypassing the DOM), and asserts an exact call count of 1 — not <code>toHaveBeenCalled()</code> alone, which would pass even on a double-fire regression. Confirm this test would fail if <code>stopPropagation()</code> were removed from the Close handler (reason about it directly or run the mutation) — if it would not, the assertion isn&#x27;t load-bearing and the gap isn&#x27;t actually closed.</span></td><td><span data-since="2026-10-12T22:34:29Z" data-until="2026-10-12T22:47:56Z">&mdash;</span> (10 min)</td><td><span data-at="2026-10-12T22:34:29Z">&mdash;</span> (<span data-at="2026-10-12T22:34:29Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 16000 &middot; Actual tokens 51094</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE2</span></td><td><span class="desc">Test T2. Run the new test and confirm it passes against the current (correct) source. Mutation-prove it: temporarily remove the Close button&#x27;s <code>stopPropagation()</code> in <code>photo-lightbox.tsx</code>, confirm the new test fails with a call count of 2, then restore the file exactly (<code>git diff</code> clean afterward). Confirm no other test regressed.</span></td><td><span data-since="2026-10-12T22:34:29Z" data-until="2026-10-12T22:47:56Z">&mdash;</span> (10 min)</td><td><span data-at="2026-10-12T22:34:29Z">&mdash;</span> (<span data-at="2026-10-12T22:34:29Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 9000 &middot; Actual tokens 38576</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">U0</span></td><td><span class="desc">UAT pass over the whole feature (Requirements 1-5): start apps/web for real in the worktree (apps/server too, if needed for the page the lightbox lives on to render at all) on an isolated port, open a Listing&#x27;s photo lightbox in a real browser, and confirm with real clicks/screenshots: clicking the photo keeps the lightbox open; clicking the backdrop (empty space, including over the counter badge) closes it; Close/Previous/Next each still do exactly their current thing with no double-close or wrong-navigation; Escape still closes it; Left/Right arrow keys still navigate and wrap at both ends.</span></td><td><span data-since="2026-10-12T22:55:00Z" data-until="2026-10-12T23:05:00Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-12T22:55:00Z">&mdash;</span> (<span data-at="2026-10-12T22:55:00Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">uat &middot; Est tokens 15000 &middot; Actual tokens 91931</td></tr></tbody></table></div>
+</section>
+</main><script>
+// REFRESH_MS and LOADED_AT drive the scheduled reload, the on-page countdown, and
+// the auto-refresh toggle below, so none of them can ever disagree with each other.
+var REFRESH_MS=300000, LOADED_AT=Date.now();
+var AUTOREFRESH_KEY='feature-dashboard-autorefresh';
+var reloadTimer=null;
+
+function armReload(){
+  if(reloadTimer) clearTimeout(reloadTimer);
+  reloadTimer=setTimeout(function(){location.reload();}, REFRESH_MS-(Date.now()-LOADED_AT));
+}
+function disarmReload(){
+  if(reloadTimer){clearTimeout(reloadTimer);reloadTimer=null;}
+}
+function storedAutorefreshPref(){
+  try{return localStorage.getItem(AUTOREFRESH_KEY);}catch(e){return null;}
+}
+function setAutorefreshUI(button,on){
+  button.textContent='Auto refresh '+(on?'on':'off');
+  button.setAttribute('aria-pressed',String(on));
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){el.hidden=!on;});
+  document.querySelectorAll('[data-refresh-off-note]').forEach(function(el){el.hidden=on;});
+}
+
+// Durations count up client-side, so an in-progress row does not freeze between
+// publishes, and every timestamp reads in the viewer's own zone rather than one
+// chosen when the page was written.
+function fmt(ms){var s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),
+m=Math.floor(s%3600/60);return h?h+'h '+m+'m':m+'m';}
+function fmtCountdown(ms){var s=Math.max(0,Math.round(ms/1000)),
+m=Math.floor(s/60);return m+'m '+(s%60)+'s';}
+var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtAt(d){
+  var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'pm':'am';
+  h=h%12;if(h===0)h=12;
+  var mm=m<10?'0'+m:m;
+  return MONTHS[d.getMonth()]+' '+d.getDate()+', '+h+':'+mm+ap;
+}
+function tick(){
+  var now=Date.now();
+  document.querySelectorAll('[data-since]').forEach(function(el){
+    var until=el.dataset.until?Date.parse(el.dataset.until):now;
+    el.textContent=fmt(until-Date.parse(el.dataset.since));});
+  document.querySelectorAll('[data-at]').forEach(function(el){
+    el.textContent=fmtAt(new Date(el.dataset.at));});
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){
+    el.textContent=fmtCountdown(REFRESH_MS-(now-LOADED_AT));});
+}
+tick(); setInterval(tick,1000);
+
+// Auto-refresh defaults off once the feature is done (data-feature-done, set by the
+// page itself) and on otherwise, unless this browser already recorded its own choice.
+(function(){
+  var button=document.getElementById('autorefresh');
+  if(!button) return;
+  var stored=storedAutorefreshPref();
+  var defaultOn=!document.querySelector('[data-feature-done]');
+  var isOn=stored===null?defaultOn:stored==='on';
+  setAutorefreshUI(button,isOn);
+  if(isOn) armReload();
+  button.addEventListener('click',function(){
+    var on=button.getAttribute('aria-pressed')!=='true';
+    try{localStorage.setItem(AUTOREFRESH_KEY,on?'on':'off');}catch(e){}
+    setAutorefreshUI(button,on);
+    if(on){LOADED_AT=Date.now();armReload();}else{disarmReload();}
+  });
+  var refreshNow=document.getElementById('refresh-now');
+  if(refreshNow) refreshNow.addEventListener('click',function(){location.reload();});
+})();
+
+// A description gets an expand control only when it truly does not fit.
+document.querySelectorAll('.desc').forEach(function(el){
+  if(el.scrollWidth<=el.clientWidth) return;
+  var b=document.createElement('button');b.className='more';b.textContent='more';
+  b.onclick=function(){el.classList.toggle('open');
+    b.textContent=el.classList.contains('open')?'less':'more';};
+  el.parentNode.appendChild(b);});
+
+function showCycle(n){
+  document.querySelectorAll('[data-cycle-panel]').forEach(function(p){
+    p.hidden=(p.dataset.cyclePanel!==String(n));});
+  document.querySelectorAll('[data-cycle-tab]').forEach(function(t){
+    t.setAttribute('aria-selected',t.dataset.cycleTab===String(n));});
+}
+</script>
