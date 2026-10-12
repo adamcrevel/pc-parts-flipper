@@ -2,7 +2,7 @@
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
 import { buildSetClause } from '../sqlHelpers.js';
-import type { PlatformType, Source } from '../types.js';
+import type { PlatformType, Source } from '@pc-parts-flipper/shared';
 
 /** Fields the caller supplies when creating a Source; id/timestamps are server-assigned. */
 export interface CreateSourceInput {

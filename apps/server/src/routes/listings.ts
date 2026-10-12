@@ -212,11 +212,18 @@ function requireOpenListing(listing: Listing): void {
   }
 }
 
-/** Promotes reference photos for any Expected Parts with confirmed brands. */
+/**
+ * Promotes reference photos for any Expected Parts with confirmed brands.
+ * Takes only the fields actually read below (not the full `ExpectedPartInput`
+ * shape) so this also accepts already-persisted `ExpectedPart` rows (e.g.
+ * listingPhotos.ts's post-upload promotion pass), whose `aiConfidence`/
+ * `aiSource`/`priceSource` are optional on `ExpectedPart` and would otherwise
+ * fail `ExpectedPartInput`'s stricter required-field shape.
+ */
 export async function promoteReferencesForExpectedParts(
   listingId: string,
   photoPaths: readonly string[],
-  expectedParts: ExpectedPartInput[],
+  expectedParts: Pick<ExpectedPartInput, 'componentCategory' | 'brand' | 'partNumber'>[],
 ): Promise<void> {
   for (const part of expectedParts) {
     if (part.brand) {

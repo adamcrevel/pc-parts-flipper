@@ -1,4 +1,4 @@
-import type { ComponentCategory } from './types.js';
+import type { ComponentCategory } from '@pc-parts-flipper/shared';
 
 /**
  * Metadata for each seed photo: source URL, local filename,

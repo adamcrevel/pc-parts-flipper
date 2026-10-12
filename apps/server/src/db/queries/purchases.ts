@@ -2,7 +2,7 @@
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
 import { buildSetClause, toNumber } from '../sqlHelpers.js';
-import type { Purchase, PurchaseStatus } from '../types.js';
+import type { Purchase, PurchaseStatus } from '@pc-parts-flipper/shared';
 
 /** Fields supplied when a Purchase is created (typically pre-filled from accepting a Listing, Req 4). */
 export interface CreatePurchaseInput {

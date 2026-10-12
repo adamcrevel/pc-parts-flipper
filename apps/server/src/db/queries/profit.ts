@@ -9,7 +9,7 @@
 import type { DuckDBValue } from '@duckdb/node-api';
 import { getConnection } from '../client.js';
 import { toNumber } from '../sqlHelpers.js';
-import type { PurchaseStatus } from '../types.js';
+import type { PurchaseStatus } from '@pc-parts-flipper/shared';
 
 /** Columns the Profit dashboard can sort by (Req 11). */
 export type ProfitSortBy = 'netProfit' | 'pricePaid' | 'purchaseDate';

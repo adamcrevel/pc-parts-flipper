@@ -3,7 +3,7 @@ import type { DuckDBValue } from '@duckdb/node-api';
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
 import { buildSetClause, toNumber } from '../sqlHelpers.js';
-import type { PlatformType, SaleListing } from '../types.js';
+import type { PlatformType, SaleListing } from '@pc-parts-flipper/shared';
 
 /** Fields supplied when drafting a Sale Listing for a ready_to_list Part (Req 8). */
 export interface CreateSaleListingInput {

@@ -3,6 +3,22 @@
 // never by importing @duckdb/node-api or a db/*.ts file directly — which is
 // what keeps "all DuckDB access confined to one data-access module" true.
 export * from './types.js';
+export type {
+  Source,
+  Listing,
+  Purchase,
+  TeardownResult,
+  Part,
+  SaleListing,
+  Sale,
+  ExpectedPart,
+  PlatformType,
+  ListingStatus,
+  PurchaseStatus,
+  ComponentCategory,
+  TeardownResultType,
+  PartStatus,
+} from '@pc-parts-flipper/shared';
 
 export * from './queries/sources.js';
 export * from './queries/listings.js';

@@ -17,6 +17,7 @@ export interface CandidateListing {
   title: string;
   listingUrl: string;
   askingPrice: number;
+  listingDate: string;
   /**
    * Marketplace-hosted photo URLs for this listing, highest resolution the
    * platform offers, in display order (primary image first). The scan

@@ -38,8 +38,7 @@ import {
 import { identifyListingParts } from '../ai/partIdentification.js';
 import { resolveWorkingStatuses } from '../ai/identificationParser.js';
 import { triggerPriceLookups } from './pricePartsTrigger.js';
-import type { IdentifyPartsJob, IdentifyPartsResponse } from '@pc-parts-flipper/shared';
-import type { Listing } from '../db/types.js';
+import type { IdentifyPartsJob, IdentifyPartsResponse, Listing } from '@pc-parts-flipper/shared';
 
 /**
  * Maximum number of identify-parts jobs to process concurrently, parsed

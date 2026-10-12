@@ -6,7 +6,8 @@
 // the only remaining caller of.
 import type { DuckDBValue } from '@duckdb/node-api';
 import { getConnection } from '../client.js';
-import type { ComponentCategory, ReferencePhoto } from '../types.js';
+import type { ComponentCategory } from '@pc-parts-flipper/shared';
+import type { ReferencePhoto } from '../types.js';
 
 /** Converts one raw JSON row into the camelCase ReferencePhoto shape. */
 function mapRow(row: Record<string, unknown>): ReferencePhoto {

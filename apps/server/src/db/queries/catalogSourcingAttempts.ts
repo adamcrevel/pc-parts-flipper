@@ -27,7 +27,7 @@ import { getConnection } from '../client.js';
 import { newId } from '../id.js';
 import { logger } from '../../logger.js';
 import { computeNextRetryAt } from '../../retryBackoff.js';
-import type { ComponentCategory } from '../types.js';
+import type { ComponentCategory } from '@pc-parts-flipper/shared';
 import type { SourcingOutcome } from './sourcingAttempts.js';
 
 // Same pattern as sourcingAttempts.ts's UNIQUE_CONSTRAINT_MESSAGE: matches

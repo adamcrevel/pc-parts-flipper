@@ -4,7 +4,7 @@ import { listValue } from '@duckdb/node-api';
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
 import { toNumber } from '../sqlHelpers.js';
-import type { Sale } from '../types.js';
+import type { Sale } from '@pc-parts-flipper/shared';
 
 /** Fields supplied when recording the final sale outcome of a listed Part (Req 9). */
 export interface CreateSaleInput {
