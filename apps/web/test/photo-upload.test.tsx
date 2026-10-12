@@ -9,10 +9,11 @@
 // the (hidden) native file input. Mounts the real component with
 // react-dom/client + act(), following ebay-scan-ui.test.tsx's pattern (no
 // React Testing Library in this workspace).
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { PhotoUpload } from '../src/features/listings/photo-upload';
+import { PhotoLightbox } from '../src/features/listings/photo-lightbox';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -36,6 +37,25 @@ async function mount(element: React.ReactElement): Promise<HTMLDivElement> {
     root.render(element);
   });
   return container;
+}
+
+// Polls the DOM until `predicate` is true, flushing React's act() queue (and
+// real macrotask-scheduled promise continuations) between checks. Needed
+// because Radix's own portal/dismissal teardown after a backdrop click is
+// not guaranteed to have fully flushed the instant the act() block above it
+// returns — asserting synchronously right after is an intermittent race.
+async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('waitFor timed out');
+    }
+    await act(async () => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, 20);
+      await promise;
+    });
+  }
 }
 
 function thumbnailButtons(el: HTMLElement): HTMLButtonElement[] {
@@ -160,5 +180,54 @@ describe('PhotoUpload lightbox navigation', () => {
       closeButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it('clicking the dialog backdrop closes the lightbox, but clicking the photo itself does not', async () => {
+    const el = await mount(<PhotoUpload listingId="listing-1" photoPaths={photoPaths} onUploaded={() => {}} />);
+
+    await act(async () => {
+      thumbnailButtons(el)[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+
+    // The photo itself must not close the lightbox — the click must stop
+    // before it reaches the backdrop's own handler.
+    await act(async () => {
+      lightboxImage()!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+
+    // The dialog's own root element is the backdrop — there is no pixel
+    // structurally "outside" it since it covers the full viewport, so a
+    // click landing directly on it (not on the image or a button) is what
+    // closes the lightbox.
+    const dialog = document.body.querySelector('[role="dialog"]') as HTMLElement;
+    await act(async () => {
+      dialog.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await waitFor(() => document.body.querySelector('[role="dialog"]') === null);
+  });
+});
+
+describe('PhotoLightbox onClose call count', () => {
+  // PhotoUpload's own onClose handler (`() => setLightboxIndex(null)`) is
+  // idempotent, so none of the PhotoUpload-mounted tests above can tell a
+  // single onClose call apart from a double-fire — this mounts
+  // PhotoLightbox directly with a spy so a regression that lets the Close
+  // button's click reach both its own handler and the backdrop's
+  // onClick={onClose} (i.e. a missing/broken stopPropagation) is caught.
+  it('clicking the Close button calls onClose exactly once', async () => {
+    const photoPaths = ['photos/listing-1-aaaa.jpg'];
+    const onClose = vi.fn();
+    await mount(<PhotoLightbox photoPaths={photoPaths} index={0} onClose={onClose} onIndexChange={() => {}} />);
+
+    const closeButton = document.body.querySelector('[aria-label="Close"]') as HTMLButtonElement;
+    expect(closeButton, 'expected a Close button in the DOM').not.toBeNull();
+
+    await act(async () => {
+      closeButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

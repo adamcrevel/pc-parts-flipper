@@ -1,0 +1,347 @@
+<title>Walkthrough</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--add-bg:rgba(31,95,79,.10);--del-bg:rgba(163,49,42,.10);--radius:8px}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74;
+--add-bg:rgba(79,181,154,.14);--del-bg:rgba(224,123,116,.14)}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+h1{margin:0 0 8px;font-size:20px;letter-spacing:-.01em}
+.overview-text{margin:0;font-size:15px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.card-head,.file-head{width:100%;display:flex;justify-content:space-between;align-items:center;
+gap:12px;font:inherit;text-align:left;background:none;border:none;color:var(--ink);cursor:pointer;
+padding:14px 18px}
+.card-head{font-weight:600}
+.card-head .meta{font-size:12px;color:var(--muted);font-weight:400}
+.card-body{padding:0 18px 16px;display:grid;gap:12px}
+.summary{margin:0;font-size:14px}
+.note{font-size:12px;color:var(--muted);margin:2px 0}
+.flow{overflow-x:auto}
+.flow-svg{display:block}
+.flow-box{fill:var(--bg);stroke:var(--line)}
+.flow-box-text{width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;
+justify-content:center;align-items:center;gap:4px;padding:8px 12px;text-align:center;
+font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.flow-label{font-size:12px;font-weight:600;color:var(--ink);line-height:1.25;margin:0;
+display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+text-overflow:ellipsis;word-break:break-word}
+.flow-note{font-size:10.5px;color:var(--muted);line-height:1.3;margin:0;
+display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+text-overflow:ellipsis;word-break:break-word}
+.flow-arrow{stroke:var(--muted);stroke-width:1.5}
+.flow-arrowhead{fill:var(--muted)}
+.files{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.file-group{padding:10px 4px 12px}
+.file-group:not(:last-child){border-bottom:1px solid var(--line)}
+.file-note{margin:0 0 8px;font-size:13px}
+.file-rows{list-style:none;margin:0;padding:0}
+.file{border-top:1px solid var(--line)}
+.file:first-child{border-top:none}
+.file-head{padding:10px 4px;font-size:13px}
+.file-head .path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.tag{display:inline-block;padding:0 6px;border:1px solid var(--line);border-radius:999px;
+font-size:11px;color:var(--muted)}
+.file-body{padding:0 4px 12px;display:grid;gap:8px}
+.hunk{overflow-x:auto;border:1px solid var(--line);border-radius:6px}
+.hunk-head{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);
+padding:5px 9px;border-bottom:1px solid var(--line)}
+.hunk pre{margin:0;padding:6px 9px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+white-space:pre}
+.hunk pre span{display:block;padding:0 4px}
+.hunk pre .add{background:var(--add-bg);color:var(--good)}
+.hunk pre .del{background:var(--del-bg);color:var(--bad)}
+</style>
+<main>
+<section class="panel overview">
+<h1>Walkthrough</h1>
+<p class="overview-text">A Listing&#x27;s photo lightbox only closed via its own X button — clicking the empty space around the photo did nothing, because the dialog&#x27;s own content element is sized to the full viewport, so there was never actually a pixel &quot;outside&quot; it for click-outside detection to fire against. The fix adds a backdrop click handler directly to that element, then explicitly stops that click from reaching the photo itself and the three control buttons (Close, Previous, Next) so each keeps its exact current behavior.</p>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Backdrop closes, photo and buttons stay exempt</span><span class="meta">1 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">`DialogContent` gets an `onClick={onClose}` handler so a click anywhere on it (which is</p>
+<p class="note">Tasks: P1, T1</p>
+<div class="flow"><svg viewBox="0 0 678 108" role="img" aria-label="data flow" class="flow-svg">
+<rect x="8" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="8" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Click lands</div><div class="flow-note">anywhere inside DialogContent&#x27;s full-viewport box</div></div></foreignObject>
+<line x1="198" y1="54" x2="238" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="244" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="244" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Image or button?</div><div class="flow-note">stopPropagation() stops the bubble</div></div></foreignObject>
+<line x1="434" y1="54" x2="474" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="480" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="480" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Otherwise</div><div class="flow-note">bubbles up to onClick={onClose}, lightbox closes</div></div></foreignObject>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" class="flow-arrowhead"/></marker></defs>
+</svg></div>
+<ul class="files"><li class="file-group">
+<p class="file-note">adds the backdrop `onClick={onClose}` on `DialogContent`, and `event.stopPropagation()` to the image&#x27;s click handler and to the Close/Previous/Next button handlers, so a bubbling click is caught before it can double-fire close or misfire navigation.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/src/features/listings/photo-lightbox.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -63,6 +63,7 @@ export function PhotoLightbox({ photoPaths, index, onClose, onIndexChange }: Pho</div><pre><span class="ctx">         &lt;DialogOverlay /&gt;</span>
+<span class="ctx">         &lt;DialogContent</span>
+<span class="ctx">           onOpenAutoFocus={(event) =&gt; event.preventDefault()}</span>
+<span class="add">+          onClick={onClose}</span>
+<span class="ctx">           aria-describedby={undefined}</span>
+<span class="ctx">           className=&quot;left-0 top-0 flex h-screen w-screen max-w-none translate-x-0 translate-y-0 items-center justify-center border-none bg-transparent p-0 shadow-none outline-none&quot;</span>
+<span class="ctx">         &gt;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -73,7 +74,10 @@ export function PhotoLightbox({ photoPaths, index, onClose, onIndexChange }: Pho</div><pre><span class="ctx"> </span>
+<span class="ctx">           &lt;button</span>
+<span class="ctx">             type=&quot;button&quot;</span>
+<span class="del">-            onClick={onClose}</span>
+<span class="add">+            onClick={(event) =&gt; {</span>
+<span class="add">+              event.stopPropagation();</span>
+<span class="add">+              onClose();</span>
+<span class="add">+            }}</span>
+<span class="ctx">             aria-label=&quot;Close&quot;</span>
+<span class="ctx">             className=&quot;absolute right-4 top-4 rounded-full bg-background/80 p-2 text-foreground transition-colors hover:bg-background&quot;</span>
+<span class="ctx">           &gt;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -83,7 +87,10 @@ export function PhotoLightbox({ photoPaths, index, onClose, onIndexChange }: Pho</div><pre><span class="ctx">           {count &gt; 1 &amp;&amp; (</span>
+<span class="ctx">             &lt;button</span>
+<span class="ctx">               type=&quot;button&quot;</span>
+<span class="del">-              onClick={() =&gt; goTo(index - 1)}</span>
+<span class="add">+              onClick={(event) =&gt; {</span>
+<span class="add">+                event.stopPropagation();</span>
+<span class="add">+                goTo(index - 1);</span>
+<span class="add">+              }}</span>
+<span class="ctx">               aria-label=&quot;Previous photo&quot;</span>
+<span class="ctx">               className=&quot;absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-background/80 p-2 text-foreground transition-colors hover:bg-background&quot;</span>
+<span class="ctx">             &gt;</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -91,12 +98,20 @@ export function PhotoLightbox({ photoPaths, index, onClose, onIndexChange }: Pho</div><pre><span class="ctx">             &lt;/button&gt;</span>
+<span class="ctx">           )}</span>
+<span class="ctx"> </span>
+<span class="del">-          &lt;img src={url} alt=&quot;Listing photo&quot; className=&quot;max-h-[85vh] max-w-[90vw] rounded-md object-contain&quot; /&gt;</span>
+<span class="add">+          &lt;img</span>
+<span class="add">+            src={url}</span>
+<span class="add">+            alt=&quot;Listing photo&quot;</span>
+<span class="add">+            onClick={(event) =&gt; event.stopPropagation()}</span>
+<span class="add">+            className=&quot;max-h-[85vh] max-w-[90vw] rounded-md object-contain&quot;</span>
+<span class="add">+          /&gt;</span>
+<span class="ctx"> </span>
+<span class="ctx">           {count &gt; 1 &amp;&amp; (</span>
+<span class="ctx">             &lt;button</span>
+<span class="ctx">               type=&quot;button&quot;</span>
+<span class="del">-              onClick={() =&gt; goTo(index + 1)}</span>
+<span class="add">+              onClick={(event) =&gt; {</span>
+<span class="add">+                event.stopPropagation();</span>
+<span class="add">+                goTo(index + 1);</span>
+<span class="add">+              }}</span>
+<span class="ctx">               aria-label=&quot;Next photo&quot;</span>
+<span class="ctx">               className=&quot;absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-background/80 p-2 text-foreground transition-colors hover:bg-background&quot;</span>
+<span class="ctx">             &gt;</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Proving the backdrop click and the exempt clicks actually work</span><span class="meta">1 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">covers clicking the real dialog root (the backdrop, since there&#x27;s no separate outside</p>
+<p class="note">Tasks: T1</p>
+<ul class="files"><li class="file-group">
+<p class="file-note">adds a test that opens the lightbox, clicks the photo (stays open), then dispatches a click on the dialog root itself (closes it), plus a `waitFor` helper added to absorb Radix&#x27;s async teardown so the assertion isn&#x27;t a timing race.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/photo-upload.test.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Proving the backdrop click and the exempt clicks actually work, Closing the one gap the first pass missed: no double-close on Close) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -9,10 +9,11 @@</div><pre><span class="ctx"> // the (hidden) native file input. Mounts the real component with</span>
+<span class="ctx"> // react-dom/client + act(), following ebay-scan-ui.test.tsx&#x27;s pattern (no</span>
+<span class="ctx"> // React Testing Library in this workspace).</span>
+<span class="del">-import { afterEach, describe, expect, it } from &#x27;vitest&#x27;;</span>
+<span class="add">+import { afterEach, describe, expect, it, vi } from &#x27;vitest&#x27;;</span>
+<span class="ctx"> import { createRoot, type Root } from &#x27;react-dom/client&#x27;;</span>
+<span class="ctx"> import { act } from &#x27;react&#x27;;</span>
+<span class="ctx"> import { PhotoUpload } from &#x27;../src/features/listings/photo-upload&#x27;;</span>
+<span class="add">+import { PhotoLightbox } from &#x27;../src/features/listings/photo-lightbox&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> globalThis.IS_REACT_ACT_ENVIRONMENT = true;</span>
+<span class="ctx"> </span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -38,6 +39,25 @@ async function mount(element: React.ReactElement): Promise&lt;HTMLDivElement&gt; {</div><pre><span class="ctx">   return container;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="add">+// Polls the DOM until `predicate` is true, flushing React&#x27;s act() queue (and</span>
+<span class="add">+// real macrotask-scheduled promise continuations) between checks. Needed</span>
+<span class="add">+// because Radix&#x27;s own portal/dismissal teardown after a backdrop click is</span>
+<span class="add">+// not guaranteed to have fully flushed the instant the act() block above it</span>
+<span class="add">+// returns — asserting synchronously right after is an intermittent race.</span>
+<span class="add">+async function waitFor(predicate: () =&gt; boolean, timeoutMs = 2000): Promise&lt;void&gt; {</span>
+<span class="add">+  const start = Date.now();</span>
+<span class="add">+  while (!predicate()) {</span>
+<span class="add">+    if (Date.now() - start &gt; timeoutMs) {</span>
+<span class="add">+      throw new Error(&#x27;waitFor timed out&#x27;);</span>
+<span class="add">+    }</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      const { promise, resolve } = Promise.withResolvers&lt;void&gt;();</span>
+<span class="add">+      setTimeout(resolve, 20);</span>
+<span class="add">+      await promise;</span>
+<span class="add">+    });</span>
+<span class="add">+  }</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="ctx"> function thumbnailButtons(el: HTMLElement): HTMLButtonElement[] {</span>
+<span class="ctx">   return Array.from(el.querySelectorAll(&#x27;button[aria-label^=&quot;Open photo&quot;]&#x27;));</span>
+<span class="ctx"> }</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -161,4 +181,53 @@ describe(&#x27;PhotoUpload lightbox navigation&#x27;, () =&gt; {</div><pre><span class="ctx">     });</span>
+<span class="ctx">     expect(document.body.querySelector(&#x27;[role=&quot;dialog&quot;]&#x27;)).toBeNull();</span>
+<span class="ctx">   });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;clicking the dialog backdrop closes the lightbox, but clicking the photo itself does not&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount(&lt;PhotoUpload listingId=&quot;listing-1&quot; photoPaths={photoPaths} onUploaded={() =&gt; {}} /&gt;);</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      thumbnailButtons(el)[0].dispatchEvent(new MouseEvent(&#x27;click&#x27;, { bubbles: true }));</span>
+<span class="add">+    });</span>
+<span class="add">+    expect(document.body.querySelector(&#x27;[role=&quot;dialog&quot;]&#x27;)).not.toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    // The photo itself must not close the lightbox — the click must stop</span>
+<span class="add">+    // before it reaches the backdrop&#x27;s own handler.</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      lightboxImage()!.dispatchEvent(new MouseEvent(&#x27;click&#x27;, { bubbles: true }));</span>
+<span class="add">+    });</span>
+<span class="add">+    expect(document.body.querySelector(&#x27;[role=&quot;dialog&quot;]&#x27;)).not.toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    // The dialog&#x27;s own root element is the backdrop — there is no pixel</span>
+<span class="add">+    // structurally &quot;outside&quot; it since it covers the full viewport, so a</span>
+<span class="add">+    // click landing directly on it (not on the image or a button) is what</span>
+<span class="add">+    // closes the lightbox.</span>
+<span class="add">+    const dialog = document.body.querySelector(&#x27;[role=&quot;dialog&quot;]&#x27;) as HTMLElement;</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      dialog.dispatchEvent(new MouseEvent(&#x27;click&#x27;, { bubbles: true }));</span>
+<span class="add">+    });</span>
+<span class="add">+    await waitFor(() =&gt; document.body.querySelector(&#x27;[role=&quot;dialog&quot;]&#x27;) === null);</span>
+<span class="add">+  });</span>
+<span class="add">+});</span>
+<span class="add">+</span>
+<span class="add">+describe(&#x27;PhotoLightbox onClose call count&#x27;, () =&gt; {</span>
+<span class="add">+  // PhotoUpload&#x27;s own onClose handler (`() =&gt; setLightboxIndex(null)`) is</span>
+<span class="add">+  // idempotent, so none of the PhotoUpload-mounted tests above can tell a</span>
+<span class="add">+  // single onClose call apart from a double-fire — this mounts</span>
+<span class="add">+  // PhotoLightbox directly with a spy so a regression that lets the Close</span>
+<span class="add">+  // button&#x27;s click reach both its own handler and the backdrop&#x27;s</span>
+<span class="add">+  // onClick={onClose} (i.e. a missing/broken stopPropagation) is caught.</span>
+<span class="add">+  it(&#x27;clicking the Close button calls onClose exactly once&#x27;, async () =&gt; {</span>
+<span class="add">+    const photoPaths = [&#x27;photos/listing-1-aaaa.jpg&#x27;];</span>
+<span class="add">+    const onClose = vi.fn();</span>
+<span class="add">+    await mount(&lt;PhotoLightbox photoPaths={photoPaths} index={0} onClose={onClose} onIndexChange={() =&gt; {}} /&gt;);</span>
+<span class="add">+</span>
+<span class="add">+    const closeButton = document.body.querySelector(&#x27;[aria-label=&quot;Close&quot;]&#x27;) as HTMLButtonElement;</span>
+<span class="add">+    expect(closeButton, &#x27;expected a Close button in the DOM&#x27;).not.toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      closeButton.dispatchEvent(new MouseEvent(&#x27;click&#x27;, { bubbles: true }));</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    expect(onClose).toHaveBeenCalledTimes(1);</span>
+<span class="add">+  });</span>
+<span class="ctx"> });</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Closing the one gap the first pass missed: no double-close on Close</span><span class="meta">1 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">review found that `PhotoUpload`&#x27;s own `onClose` is idempotent, so no test mounted through</p>
+<p class="note">Tasks: T2</p>
+<ul class="files"><li class="file-group">
+<p class="file-note">adds a second test that mounts `PhotoLightbox` directly with a `vi.fn()` spy as `onClose`, clicks the real Close button, and asserts the spy was called exactly once — a test that would fail at a call count of 2 if the button&#x27;s `stopPropagation()` ever regressed.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/web/test/photo-upload.test.tsx</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Proving the backdrop click and the exempt clicks actually work, Closing the one gap the first pass missed: no double-close on Close) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -9,10 +9,11 @@</div><pre><span class="ctx"> // the (hidden) native file input. Mounts the real component with</span>
+<span class="ctx"> // react-dom/client + act(), following ebay-scan-ui.test.tsx&#x27;s pattern (no</span>
+<span class="ctx"> // React Testing Library in this workspace).</span>
+<span class="del">-import { afterEach, describe, expect, it } from &#x27;vitest&#x27;;</span>
+<span class="add">+import { afterEach, describe, expect, it, vi } from &#x27;vitest&#x27;;</span>
+<span class="ctx"> import { createRoot, type Root } from &#x27;react-dom/client&#x27;;</span>
+<span class="ctx"> import { act } from &#x27;react&#x27;;</span>
+<span class="ctx"> import { PhotoUpload } from &#x27;../src/features/listings/photo-upload&#x27;;</span>
+<span class="add">+import { PhotoLightbox } from &#x27;../src/features/listings/photo-lightbox&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> globalThis.IS_REACT_ACT_ENVIRONMENT = true;</span>
+<span class="ctx"> </span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -38,6 +39,25 @@ async function mount(element: React.ReactElement): Promise&lt;HTMLDivElement&gt; {</div><pre><span class="ctx">   return container;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="add">+// Polls the DOM until `predicate` is true, flushing React&#x27;s act() queue (and</span>
+<span class="add">+// real macrotask-scheduled promise continuations) between checks. Needed</span>
+<span class="add">+// because Radix&#x27;s own portal/dismissal teardown after a backdrop click is</span>
+<span class="add">+// not guaranteed to have fully flushed the instant the act() block above it</span>
+<span class="add">+// returns — asserting synchronously right after is an intermittent race.</span>
+<span class="add">+async function waitFor(predicate: () =&gt; boolean, timeoutMs = 2000): Promise&lt;void&gt; {</span>
+<span class="add">+  const start = Date.now();</span>
+<span class="add">+  while (!predicate()) {</span>
+<span class="add">+    if (Date.now() - start &gt; timeoutMs) {</span>
+<span class="add">+      throw new Error(&#x27;waitFor timed out&#x27;);</span>
+<span class="add">+    }</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      const { promise, resolve } = Promise.withResolvers&lt;void&gt;();</span>
+<span class="add">+      setTimeout(resolve, 20);</span>
+<span class="add">+      await promise;</span>
+<span class="add">+    });</span>
+<span class="add">+  }</span>
+<span class="add">+}</span>
+<span class="add">+</span>
+<span class="ctx"> function thumbnailButtons(el: HTMLElement): HTMLButtonElement[] {</span>
+<span class="ctx">   return Array.from(el.querySelectorAll(&#x27;button[aria-label^=&quot;Open photo&quot;]&#x27;));</span>
+<span class="ctx"> }</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -161,4 +181,53 @@ describe(&#x27;PhotoUpload lightbox navigation&#x27;, () =&gt; {</div><pre><span class="ctx">     });</span>
+<span class="ctx">     expect(document.body.querySelector(&#x27;[role=&quot;dialog&quot;]&#x27;)).toBeNull();</span>
+<span class="ctx">   });</span>
+<span class="add">+</span>
+<span class="add">+  it(&#x27;clicking the dialog backdrop closes the lightbox, but clicking the photo itself does not&#x27;, async () =&gt; {</span>
+<span class="add">+    const el = await mount(&lt;PhotoUpload listingId=&quot;listing-1&quot; photoPaths={photoPaths} onUploaded={() =&gt; {}} /&gt;);</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      thumbnailButtons(el)[0].dispatchEvent(new MouseEvent(&#x27;click&#x27;, { bubbles: true }));</span>
+<span class="add">+    });</span>
+<span class="add">+    expect(document.body.querySelector(&#x27;[role=&quot;dialog&quot;]&#x27;)).not.toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    // The photo itself must not close the lightbox — the click must stop</span>
+<span class="add">+    // before it reaches the backdrop&#x27;s own handler.</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      lightboxImage()!.dispatchEvent(new MouseEvent(&#x27;click&#x27;, { bubbles: true }));</span>
+<span class="add">+    });</span>
+<span class="add">+    expect(document.body.querySelector(&#x27;[role=&quot;dialog&quot;]&#x27;)).not.toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    // The dialog&#x27;s own root element is the backdrop — there is no pixel</span>
+<span class="add">+    // structurally &quot;outside&quot; it since it covers the full viewport, so a</span>
+<span class="add">+    // click landing directly on it (not on the image or a button) is what</span>
+<span class="add">+    // closes the lightbox.</span>
+<span class="add">+    const dialog = document.body.querySelector(&#x27;[role=&quot;dialog&quot;]&#x27;) as HTMLElement;</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      dialog.dispatchEvent(new MouseEvent(&#x27;click&#x27;, { bubbles: true }));</span>
+<span class="add">+    });</span>
+<span class="add">+    await waitFor(() =&gt; document.body.querySelector(&#x27;[role=&quot;dialog&quot;]&#x27;) === null);</span>
+<span class="add">+  });</span>
+<span class="add">+});</span>
+<span class="add">+</span>
+<span class="add">+describe(&#x27;PhotoLightbox onClose call count&#x27;, () =&gt; {</span>
+<span class="add">+  // PhotoUpload&#x27;s own onClose handler (`() =&gt; setLightboxIndex(null)`) is</span>
+<span class="add">+  // idempotent, so none of the PhotoUpload-mounted tests above can tell a</span>
+<span class="add">+  // single onClose call apart from a double-fire — this mounts</span>
+<span class="add">+  // PhotoLightbox directly with a spy so a regression that lets the Close</span>
+<span class="add">+  // button&#x27;s click reach both its own handler and the backdrop&#x27;s</span>
+<span class="add">+  // onClick={onClose} (i.e. a missing/broken stopPropagation) is caught.</span>
+<span class="add">+  it(&#x27;clicking the Close button calls onClose exactly once&#x27;, async () =&gt; {</span>
+<span class="add">+    const photoPaths = [&#x27;photos/listing-1-aaaa.jpg&#x27;];</span>
+<span class="add">+    const onClose = vi.fn();</span>
+<span class="add">+    await mount(&lt;PhotoLightbox photoPaths={photoPaths} index={0} onClose={onClose} onIndexChange={() =&gt; {}} /&gt;);</span>
+<span class="add">+</span>
+<span class="add">+    const closeButton = document.body.querySelector(&#x27;[aria-label=&quot;Close&quot;]&#x27;) as HTMLButtonElement;</span>
+<span class="add">+    expect(closeButton, &#x27;expected a Close button in the DOM&#x27;).not.toBeNull();</span>
+<span class="add">+</span>
+<span class="add">+    await act(async () =&gt; {</span>
+<span class="add">+      closeButton.dispatchEvent(new MouseEvent(&#x27;click&#x27;, { bubbles: true }));</span>
+<span class="add">+    });</span>
+<span class="add">+</span>
+<span class="add">+    expect(onClose).toHaveBeenCalledTimes(1);</span>
+<span class="add">+  });</span>
+<span class="ctx"> });</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+</main><script>
+function toggleSection(btn){
+  var body = btn.nextElementSibling;
+  body.hidden = !body.hidden;
+  btn.setAttribute('aria-expanded', String(!body.hidden));
+}
+function toggleFile(btn){
+  var body = btn.nextElementSibling;
+  body.hidden = !body.hidden;
+  btn.setAttribute('aria-expanded', String(!body.hidden));
+}
+</script>
