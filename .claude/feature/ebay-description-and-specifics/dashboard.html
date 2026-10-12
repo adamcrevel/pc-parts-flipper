@@ -1,0 +1,326 @@
+<title>Feature</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--radius:8px;
+--autorefresh-bg:rgba(31,95,79,.14);--refresh-bg:rgba(42,95,143,.14);--refresh-ink:#2a5f8f}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74;
+--autorefresh-bg:rgba(79,181,154,.18);--refresh-bg:rgba(111,168,220,.18);--refresh-ink:#8fc1ef}}
+*{box-sizing:border-box;overflow-wrap:break-word}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+/* Grid tracks default to fitting their content's full, unbroken width -- a single
+   long token (a file path, a backtick-quoted identifier) anywhere in a panel would
+   otherwise stretch the whole page past max-width, no matter how long the gap or how
+   small every other panel is. min-width:0 is what lets a grid item shrink below that
+   and actually wrap instead. Confirmed live: this is what was making every real plan
+   (which is full of exactly these long tokens) render many times wider than the
+   viewport, independent of the DOCTYPE/viewport fix. */
+main{max-width:1300px;margin:0 auto;padding:24px;display:grid;gap:20px}
+main>*{min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);
+border-radius:var(--radius);padding:20px 22px}
+h1{margin:0 0 4px;font-size:21px;letter-spacing:-.01em}
+h2{margin:22px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+h2:first-of-type{margin-top:14px}
+.panel>p{line-height:1.65;margin:0 0 4px}
+.totals{display:flex;gap:32px;flex-wrap:wrap;margin:12px 0}
+.total .n{font-size:26px;font-variant-numeric:tabular-nums}
+.total .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+details{margin-top:8px}summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;
+border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--good);border-color:var(--good);color:var(--panel)}
+.scroll{overflow-x:auto}
+/* table-layout:auto (the default) sizes a column from its content's own natural
+   width -- for a nowrap+ellipsis cell, that is the FULL unwrapped text, which is
+   exactly the width ellipsis is meant to avoid ever reaching. It is a well-known
+   gap in the auto algorithm, not a quirk of this page: the standard fix is
+   table-layout:fixed, with every narrow column given an explicit width so the
+   description column (the one left unset) absorbs the rest and actually holds
+   .desc to it. Confirmed live: without this, a single real task description
+   dragged the whole table into a wide horizontal scrollbar regardless of how
+   short every other column's content was. */
+table{width:100%;border-collapse:collapse;font-size:14px;table-layout:fixed}
+/* The status column's own text ("In progress &middot; running long.") is real
+   prose, not a single short token -- 28px forced it to wrap, and the page's own
+   global overflow-wrap:break-word (needed elsewhere, see main>* above) then broke
+   it mid-word instead of at a space. Wide enough for the longest badge on two
+   lines, with normal word-wrapping restored just for this column. */
+th:first-child,td:first-child{width:112px;overflow-wrap:normal}
+th:nth-child(2),td:nth-child(2){width:52px}
+th:nth-child(4),td:nth-child(4){width:160px}
+th:nth-child(5),td:nth-child(5){width:300px}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.good .dot,.dot.good{background:var(--good)}.bad .dot,.dot.bad{background:var(--bad)}
+.neutral .dot,.dot.neutral{background:var(--muted)}
+.sub td{border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);padding-top:0}
+/* .desc is a <span> -- inline by default, and width/overflow/text-overflow are all
+   spec-ignored on a plain inline box, so none of this ever actually truncated
+   anything on its own. display:block (now that its <td> has a real fixed width to
+   fill, from table-layout:fixed above) is what makes the rest of this rule do
+   anything at all. */
+.desc{display:block;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.desc.open{white-space:normal;overflow:visible}
+.more{font:inherit;font-size:11px;border:none;background:none;color:var(--muted);cursor:pointer}
+.tag{display:inline-block;padding:0 6px;margin-right:4px;border:1px solid var(--line);
+border-radius:999px;font-size:11px;font-variant-numeric:tabular-nums}
+.banner{border-left:3px solid var(--bad);padding:10px 14px;background:var(--panel);
+border-radius:var(--radius);margin-bottom:14px}
+.fail{background:rgba(163,49,42,.09);padding:6px 9px;border-radius:6px;margin-top:6px}
+ul,ol{margin:8px 0;padding-left:24px}
+li{margin:8px 0;line-height:1.6}
+/* Requirements and Assumptions are both "one short id, one longer text" --
+   the same shape a table row has, so they get the same row-grid treatment
+   the task table already uses (a border between rows, an aligned label
+   column), instead of reading as a looser bulleted paragraph. Plain bullet
+   lists (Findings, UAT checks) keep the plainer rule above. The id badge
+   reuses .tag -- the exact same pill the task table's own id column uses now
+   -- so a reader learns one visual language for "this is an id" instead of
+   three different ones. */
+.items{list-style:none;margin:8px 0;padding:0;display:grid;gap:0}
+.items li{margin:0;display:grid;grid-template-columns:34px 1fr;gap:10px;
+padding:10px 2px;border-bottom:1px solid var(--line);line-height:1.6}
+.items li:last-child{border-bottom:none}
+/* A grid item's own display:inline-block is not enough to stop it stretching
+   to fill its whole cell -- CSS Grid stretches an item's box to its area by
+   default regardless, so the pill's border was being drawn around the full
+   34px-by-row-height cell instead of snugly around "A1". justify/align-self
+   opt back out of that stretch. */
+.items li>:first-child{justify-self:start;align-self:start}
+.note{font-size:12px;color:var(--muted)}
+.btn{display:inline-block;padding:8px 16px;margin:2px 0;border-radius:8px;
+background:var(--good);color:var(--panel);text-decoration:none;font-size:13px;font-weight:600}
+.btn:hover{opacity:.85}
+/* Same shape for both so they read as a pair of related controls; a different
+   background on each is the only thing telling them apart at a glance -- a toggle
+   and an immediate action should not look identical. */
+.ghost-btn{font:inherit;font-size:12px;padding:4px 12px;border-radius:999px;
+border:none;cursor:pointer}
+.ghost-btn.autorefresh{background:var(--autorefresh-bg);color:var(--good)}
+.ghost-btn.refresh-now{background:var(--refresh-bg);color:var(--refresh-ink)}
+.ghost-btn:hover{opacity:.8}
+.refresh-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+pre{font-family:inherit;white-space:pre-wrap;word-break:break-word;margin:0;line-height:1.65}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9em;
+background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+/* A retrospective's own markdown headings nest two levels below this section's own
+   h2, so "What happened" reads as a sub-heading of "Retrospective", never a peer of
+   it or of another panel's h2 entirely. */
+.prose h3{margin:18px 0 8px;font-size:15px}
+.prose h4,.prose h5,.prose h6{margin:14px 0 6px;font-size:14px;color:var(--muted)}
+.prose p{margin:8px 0;line-height:1.65}
+/* A bullet whose own text opens with a bold phrase is using it as the item's own
+   title, not as mid-sentence emphasis -- block-level + its own line is what actually
+   separates the two instead of letting the body run on immediately after it. */
+.prose .bullet-title{display:block;margin-bottom:2px}
+.prose .bullet-body{display:block}
+</style>
+<main>
+<section class="panel">
+<h1>Feature</h1>
+<p class="note">Status done &middot; cycle 1 of 3</p>
+<p class="note refresh-controls" data-feature-done><button type="button" id="autorefresh" class="ghost-btn autorefresh" aria-pressed="false">Auto refresh off</button> <button type="button" id="refresh-now" class="ghost-btn refresh-now">Refresh now</button> &middot; <span data-refresh-in>5m 0s</span><span data-refresh-off-note hidden>Auto-refresh is off.</span></p>
+<h2>Goal</h2><p>User-reported gap, confirmed by investigation: a scanned eBay listing&#x27;s full item description and
+its seller-provided &quot;Item Specifics&quot; (structured name/value pairs eBay shows on the listing page —
+RAM, storage, processor, OS, GPU, etc.) are never captured at all. Confirmed directly against the
+user&#x27;s own example, &quot;gameing pc Ryzen 5 5600&quot; (id <code>c87e761e-d475-4afa-8817-31f807ad76d8</code>, a real,
+already-scanned production listing): its stored <code>description</code> is <code>null</code>, and in fact **every one of
+the 222 real listings currently in production has <code>description: null</code>** — this is not an isolated
+bug, it is the actual behavior of the scan pipeline today.
+
+Root cause, confirmed by reading the code: <code>scanService.ts</code>&#x27;s <code>importCandidateIfNew</code> hardcodes
+<code>description: null</code> on every imported Listing. eBay&#x27;s search endpoint
+(<code>item_summary/search</code>, what a scan actually calls) never returns a full description or item
+specifics in the first place — those only exist on eBay&#x27;s single-item detail endpoint
+(<code>GET /buy/browse/v1/item/{itemId}</code>), confirmed against eBay&#x27;s own Browse API documentation
+(<code>description: string</code>, HTML, up to 500,000 characters; <code>localizedAspects: Array&lt;{name, type,
+value}&gt;</code>, the item specifics). That detail endpoint is already called elsewhere in this codebase
+(<code>ebayConnector.ts</code>&#x27;s <code>createEbayItemDetailClient</code>), but only by the one-time manual photo-backfill
+script, and even then only to extract image URLs — the same response&#x27;s <code>description</code> and
+<code>localizedAspects</code> fields are fetched and immediately discarded.
+
+This feature captures both fields (full description, HTML-stripped to plain text; every item
+specific eBay reports, not a curated subset) and stores them in the Listing&#x27;s existing <code>description</code>
+field — the same field <code>buildIdentificationPrompt</code> already includes verbatim in the AI
+identification prompt, so <strong>no prompt-building change is needed</strong> for Requirement 6. This happens
+for every newly-scanned eBay listing going forward, and, via a new one-time backfill (mirroring the
+existing photo-backfill script&#x27;s own pattern) for every eBay listing already imported without it —
+including the user&#x27;s own example.</p>
+<h2>Requirements</h2><ul class="items"><li><span class="tag">1</span><span>A newly-scanned eBay listing&#x27;s full seller-written item description is fetched (from eBay&#x27;s
+   single-item detail endpoint, the only endpoint that carries it) and stored, converted from eBay&#x27;s
+   HTML to plain text.</span></li><li><span class="tag">2</span><span>A newly-scanned eBay listing&#x27;s full set of seller-provided Item Specifics (every name/value pair
+   eBay&#x27;s <code>localizedAspects</code> reports for that item — not a hardcoded subset such as only
+   RAM/storage/CPU/OS/GPU) is fetched and stored, each pair clearly rendered as its own <code>Name: Value</code>
+   line, visually distinct from the prose description.</span></li><li><span class="tag">3</span><span>Both are stored together in the Listing&#x27;s existing <code>description</code> field, prose description first,
+   then the item specifics block.</span></li><li><span class="tag">4</span><span>Every eBay-sourced Listing already in the database before this feature shipped, whose
+   <code>description</code> is still null, is backfilled with the same description + item specifics capture —
+   via a new one-time script following this project&#x27;s own established pattern
+   (<code>photoBackfill.ts</code>/<code>backfill-photos.ts</code>), run once against the real production database as part
+   of delivering this feature, not left as an unused capability.</span></li><li><span class="tag">5</span><span>A failure fetching eBay&#x27;s item detail (the item was removed, a transient API error, etc.) never
+   prevents the Listing itself from being imported or backfilled — it is logged and the Listing&#x27;s
+   description is simply left as it was, the same graceful-degradation behavior this codebase
+   already uses for photo downloads.</span></li><li><span class="tag">6</span><span>The combined description + item specifics text is available to AI part identification
+   (<code>buildIdentificationPrompt</code>) without any change to that prompt-building code — proven by the fact
+   that it already reads <code>listing.description</code> verbatim, so storing the richer text in that same
+   field is what satisfies this requirement.</span></li><li><span class="tag">7</span><span>The additional eBay API call this feature introduces (one single-item detail call per genuinely
+   new candidate) is bounded to scale with the number of new listings a scan actually imports, never
+   with the full search-result set a scan merely found — matching this codebase&#x27;s own existing,
+   test-enforced &quot;no needless per-item API call&quot; principle (already proven by an exact HTTP-call-count
+   test for photos, which this feature&#x27;s own task must update rather than violate).</span></li></ul>
+<div class="totals">
+<div class="total"><div class="n" data-since="2026-10-12T01:23:00Z">&mdash;</div><div class="l">total time</div></div>
+<div class="total"><div class="n">3,180,354</div><div class="l">total tokens</div></div>
+</div>
+<details><summary>Where that token figure comes from</summary><p class="note">input 0 + output 52,541 + cache-write 999,829 + cache-read 1,140,098, across 173 turns</p><p class="note">Most of a long conversation's token count is cache-read: the accumulated context is resent on every turn and billed at a fraction of the normal rate. A high total reflects the turn count over time, not necessarily a large bill.</p></details>
+<h2>Retrospective</h2><div class="prose"><h4>What happened</h4>
+<ul>
+<li><strong class="bullet-title">Cycle 0</strong><span class="bullet-body">(initial): built T1 (eBay connector fetch/format), T2 (scan-time capture), T3 (backfill script) plus their R/TE pairs, then U0. UAT failed not on correctness but on scope: Requirement 4&#x27;s &quot;run once against the real production database&quot; clause had no record of having happened — A3 recorded only future intent, and <code>feature-uat-tester</code>&#x27;s own scope forbids live-prod access, so it correctly flagged this as an unperformed must_fix rather than a code defect.</span></li>
+<li><strong class="bullet-title">T2 required an in-place retry within Cycle 0.</strong><span class="bullet-body">R2&#x27;s must_fix: the <code>scanSource photo download call budget</code> test&#x27;s two scenarios both had <code>foundCount === newCount</code> (zero duplicates), so they couldn&#x27;t distinguish &quot;one detail call per new candidate&quot; (Req 7, correct) from &quot;one per search result&quot; (the regression Req 7 forbids) — see A15. The retry added a duplicate+new mixed scenario (A17) and both R2/TE2 then passed. Cost: T2&#x27;s row spans 03:24:25-04:24:00 (~59.5 min real) against a 40-minute <code>expected_minutes</code> (~49% over), and its <code>actual_tokens</code> cell is permanently blank because the retry&#x27;s own dispatch was interrupted by an environment crash before reporting (T2&#x27;s own &quot;Retry note&quot;).</span></li>
+<li><strong class="bullet-title">Cycle 1</strong><span class="bullet-body">(trigger: Req 4&#x27;s production-run gap). Per A19, the orchestrator correctly judged this an operational action, not a code defect, and dispatched <strong>no <code>feature-build-lead</code> task</strong> — the only new task row was U1 (independent recheck), <code>expected_minutes: 10</code>, which ran in ~9 real minutes (on budget) but cost 60,182 <code>actual_tokens</code> against a 10,000-token estimate (6x over). The backfill itself (<code>npm run backfill-descriptions</code> against production, A20) was run directly by the orchestrator with no task row at all — its real-world cost shows up only as the ~24-minute gap between U0&#x27;s completion (05:26) and U1&#x27;s start (05:50).</span></li>
+<li><strong class="bullet-title">Token estimation was systematically wrong for every reviewer/tester/uat task, while time estimates were roughly right.</strong><span class="bullet-body">Every one of R1, R2, R3, TE1, TE2, TE3, U0, U1 ran well past its own <code>estimated_tokens</code>: R1 21,800→202,340 (9.3x, the single largest miss in the feature), U1 10,000→60,182 (6x), TE3 15,000→82,100 (5.5x), U0 22,500→119,313 (5.3x), TE2 12,500→64,634 (5.2x), R2 47,300→163,833 (3.5x), R3 14,900→50,184 (3.4x), TE1 52,900→116,358 (2.2x). By contrast, <code>expected_minutes</code> vs. real elapsed time was close or under for 8 of the 10 scheduled task rows — only T2 (above) overran on time.</span></li>
+<li><strong class="bullet-title"><code>measure-child-cost.py</code>&#x27;s tag-based session search returned wrong <code>actual_tokens</code> twice in this one feature</strong><span class="bullet-body">, both documented rather than silently trusted: A16 (R2/TE2/R3/TE3&#x27;s first pass, all four matched unrelated stale sessions from other features reusing the same generic tag text) and A17 (the R2/TE2 retry pass, both again matched an identical stale value, 148,958, for two different tags). Both times the orchestrator worked around it by reading the dispatching child&#x27;s own transcript file directly.</span></li>
+</ul>
+<h4>Proposals</h4>
+<ul>
+<li>Schedule a known-up-front &quot;run this once in production&quot; deliverable (Req 4&#x27;s backfill here) as its own owned, timed task in the Cycle 0 plan itself — not as an assumption of future intent (A3) with no slot or owner. Doing so would have let Cycle 0&#x27;s own UAT pass, avoiding a dedicated second cycle whose only job was to execute and re-verify a step that was foreseeable on day one.</li>
+<li>When a call-budget/scaling test is specified (e.g. &quot;bounded to new imports, not total results&quot;), require at least one scenario mixing duplicates with new items in the task spec itself, not added reactively after a reviewer catches the gap — T2&#x27;s own must_fix (A15) was exactly this: the original scenarios all had zero duplicates and so could not falsify a per-search-result regression.</li>
+<li>Raise the default <code>estimated_tokens</code> sizing for <code>reviewer</code>/<code>tester</code>/<code>uat</code> roles specifically — this feature&#x27;s 8 such tasks ran 2.2x-9.3x over their own token estimate while their time estimates stayed accurate, indicating the token heuristic is calibrated for builder work and under-sizes verification work by roughly 3-5x as a rule.</li>
+<li>When a retry dispatch is interrupted before reporting (T2&#x27;s case here), have the orchestrator immediately read the interrupted child&#x27;s own transcript file for its last <code>totalTokens</code> (the same fallback A16/A17 already use for the tag-search tool&#x27;s wrong answers) rather than leaving <code>actual_tokens</code> permanently blank — the cost was real and incurred, just unrecorded.</li>
+<li>Fix <code>measure-child-cost.py</code>&#x27;s lookup key: it returned a wrong, stale-session value on two separate passes in this one feature (A16, A17) because free-text tag grepping collides across unrelated sessions that happen to reuse generic tags like &quot;review T2&quot;/&quot;test T2&quot;. Key the lookup on the dispatch&#x27;s own unique transcript filename/session id instead, which is already the manual fallback being used to catch its errors.</li>
+</ul>
+<p class="note">This report cost approximately 6,500 tokens (self-reported estimate) / not available (measured — the caller measures this from the tag it gave this dispatch) tokens. Not counted in the feature&#x27;s own total — this analysis happened after the feature was already done.</p></div>
+</section>
+<nav class="tabs">
+<button data-cycle-tab="0" aria-selected="false" onclick="showCycle(0)">Cycle 0</button>
+<button data-cycle-tab="1" aria-selected="true" onclick="showCycle(1)">Cycle 1</button>
+</nav>
+<section class="panel" data-cycle-panel="0" hidden>
+<h2>Cycle 0</h2>
+<p><strong>Trigger.</strong> initial</p>
+<p><span class="bad"><span class="dot"></span>UAT failed.</span></p>
+<ul><li>Built packages/shared via <code>npm run build -w packages/shared</code> — succeeded, tsc exited 0.</li><li>UAT(a): fresh scan of a stubbed new eBay listing (vi.stubGlobal fetch, isolated temp DuckDB) returned {foundCount:1, newCount:1}; imported Listing&#x27;s description column held the prose description followed by an &quot;Item Specifics (per eBay):&quot; block (Req 1, 3).</li><li>UAT(a): item-specifics aspect names (&quot;Processor&quot;, &quot;RAM Size&quot;) passed through verbatim, not filtered to a hardcoded allowlist, each rendered as its own Name: Value line (Req 2).</li><li>UAT(c): the real, unmodified buildIdentificationPrompt(listing, []) included the Listing&#x27;s full description verbatim under &quot;LISTING DESCRIPTION:&quot; (Req 6).</li><li>UAT(c): git status --porcelain confirmed apps/server/src/ai/identificationPrompt.ts was never touched by this feature — Req 6&#x27;s &quot;zero prompt-code change&quot; claim proven directly, not inferred.</li><li>UAT(b): seeded a Listing with description:null and a real externalItemId in a fresh temp DuckDB, ran the real <code>npm run backfill-descriptions</code> CLI against it (stubbed eBay detail response) — exit 0, summary {succeeded:1, skipped:0, failed:0, listingCount:1}.</li><li>UAT(b): queried the seeded Listing back out after the CLI run and confirmed its description column changed from null to the real fetched text — the backfill mechanism writes to the database for real, not a dry run (Req 4, mechanism half).</li><li>Req 5a: a failed item-detail fetch during a scan (stubbed HTTP 404) still imports the Listing (newCount:1) with description left null, never blocking the import.</li><li>Req 5b: backfillOneListing with a throwing fetch returns outcome &#x27;failed&#x27; without propagating, and never calls saveDescription.</li><li>Req 7: with 1 pre-existing duplicate + 1 new candidate in a 2-result search response, exactly 1 detail-fetch call was made, not 2 — the call budget scales with new imports, not total search results.</li><li>Lint: <code>npm run lint</code> clean, 0 errors/0 warnings, after removing all throwaway UAT scripts.</li><li>Standing gate cited from validate-lead&#x27;s A18: 59/59 server test files, 690/690 server tests, zero failures on a controlled --no-file-parallelism rerun; 690 server (+24 shared +248 web) exceeds BaselineTests&#x27; 944 total, no shrinkage.</li><li>No DuckDB schema change: git status --porcelain confirms apps/server/src/db/schema.ts untouched.</li></ul>
+<p class="fail">Requirement 4&#x27;s &quot;run once against the real production database as part of delivering this feature&quot; clause has no record anywhere in plan.md that it has happened yet — A3 states only future intent. feature-uat-tester&#x27;s own scope explicitly forbids live-production access, so it could not perform or confirm this itself; its own must_fix text calls this &quot;a one-time operational action, not a code defect&quot; since the backfill mechanism itself is fully proven correct and safe by UAT(b) above.</p>
+<p class="note">10 task(s). Estimated 250 min. Actual tokens 927,704, estimated 265,400. This never includes the driving conversation's own tokens, which cannot honestly be split by cycle.
+<div class="scroll"><table><thead><tr><th></th><th>Id</th><th>Description</th><th>Duration (Estimate)</th><th>Started At (Estimate)</th></tr></thead><tbody><tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T1</span></td><td><span class="desc">eBay connector: fetch and format item description + specifics (Req 1-3). <code>apps/server/src/connectors/ebayConnector.ts</code>: extend the <code>EbayItemDetail</code> interface with <code>description?: string;</code> and <code>localizedAspects?: Array&lt;{ name: string; value: string }&gt;;</code> (both already present on eBay&#x27;s real single-item detail response, confirmed against eBay&#x27;s own Browse API docs — <code>type</code> is not read, only <code>name</code>/<code>value</code>). Add a private <code>stripHtml(html: string): string</code> helper: removes <code>&lt;script&gt;...&lt;/script&gt;</code> and <code>&lt;style&gt;...&lt;/style&gt;</code> blocks (tags and their content both), converts <code>&lt;br&gt;</code>/<code>&lt;br/&gt;</code>/<code>&lt;/p&gt;</code>/<code>&lt;/div&gt;</code>/<code>&lt;/li&gt;</code> into a newline, strips every remaining tag, decodes the common HTML entities (<code>&amp;amp;</code> <code>&amp;lt;</code> <code>&amp;gt;</code> <code>&amp;quot;</code> <code>&amp;#39;</code>/<code>&amp;apos;</code> <code>&amp;nbsp;</code>, plus numeric entities <code>&amp;#NNN;</code>), collapses 3+ consecutive newlines to 2 and runs of spaces/tabs to one, and trims. Add an exported <code>formatEbayItemDetails(detail: { description?: string; localizedAspects?: Array&lt;{ name: string; value: string }&gt; }): string | null</code>: HTML-strips and trims <code>detail.description</code> (omitted entirely from the output if blank after stripping); formats every <code>localizedAspects</code> entry as `<code> </code>${name}: ${value}<code> </code><code>, one per line, under a </code>&#x27;Item Specifics (per eBay):&#x27;<code> header (the whole specifics block omitted if the array is absent or empty); joins whichever of the two parts are present with a blank line between them; returns </code>null<code> if neither part produced any content (an eBay item that genuinely has no description and no specifics is still null, not an empty string); caps the combined result at 5000 characters (eBay descriptions can run up to 500,000 characters — this bounds the AI prompt&#x27;s token cost), truncating with a trailing </code>&#x27;... [truncated]&#x27;<code> marker when the cap is hit. Add a new method </code>fetchItemDescription(externalItemId: string): Promise&lt;string | null&gt;<code> to the existing </code>EbayItemDetailClient<code> interface/implementation returned by </code>createEbayItemDetailClient()<code>: calls the same </code>GET /buy/browse/v1/item/{itemId}<code> endpoint </code>fetchItemImageUrls<code> already calls (same error handling, same AppError(502)-on-failure convention), and returns </code>formatEbayItemDetails(body)<code> on the parsed response body. This is a new, independent method — it does not change </code>fetchItemImageUrls<code>&#x27;s existing signature or behavior, and existing callers (</code>photoBackfill.ts`) are untouched.</span></td><td><span data-since="2026-10-12T01:58:30Z" data-until="2026-10-12T02:02:19Z">&mdash;</span> (35 min)</td><td><span data-at="2026-10-12T01:58:30Z">&mdash;</span> (<span data-at="2026-10-12T01:57:40Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens 10500 &middot; Actual tokens 34951</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T2</span></td><td><span class="desc">Scan-time capture (Req 1, 2, 3, 5, 7), depends on T1. <code>apps/server/src/scan/scanService.ts</code>: add an exported <code>ScanServiceDeps</code> interface with one optional member, <code>fetchEbayItemDescription?: (externalItemId: string) =&gt; Promise&lt;string | null&gt;</code>, documented as: never called unless the Source&#x27;s connector is eBay&#x27;s, never called for an already-seen duplicate, and left <code>undefined</code> by every existing test using a fake <code>MarketplaceConnector</code> so none of them gain a new network call. <code>scanSourceWithConnector</code> gains a third, optional <code>deps?: ScanServiceDeps</code> parameter, threaded through to a new private <code>attachCandidateDescription(listingId, candidate, connector, fetchEbayItemDescription)</code> helper called from <code>importCandidateIfNew</code> right alongside the existing <code>attachCandidatePhotos</code> call: no-ops immediately if <code>connector.platformType !== &#x27;ebay&#x27;</code> or <code>fetchEbayItemDescription</code> is undefined; otherwise calls it, and if the result is non-null, <code>updateListing(listingId, { description })</code>; wraps the whole thing in the exact same try/catch-and-<code>logger.warn</code>-and-continue shape <code>attachCandidatePhotos</code> already uses (Req 5 — a detail-fetch failure must never fail the Listing&#x27;s own import). <code>scanSource</code> (the real, production wrapper — not <code>scanSourceWithConnector</code> itself) is the ONLY place that constructs the real dependency: add a small private <code>createLazyEbayDescriptionFetcher()</code> helper that returns a function closing over a memoized, lazily-created <code>createEbayItemDetailClient()</code> call (created on that function&#x27;s own first invocation, not eagerly) — this is what keeps a scan that imports zero new candidates from making any extra eBay OAuth call at all, and keeps a scan that imports several new candidates to one shared OAuth token rather than one per candidate. <code>scanSource</code> passes <code>{ fetchEbayItemDescription: createLazyEbayDescriptionFetcher() }</code> as <code>deps</code> only when <code>connector.platformType === &#x27;ebay&#x27;</code>, matching the same platform-gating <code>attachCandidateDescription</code> itself already checks (defense in depth, not redundant — <code>scanSourceWithConnector</code> is also called directly, with injected test deps, bypassing <code>scanSource</code> entirely). Update <code>apps/server/test/scanService.test.ts</code>&#x27;s existing <code>&#x27;scanSource photo download call budget (Req 2)&#x27;</code> describe block (the one asserting exactly one <code>/buy/browse/</code> call and one <code>/oauth2/token</code> call for a scan importing one new candidate): its own comment already explains why a per-item eBay API call would normally be the wrong pattern — add a note immediately above the updated assertions explaining that this feature&#x27;s own single-item detail call is the deliberate, necessary exception that comment warns against conflating with a real per-item-scaling regression, since eBay&#x27;s search summaries genuinely never carry description/specifics data no matter how the connector is written. Extend its <code>fetchMock</code> to also handle a <code>/buy/browse/v1/item/</code> request (matched by URL substring, same style as its existing <code>/oauth2/token</code>/<code>/buy/browse/</code> branches) returning a fixture <code>{ description: &#x27;&lt;p&gt;Great condition&lt;/p&gt;&#x27;, localizedAspects: [{ name: &#x27;RAM&#x27;, value: &#x27;16GB&#x27; }] }</code>; update the call-count assertions from 1 to 2 for both <code>/buy/browse/</code> and <code>/oauth2/token</code> (one of each for the search, one of each for the new lazily-created detail client), add <code>expect(urls.filter((u) =&gt; u.includes(&#x27;/buy/browse/v1/item/&#x27;))).toHaveLength(1);</code>, and add a new assertion that the imported Listing&#x27;s <code>description</code> now reads <code>&#x27;Great condition\n\nItem Specifics (per eBay):\nRAM: 16GB&#x27;</code> (or whatever <code>formatEbayItemDetails</code> actually produces for that exact fixture — assert the real value, not a substring match). MUST_FIX (Cycle 0 retry, from R2): the <code>scanSource photo download call budget (Req 2)</code> describe block&#x27;s two tests both use a search response containing exactly one result, zero duplicates, so newCount always equals foundCount and the tests cannot distinguish “one detail call per newly-imported candidate” (correct) from “one detail call per search result” (the Req 7 regression) — both read identically when there are no duplicates in the batch. Add a new case in the same describe block: a search response with at least one already-imported duplicate alongside one new candidate (e.g. 2 results, 1 duplicate + 1 new); assert <code>result.foundCount</code> reflects the full result count (2) while <code>result.newCount</code> is 1; assert the <code>/buy/browse/v1/item/</code> call count is exactly 1 (matching the new-candidate count, not the larger total-result count) — this is what actually proves the detail call is scoped to genuinely-new candidates, since a regression that fires the detail call for every candidate (duplicates included) would make this new assertion fail while the two existing tests stay green. [Retry note: the feature-build-lead dispatch for this retry was interrupted by an environment crash before it could report back; T2&#x27;s own work was independently verified complete and correct afterward via <code>git diff</code> (scanService.ts unchanged from cycle 0&#x27;s original T2 implementation; scanService.test.ts gained exactly the must_fix&#x27;s duplicate-vs-new-candidate test case) and a clean <code>npx vitest run test/scanService.test.ts</code> (16/16 passing). actual_tokens is left blank since no final report was received.]</span></td><td><span data-since="2026-10-12T03:24:25Z" data-until="2026-10-12T04:24:00Z">&mdash;</span> (40 min)</td><td><span data-at="2026-10-12T03:24:25Z">&mdash;</span> (<span data-at="2026-10-12T02:32:40Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens — &middot; Actual tokens —</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T3</span></td><td><span class="desc">One-time description backfill for already-imported eBay listings (Req 4, 5), depends on T1. <code>apps/server/src/db/queries/listings.ts</code>: add <code>listListingsMissingDescription(externalSource: string): Promise&lt;Listing[]&gt;</code>, mirroring <code>listListingsMissingPhotos</code> exactly (<code>WHERE external_source = $external_source AND external_item_id IS NOT NULL AND description IS NULL ORDER BY created_at ASC, id ASC</code>, same doc-comment style explaining what it backs). <code>apps/server/src/scan/descriptionBackfill.ts</code> (new file, mirroring <code>apps/server/src/photos/photoBackfill.ts</code>&#x27;s structure line for line): exported <code>BackfillSummary { succeeded: number; skipped: number; failed: number }</code>; exported <code>BackfillDeps { fetchItemDescription(externalItemId: string): Promise&lt;string | null&gt;; saveDescription(listingId: string, description: string): Promise&lt;void&gt;; }</code>; exported <code>BackfillOutcome = &#x27;succeeded&#x27; | &#x27;skipped&#x27; | &#x27;failed&#x27;</code>; exported <code>backfillOneListing(listing: Listing, deps: BackfillDeps): Promise&lt;BackfillOutcome&gt;</code> — <code>&#x27;skipped&#x27;</code> when <code>listing.externalItemId</code> is null (same guard <code>photoBackfill.ts</code>&#x27;s own version has) or when the eBay call resolves <code>null</code> (nothing to backfill, not an error); <code>&#x27;failed&#x27;</code> on a thrown error, caught and logged, never propagated; <code>&#x27;succeeded&#x27;</code> otherwise, after calling <code>saveDescription</code>; exported <code>backfillListingDescriptions(listings: Listing[], deps: BackfillDeps): Promise&lt;BackfillSummary&gt;</code> — sequential, per-Listing progress logged at Info, identical shape to <code>backfillListingPhotos</code>; exported <code>runDescriptionBackfill(): Promise&lt;BackfillSummary&gt;</code> — calls <code>listListingsMissingDescription(&#x27;ebay&#x27;)</code>, returns the zero-tally summary immediately without creating any eBay client when the list is empty, otherwise lazily creates one <code>EbayItemDetailClient</code> shared across the whole run and wires <code>fetchItemDescription</code>/<code>saveDescription</code> (the latter via <code>updateListing(listingId, { description })</code>) into <code>backfillListingDescriptions</code>. <code>apps/server/src/scripts/backfill-descriptions.ts</code> (new file, copying <code>backfill-photos.ts</code> line for line except calling <code>runDescriptionBackfill</code>/importing from <code>descriptionBackfill.js</code>). <code>apps/server/package.json</code>: add a <code>&quot;backfill-descriptions&quot;: &quot;tsx --env-file-if-exists=.env src/scripts/backfill-descriptions.ts&quot;</code> script entry alongside the existing <code>backfill-photos</code> one.</span></td><td><span data-since="2026-10-12T02:10:45Z" data-until="2026-10-12T02:35:11Z">&mdash;</span> (30 min)</td><td><span data-at="2026-10-12T02:10:45Z">&mdash;</span> (<span data-at="2026-10-12T03:12:40Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens 68000 &middot; Actual tokens 93991</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R1</span></td><td><span class="desc">Review T1 against Req 1-3, scoped to <code>ebayConnector.ts</code>. Confirm <code>stripHtml</code> genuinely removes script/style content (not just their tags), decodes the named entities, and collapses whitespace sensibly on a realistic multi-paragraph eBay-style description with nested tags; confirm <code>formatEbayItemDetails</code> returns <code>null</code> (not <code>&#x27;&#x27;</code>) when both inputs are empty/absent, correctly omits either section when only one is present, and the 5000-character truncation triggers at exactly the right point with the trailing marker; confirm <code>fetchItemDescription</code> reuses the exact same error-handling convention as <code>fetchItemImageUrls</code> (same AppError(502) shape) and does not alter that sibling method&#x27;s own behavior at all. PASS only if at least one hand-traced example input/output pair for <code>stripHtml</code> and <code>formatEbayItemDetails</code> each is verified against the actual code, not read as plausible.</span></td><td><span data-since="2026-10-12T02:10:58Z" data-until="2026-10-12T02:37:54Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-12T02:10:58Z">&mdash;</span> (<span data-at="2026-10-12T02:10:58Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 21800 &middot; Actual tokens 202340</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE1</span></td><td><span class="desc">Test T1. Extend <code>apps/server/test/ebayConnector.test.ts</code> with: <code>stripHtml</code>/<code>formatEbayItemDetails</code> unit cases covering a realistic HTML description (paragraphs, bold, a line break, a <code>&lt;script&gt;</code> block that must disappear entirely), entity decoding, the both-present/description-only/specifics-only/neither-present branches (confirming <code>null</code> specifically for the last one), and the 5000-character truncation boundary (one case just under the cap, one case over it, asserting the exact truncated output, not just its length); a <code>fetchItemDescription</code> case (same <code>fetchMock</code>-stubbed-global-fetch style the existing <code>createEbayItemDetailClient</code> tests already use) proving a realistic fixture response round-trips through to the expected formatted string, a 404 case proving it throws the same <code>AppError(502)</code> shape <code>fetchItemImageUrls</code> already proves, and a case proving an item with neither description nor aspects resolves <code>null</code> rather than throwing. PASS: all new cases pass, no regression in the rest of <code>ebayConnector.test.ts</code>.</span></td><td><span data-since="2026-10-12T02:10:58Z" data-until="2026-10-12T02:37:54Z">&mdash;</span> (25 min)</td><td><span data-at="2026-10-12T02:10:58Z">&mdash;</span> (<span data-at="2026-10-12T02:10:58Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 52900 &middot; Actual tokens 116358</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R2</span></td><td><span class="desc">Review T2 against Req 1, 2, 3, 5, 7, scoped to <code>scanService.ts</code> and its test file. Confirm <code>attachCandidateDescription</code>&#x27;s platform-gate and undefined-deps-gate both genuinely no-op (read the exact conditional, don&#x27;t infer it from the description); confirm the try/catch truly swallows a thrown error without ever failing the Listing&#x27;s own import (trace the call site inside <code>importCandidateIfNew</code>); confirm <code>createLazyEbayDescriptionFetcher</code>&#x27;s memoization genuinely creates the client at most once per scan, on first actual use, not eagerly at <code>scanSource</code>&#x27;s own top (read the closure, don&#x27;t assume); confirm the updated call-budget test&#x27;s new assertions (2x <code>/buy/browse/</code>, 2x <code>/oauth2/token</code>, 1x <code>/buy/browse/v1/item/</code>, the description-populated assertion) are all present and each is checking the real value, not a loosened/weakened version of what T2&#x27;s description promised. PASS only if the lazy-creation claim is verified by tracing the actual closure code, not taken on faith from a comment. PASS (cycle 0 retry pass): all 7 checks confirmed on direct inspection plus a live <code>npx vitest run</code> (16/16) and <code>npx eslint</code> run — both gates, the try/catch swallow, the lazy OAuth memoization, the Req 2 budget assertions, the Req 7 must_fix retry case (<code>distinguishes newly-imported candidates from duplicates in the same batch</code>), and the Req 5 failure test are all genuinely present and correct; no must_fix.</span></td><td><span data-since="2026-10-12T04:25:44Z" data-until="2026-10-12T04:42:48Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-12T04:25:44Z">&mdash;</span> (<span data-at="2026-10-12T04:25:44Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 47300 &middot; Actual tokens 163833</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE2</span></td><td><span class="desc">Test T2 (already substantially specified inside T2&#x27;s own description — this role&#x27;s job is to run what T2&#x27;s builder wrote, confirm it actually falsifies, and extend it if a gap remains). Confirm the updated <code>scanSource photo download call budget</code> test passes and genuinely fails if <code>attachCandidateDescription</code>&#x27;s platform-gate is removed (a mutation check: temporarily make the gate always-true, confirm the test&#x27;s call-count assertions catch a non-eBay connector wrongly getting a description fetch — or, if this project&#x27;s fake connectors are all eBay-typed and such a mutation can&#x27;t be exercised this way, confirm by direct code reading instead and say so plainly). Add a case proving a detail-fetch failure (stub the <code>/buy/browse/v1/item/</code> branch to return a non-200 response) still results in <code>newCount: 1</code> for that scan and the Listing&#x27;s <code>description</code> stays <code>null</code> — Req 5 proven live, not just by trusting the try/catch&#x27;s shape. PASS (cycle 0 retry pass): full file run 16/16 green; the must_fix retry case (<code>distinguishes newly-imported candidates from duplicates in the same batch (Req 7)</code>) is mutation-proven — a mutation firing the detail fetch per search-result instead of per new-candidate makes exactly that test&#x27;s call-count assertion fail (2 vs expected 1), reverted clean afterward; the platform-gate mutation survived (all fake connectors in this file are eBay-typed, so no test can catch a platform-gate regression) — reported plainly per the task&#x27;s own fallback, confirmed instead by direct code reading; Req 5 failure case present and passing. No genuine gap found; no new test added.</span></td><td><span data-since="2026-10-12T04:25:44Z" data-until="2026-10-12T04:42:48Z">&mdash;</span> (25 min)</td><td><span data-at="2026-10-12T04:25:44Z">&mdash;</span> (<span data-at="2026-10-12T04:25:44Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 12500 &middot; Actual tokens 64634</td></tr>
+<tr><td><span class="bad"><span class="dot"></span>Complete &middot; found a FAIL.</span></td><td><span class="tag">R3</span></td><td><span class="desc">Review T3 against Req 4, 5, scoped to <code>listListingsMissingDescription</code>, <code>descriptionBackfill.ts</code>, <code>backfill-descriptions.ts</code>, and the <code>package.json</code> script entry. Confirm the query&#x27;s WHERE clause matches <code>listListingsMissingPhotos</code>&#x27;s own structure exactly (external_source, external_item_id IS NOT NULL, the new description IS NULL predicate, same ordering); confirm <code>backfillOneListing</code>&#x27;s three-outcome logic matches <code>photoBackfill.ts</code>&#x27;s own <code>backfillOneListing</code> precisely (skip-on-null-external-id, skip-on-nothing-to-backfill, fail-on-thrown-error, succeed-otherwise) with no outcome miscategorized; confirm <code>runDescriptionBackfill</code> genuinely skips client creation on an empty list (read the early-return, don&#x27;t assume); confirm the CLI script&#x27;s exit-code convention matches <code>backfill-photos.ts</code>&#x27;s (<code>summary.failed &gt; 0</code> -&gt; exit 1). PASS only if <code>backfillOneListing</code>&#x27;s three branches are each traced against T3&#x27;s own description, not spot-checked on one branch alone. FAIL: zero tests existed for descriptionBackfill.ts/listListingsMissingDescription at review time, resolved immediately after by TE3&#x27;s new descriptionBackfill.test.ts (5 tests, mutation-proven).</span></td><td><span data-since="2026-10-12T02:55:59Z" data-until="2026-10-12T03:19:32Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-12T02:55:59Z">&mdash;</span> (<span data-at="2026-10-12T02:55:59Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 14900 &middot; Actual tokens 50184</td></tr>
+<tr><td colspan="5"><p class="fail">zero tests existed for descriptionBackfill.ts/listListingsMissingDescription at review time, resolved immediately after by TE3&#x27;s new descriptionBackfill.test.ts (5 tests, mutation-proven).</p></td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE3</span></td><td><span class="desc">Test T3. New <code>apps/server/test/descriptionBackfill.test.ts</code>, mirroring <code>apps/server/test/photoBackfill.test.ts</code>&#x27;s structure precisely (isolated-DuckDB-tmpdir dynamic-import pattern for the query test, in-memory <code>recordingDeps</code>-style fakes for the batch tests — no real eBay call and no real file write in any case here): cover <code>backfillOneListing</code>&#x27;s three outcomes (succeeded with a real description saved, skipped for a null external id, skipped for a null eBay response, failed for a thrown error) and <code>listListingsMissingDescription</code>&#x27;s real-DuckDB query proof (a Listing with a description present is excluded, one with description null and a real external id is included, one with description null but no external id is excluded, ordering is oldest-created-first). PASS: new test file fully passes, matches the rigor of the file it mirrors.</span></td><td><span data-since="2026-10-12T02:55:59Z" data-until="2026-10-12T03:19:32Z">&mdash;</span> (30 min)</td><td><span data-at="2026-10-12T02:55:59Z">&mdash;</span> (<span data-at="2026-10-12T02:55:59Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 15000 &middot; Actual tokens 82100</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">U0</span></td><td><span class="desc">UAT pass over the whole feature (Req 1-7): run against the worktree&#x27;s own isolated DuckDB file, no live-production access. (a) Exercise a fresh scan importing a new eBay listing via a stubbed eBay search+detail response (same <code>vi.stubGlobal(&#x27;fetch&#x27;, ...)</code> technique the T1/T2 tests already use) and confirm the imported Listing&#x27;s <code>description</code> column is populated with the prose description followed by the item-specifics block, not null. (b) Run <code>npm run backfill-descriptions</code> for real against the worktree&#x27;s own DuckDB file (seeded with at least one eBay Listing whose <code>description</code> is null and has a real <code>externalItemId</code>, via a stubbed eBay detail response) and confirm the script actually updates that Listing&#x27;s row in the database, not merely a dry run. (c) Read an actual built <code>buildIdentificationPrompt</code> output for a Listing carrying the new combined description + item-specifics text and confirm the richer text appears in the prompt verbatim, proving Req 6 with zero prompt-code change.</span></td><td><span data-since="2026-10-12T05:15:00Z" data-until="2026-10-12T05:26:00Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-12T05:15:00Z">&mdash;</span> (<span data-at="2026-10-12T05:15:00Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">uat &middot; Est tokens 22500 &middot; Actual tokens 119313</td></tr></tbody></table></div>
+<h2>Assumptions</h2><ul class="items"><li><span class="tag">A1</span><span>Description and item specifics are stored together in the Listing&#x27;s existing</span></li><li><span class="tag">A2</span><span>Item specifics are captured generically — every <code>localizedAspects</code> entry eBay</span></li><li><span class="tag">A3</span><span>The backfill for already-imported eBay listings (Requirement 4) is in scope for this</span></li><li><span class="tag">A4</span><span>The combined description + item specifics text is capped at 5000 characters</span></li><li><span class="tag">A5</span><span>A failure fetching eBay&#x27;s item detail (item removed, transient API error) degrades</span></li><li><span class="tag">A6</span><span>The one new eBay API call this feature adds (a single-item detail fetch) is</span></li><li><span class="tag">A7</span><span><code>BaselineSuite</code> is recorded <code>fail</code> for the same single inherited, unrelated,</span></li><li><span class="tag">A16</span><span><code>measure-child-cost.py</code>&#x27;s OMP tag-search (<code>AGENT_TAG: &lt;tag&gt;</code> content grep across</span></li></ul>
+</section>
+<section class="panel" data-cycle-panel="1">
+<h2>Cycle 1</h2>
+<p><strong>Trigger.</strong> UAT found Requirement 4&#x27;s production-run half not yet performed — the backfill mechanism</p>
+<p><strong>Findings.</strong></p><ul><li>Run <code>npm run backfill-descriptions</code> against the real production DuckDB file (not a test/temp DB)</li></ul>
+<p><span class="good"><span class="dot"></span>UAT passed.</span></p>
+<ul><li>Live <code>pc-parts-flipper-dev</code> service (production, main checkout) GET /api/listings?limit=300 returned total=222 and exactly 222 listing rows — matches the pre-backfill total, confirming no row was lost or duplicated.</li><li>Of those 222 rows, 0 have externalSource &#x27;ebay&#x27; with a non-null externalItemId and a null description — the gap this feature fixes is fully closed in production.</li><li>Listing c87e761e-d475-4afa-8817-31f807ad76d8 (&quot;gameing pc Ryzen 5 5600&quot;, the user&#x27;s own reported example) has a non-null, 551-character description containing both the prose paragraph and a 9-line &quot;Item Specifics (per eBay):&quot; block.</li><li>GET /health on the live production service returned {&quot;status&quot;:&quot;ok&quot;}.</li><li>GET /api/listings/c87e761e-d475-4afa-8817-31f807ad76d8 on the live production service returned the same description observed via the bulk listing query — the fix is live, not only present in the database file.</li><li>A direct-file read-only DuckDB connection was attempted first per the task&#x27;s literal instruction and correctly failed with a lock-conflict error against the live service&#x27;s own write lock; the live service was deliberately left running (never stopped) and the same three facts were instead confirmed through its own HTTP API, querying the identical production database file.</li></ul>
+<p class="note">1 task(s). Estimated 10 min. Actual tokens 60,182, estimated 10,000. This never includes the driving conversation's own tokens, which cannot honestly be split by cycle.
+<div class="scroll"><table><thead><tr><th></th><th>Id</th><th>Description</th><th>Duration (Estimate)</th><th>Started At (Estimate)</th></tr></thead><tbody><tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">U1</span></td><td><span class="desc">Independent re-check of Cycle 1&#x27;s single Finding (A20 records the orchestrator&#x27;s own real production run, not an independent check): against the real production database at <code>/mnt/d/repositories/pc-parts-flipper/data/pc-parts-flipper.duckdb</code> (read-only), confirm zero eBay listings have <code>description IS NULL</code>, confirm the total listing count is still 222 (no row lost/duplicated by the backfill), and confirm listing <code>c87e761e-d475-4afa-8817-31f807ad76d8</code> (&quot;gameing pc Ryzen 5 5600&quot;, the user&#x27;s own reported example) has a non-null <code>description</code> containing both prose and an item-specifics block. Also confirm the live <code>pc-parts-flipper-dev</code> service is healthy (<code>GET /health</code>) and its own <code>/api/listings/:id</code> response for that same listing reflects the same description, proving the fix is live, not only in the database file.</span></td><td><span data-since="2026-10-12T05:50:00Z" data-until="2026-10-12T05:59:00Z">&mdash;</span> (10 min)</td><td><span data-at="2026-10-12T05:50:00Z">&mdash;</span> (<span data-at="2026-10-12T05:50:00Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">uat &middot; Est tokens 10000 &middot; Actual tokens 60182</td></tr></tbody></table></div>
+<h2>Assumptions</h2><ul class="items"><li><span class="tag">A19</span><span>UAT&#x27;s one <code>must_fix</code> (run the production backfill) is an operational action, not</span></li><li><span class="tag">A20</span><span><code>npm run backfill-descriptions</code> was run for real against the production database</span></li></ul>
+</section>
+</main><script>
+// REFRESH_MS and LOADED_AT drive the scheduled reload, the on-page countdown, and
+// the auto-refresh toggle below, so none of them can ever disagree with each other.
+var REFRESH_MS=300000, LOADED_AT=Date.now();
+var AUTOREFRESH_KEY='feature-dashboard-autorefresh';
+var reloadTimer=null;
+
+function armReload(){
+  if(reloadTimer) clearTimeout(reloadTimer);
+  reloadTimer=setTimeout(function(){location.reload();}, REFRESH_MS-(Date.now()-LOADED_AT));
+}
+function disarmReload(){
+  if(reloadTimer){clearTimeout(reloadTimer);reloadTimer=null;}
+}
+function storedAutorefreshPref(){
+  try{return localStorage.getItem(AUTOREFRESH_KEY);}catch(e){return null;}
+}
+function setAutorefreshUI(button,on){
+  button.textContent='Auto refresh '+(on?'on':'off');
+  button.setAttribute('aria-pressed',String(on));
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){el.hidden=!on;});
+  document.querySelectorAll('[data-refresh-off-note]').forEach(function(el){el.hidden=on;});
+}
+
+// Durations count up client-side, so an in-progress row does not freeze between
+// publishes, and every timestamp reads in the viewer's own zone rather than one
+// chosen when the page was written.
+function fmt(ms){var s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),
+m=Math.floor(s%3600/60);return h?h+'h '+m+'m':m+'m';}
+function fmtCountdown(ms){var s=Math.max(0,Math.round(ms/1000)),
+m=Math.floor(s/60);return m+'m '+(s%60)+'s';}
+var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtAt(d){
+  var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'pm':'am';
+  h=h%12;if(h===0)h=12;
+  var mm=m<10?'0'+m:m;
+  return MONTHS[d.getMonth()]+' '+d.getDate()+', '+h+':'+mm+ap;
+}
+function tick(){
+  var now=Date.now();
+  document.querySelectorAll('[data-since]').forEach(function(el){
+    var until=el.dataset.until?Date.parse(el.dataset.until):now;
+    el.textContent=fmt(until-Date.parse(el.dataset.since));});
+  document.querySelectorAll('[data-at]').forEach(function(el){
+    el.textContent=fmtAt(new Date(el.dataset.at));});
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){
+    el.textContent=fmtCountdown(REFRESH_MS-(now-LOADED_AT));});
+}
+tick(); setInterval(tick,1000);
+
+// Auto-refresh defaults off once the feature is done (data-feature-done, set by the
+// page itself) and on otherwise, unless this browser already recorded its own choice.
+(function(){
+  var button=document.getElementById('autorefresh');
+  if(!button) return;
+  var stored=storedAutorefreshPref();
+  var defaultOn=!document.querySelector('[data-feature-done]');
+  var isOn=stored===null?defaultOn:stored==='on';
+  setAutorefreshUI(button,isOn);
+  if(isOn) armReload();
+  button.addEventListener('click',function(){
+    var on=button.getAttribute('aria-pressed')!=='true';
+    try{localStorage.setItem(AUTOREFRESH_KEY,on?'on':'off');}catch(e){}
+    setAutorefreshUI(button,on);
+    if(on){LOADED_AT=Date.now();armReload();}else{disarmReload();}
+  });
+  var refreshNow=document.getElementById('refresh-now');
+  if(refreshNow) refreshNow.addEventListener('click',function(){location.reload();});
+})();
+
+// A description gets an expand control only when it truly does not fit.
+document.querySelectorAll('.desc').forEach(function(el){
+  if(el.scrollWidth<=el.clientWidth) return;
+  var b=document.createElement('button');b.className='more';b.textContent='more';
+  b.onclick=function(){el.classList.toggle('open');
+    b.textContent=el.classList.contains('open')?'less':'more';};
+  el.parentNode.appendChild(b);});
+
+function showCycle(n){
+  document.querySelectorAll('[data-cycle-panel]').forEach(function(p){
+    p.hidden=(p.dataset.cyclePanel!==String(n));});
+  document.querySelectorAll('[data-cycle-tab]').forEach(function(t){
+    t.setAttribute('aria-selected',t.dataset.cycleTab===String(n));});
+}
+</script>

@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "backfill-photos": "tsx --env-file-if-exists=.env src/scripts/backfill-photos.ts",
+    "backfill-descriptions": "tsx --env-file-if-exists=.env src/scripts/backfill-descriptions.ts",
     "seed-reference-photos": "tsx --env-file-if-exists=.env src/scripts/seed-reference-photos.ts"
   },
   "dependencies": {

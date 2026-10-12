@@ -38,10 +38,15 @@ interface EbayItemSummary {
 // Shape of a Browse API single-item detail response
 // (`GET /buy/browse/v1/item/{itemId}`). Its image fields are identical in
 // shape to the search response's, but already served at full resolution —
-// only the fields fetchItemImageUrls reads are declared here.
+// fetchItemImageUrls reads the image fields; fetchItemDescription reads
+// `description` and `localizedAspects` (eBay's per-item specifics list,
+// e.g. 'Brand: ASUS') — only the `name`/`value` pair of each aspect is
+// used, eBay's own `type` field is not read.
 interface EbayItemDetail {
   image?: { imageUrl: string };
   additionalImages?: Array<{ imageUrl: string }>;
+  description?: string;
+  localizedAspects?: Array<{ name: string; value: string }>;
 }
 
 // Shape of a Browse API search response.
@@ -154,6 +159,92 @@ function collectImageUrls(item: { image?: { imageUrl: string }; additionalImages
     }
   }
   return upsized;
+}
+
+// Common HTML entities seen in eBay's seller-authored descriptions, mapped
+// to their plain-text characters. Numeric entities (`&#NNN;`) are decoded
+// separately below since they can't be enumerated.
+const HTML_ENTITIES: Record<string, string> = {
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&#39;': "'",
+  '&apos;': "'",
+  '&nbsp;': ' ',
+};
+
+/**
+ * Strips an eBay item description down to plain text. eBay descriptions are
+ * seller-authored HTML (often a full fragment with inline styles), so this
+ * removes `<script>`/`<style>` blocks entirely (tags and content both,
+ * since their content is never human-readable text), turns block-level
+ * boundaries (`<br>`, `</p>`, `</div>`, `</li>`) into newlines so the
+ * result still reads as separated lines rather than one run-on paragraph,
+ * strips every remaining tag, decodes HTML entities (named and numeric),
+ * and finally collapses excess whitespace eBay's HTML commonly introduces
+ * (nested divs each starting their own line, repeated blank lines).
+ */
+function stripHtml(html: string): string {
+  let text = html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li)>/gi, '\n')
+    .replace(/<[^>]+>/g, '');
+
+  text = text.replace(/&#(\d+);/g, (_match, code: string) => String.fromCharCode(Number(code)));
+  text = text.replace(/&amp;|&lt;|&gt;|&quot;|&#39;|&apos;|&nbsp;/g, (match) => HTML_ENTITIES[match] ?? match);
+
+  return text
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// eBay descriptions can run up to 500,000 characters; capping here bounds
+// the AI prompt's token cost rather than passing the whole thing through.
+const MAX_FORMATTED_DETAIL_LENGTH = 5000;
+const TRUNCATION_MARKER = '... [truncated]';
+
+/**
+ * Formats an eBay item's description and item specifics (localizedAspects)
+ * into one plain-text block suitable for an AI prompt. The description
+ * (HTML-stripped) and the specifics (one `name: value` line each, under a
+ * header) are joined with a blank line between whichever parts are present;
+ * either part is omitted entirely when it contributes nothing — a blank
+ * description, or an absent/empty aspects array. Returns null (not an empty
+ * string) when neither part produced any content, since an eBay item that
+ * genuinely has no description and no specifics is different from a
+ * formatting result that failed. The combined result is capped at
+ * MAX_FORMATTED_DETAIL_LENGTH characters, truncated with a trailing marker
+ * when the cap is hit.
+ */
+export function formatEbayItemDetails(detail: {
+  description?: string;
+  localizedAspects?: Array<{ name: string; value: string }>;
+}): string | null {
+  const parts: string[] = [];
+
+  const description = detail.description ? stripHtml(detail.description) : '';
+  if (description.length > 0) {
+    parts.push(description);
+  }
+
+  if (detail.localizedAspects && detail.localizedAspects.length > 0) {
+    const lines = detail.localizedAspects.map((aspect) => `${aspect.name}: ${aspect.value}`);
+    parts.push(['Item Specifics (per eBay):', ...lines].join('\n'));
+  }
+
+  if (parts.length === 0) {
+    return null;
+  }
+
+  const combined = parts.join('\n\n');
+  if (combined.length <= MAX_FORMATTED_DETAIL_LENGTH) {
+    return combined;
+  }
+  return combined.slice(0, MAX_FORMATTED_DETAIL_LENGTH - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
 }
 
 /**
@@ -284,6 +375,14 @@ export interface EbayItemDetailClient {
    * convention everywhere else.
    */
   fetchItemImageUrls(externalItemId: string): Promise<string[]>;
+
+  /**
+   * Returns the formatted description/specifics text for `externalItemId`
+   * (see formatEbayItemDetails), or null when the item has neither. Throws
+   * AppError(502) carrying eBay's own error message when the detail call
+   * fails, matching this connector's error convention everywhere else.
+   */
+  fetchItemDescription(externalItemId: string): Promise<string | null>;
 }
 
 /**
@@ -323,6 +422,20 @@ export async function createEbayItemDetailClient(): Promise<EbayItemDetailClient
       const imageUrls = collectImageUrls(body);
       logger.debug({ externalItemId, imageCount: imageUrls.length }, 'Fetched eBay item detail image URLs');
       return imageUrls;
+    },
+    async fetchItemDescription(externalItemId: string): Promise<string | null> {
+      const response = await fetch(`https://${host}/buy/browse/v1/item/${encodeURIComponent(externalItemId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        const message = await extractEbayErrorMessage(response, 'eBay item detail lookup failed');
+        logger.warn({ host, externalItemId, status: response.status }, 'eBay item detail request failed');
+        throw new AppError(message, 502);
+      }
+
+      const body = (await response.json()) as EbayItemDetail;
+      return formatEbayItemDetails(body);
     },
   };
 }
