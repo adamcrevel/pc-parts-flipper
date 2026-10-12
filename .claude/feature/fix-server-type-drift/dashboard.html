@@ -1,0 +1,323 @@
+<title>Feature</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--radius:8px;
+--autorefresh-bg:rgba(31,95,79,.14);--refresh-bg:rgba(42,95,143,.14);--refresh-ink:#2a5f8f}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74;
+--autorefresh-bg:rgba(79,181,154,.18);--refresh-bg:rgba(111,168,220,.18);--refresh-ink:#8fc1ef}}
+*{box-sizing:border-box;overflow-wrap:break-word}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+/* Grid tracks default to fitting their content's full, unbroken width -- a single
+   long token (a file path, a backtick-quoted identifier) anywhere in a panel would
+   otherwise stretch the whole page past max-width, no matter how long the gap or how
+   small every other panel is. min-width:0 is what lets a grid item shrink below that
+   and actually wrap instead. Confirmed live: this is what was making every real plan
+   (which is full of exactly these long tokens) render many times wider than the
+   viewport, independent of the DOCTYPE/viewport fix. */
+main{max-width:1300px;margin:0 auto;padding:24px;display:grid;gap:20px}
+main>*{min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);
+border-radius:var(--radius);padding:20px 22px}
+h1{margin:0 0 4px;font-size:21px;letter-spacing:-.01em}
+h2{margin:22px 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+h2:first-of-type{margin-top:14px}
+.panel>p{line-height:1.65;margin:0 0 4px}
+.totals{display:flex;gap:32px;flex-wrap:wrap;margin:12px 0}
+.total .n{font-size:26px;font-variant-numeric:tabular-nums}
+.total .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+details{margin-top:8px}summary{cursor:pointer;font-size:13px;color:var(--muted)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{font:inherit;font-size:13px;padding:5px 12px;border-radius:999px;
+border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--good);border-color:var(--good);color:var(--panel)}
+.scroll{overflow-x:auto}
+/* table-layout:auto (the default) sizes a column from its content's own natural
+   width -- for a nowrap+ellipsis cell, that is the FULL unwrapped text, which is
+   exactly the width ellipsis is meant to avoid ever reaching. It is a well-known
+   gap in the auto algorithm, not a quirk of this page: the standard fix is
+   table-layout:fixed, with every narrow column given an explicit width so the
+   description column (the one left unset) absorbs the rest and actually holds
+   .desc to it. Confirmed live: without this, a single real task description
+   dragged the whole table into a wide horizontal scrollbar regardless of how
+   short every other column's content was. */
+table{width:100%;border-collapse:collapse;font-size:14px;table-layout:fixed}
+/* The status column's own text ("In progress &middot; running long.") is real
+   prose, not a single short token -- 28px forced it to wrap, and the page's own
+   global overflow-wrap:break-word (needed elsewhere, see main>* above) then broke
+   it mid-word instead of at a space. Wide enough for the longest badge on two
+   lines, with normal word-wrapping restored just for this column. */
+th:first-child,td:first-child{width:112px;overflow-wrap:normal}
+th:nth-child(2),td:nth-child(2){width:52px}
+th:nth-child(4),td:nth-child(4){width:160px}
+th:nth-child(5),td:nth-child(5){width:300px}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.good .dot,.dot.good{background:var(--good)}.bad .dot,.dot.bad{background:var(--bad)}
+.neutral .dot,.dot.neutral{background:var(--muted)}
+.sub td{border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);padding-top:0}
+/* .desc is a <span> -- inline by default, and width/overflow/text-overflow are all
+   spec-ignored on a plain inline box, so none of this ever actually truncated
+   anything on its own. display:block (now that its <td> has a real fixed width to
+   fill, from table-layout:fixed above) is what makes the rest of this rule do
+   anything at all. */
+.desc{display:block;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.desc.open{white-space:normal;overflow:visible}
+.more{font:inherit;font-size:11px;border:none;background:none;color:var(--muted);cursor:pointer}
+.tag{display:inline-block;padding:0 6px;margin-right:4px;border:1px solid var(--line);
+border-radius:999px;font-size:11px;font-variant-numeric:tabular-nums}
+.banner{border-left:3px solid var(--bad);padding:10px 14px;background:var(--panel);
+border-radius:var(--radius);margin-bottom:14px}
+.fail{background:rgba(163,49,42,.09);padding:6px 9px;border-radius:6px;margin-top:6px}
+ul,ol{margin:8px 0;padding-left:24px}
+li{margin:8px 0;line-height:1.6}
+/* Requirements and Assumptions are both "one short id, one longer text" --
+   the same shape a table row has, so they get the same row-grid treatment
+   the task table already uses (a border between rows, an aligned label
+   column), instead of reading as a looser bulleted paragraph. Plain bullet
+   lists (Findings, UAT checks) keep the plainer rule above. The id badge
+   reuses .tag -- the exact same pill the task table's own id column uses now
+   -- so a reader learns one visual language for "this is an id" instead of
+   three different ones. */
+.items{list-style:none;margin:8px 0;padding:0;display:grid;gap:0}
+.items li{margin:0;display:grid;grid-template-columns:34px 1fr;gap:10px;
+padding:10px 2px;border-bottom:1px solid var(--line);line-height:1.6}
+.items li:last-child{border-bottom:none}
+/* A grid item's own display:inline-block is not enough to stop it stretching
+   to fill its whole cell -- CSS Grid stretches an item's box to its area by
+   default regardless, so the pill's border was being drawn around the full
+   34px-by-row-height cell instead of snugly around "A1". justify/align-self
+   opt back out of that stretch. */
+.items li>:first-child{justify-self:start;align-self:start}
+.note{font-size:12px;color:var(--muted)}
+.btn{display:inline-block;padding:8px 16px;margin:2px 0;border-radius:8px;
+background:var(--good);color:var(--panel);text-decoration:none;font-size:13px;font-weight:600}
+.btn:hover{opacity:.85}
+/* Same shape for both so they read as a pair of related controls; a different
+   background on each is the only thing telling them apart at a glance -- a toggle
+   and an immediate action should not look identical. */
+.ghost-btn{font:inherit;font-size:12px;padding:4px 12px;border-radius:999px;
+border:none;cursor:pointer}
+.ghost-btn.autorefresh{background:var(--autorefresh-bg);color:var(--good)}
+.ghost-btn.refresh-now{background:var(--refresh-bg);color:var(--refresh-ink)}
+.ghost-btn:hover{opacity:.8}
+.refresh-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+pre{font-family:inherit;white-space:pre-wrap;word-break:break-word;margin:0;line-height:1.65}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.9em;
+background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+/* A retrospective's own markdown headings nest two levels below this section's own
+   h2, so "What happened" reads as a sub-heading of "Retrospective", never a peer of
+   it or of another panel's h2 entirely. */
+.prose h3{margin:18px 0 8px;font-size:15px}
+.prose h4,.prose h5,.prose h6{margin:14px 0 6px;font-size:14px;color:var(--muted)}
+.prose p{margin:8px 0;line-height:1.65}
+/* A bullet whose own text opens with a bold phrase is using it as the item's own
+   title, not as mid-sentence emphasis -- block-level + its own line is what actually
+   separates the two instead of letting the body run on immediately after it. */
+.prose .bullet-title{display:block;margin-bottom:2px}
+.prose .bullet-body{display:block}
+</style>
+<main>
+<section class="panel">
+<h1>Feature</h1>
+<p class="note">Status done &middot; cycle 0 of 3</p>
+<p class="note refresh-controls" data-feature-done><button type="button" id="autorefresh" class="ghost-btn autorefresh" aria-pressed="false">Auto refresh off</button> <button type="button" id="refresh-now" class="ghost-btn refresh-now">Refresh now</button> &middot; <span data-refresh-in>5m 0s</span><span data-refresh-off-note hidden>Auto-refresh is off.</span></p>
+<h2>Goal</h2><p><code>npm run build -w apps/server</code> (and the root <code>npm run build</code>) currently fail with ~40 <code>tsc</code> errors.
+Root cause, confirmed by reading every affected file: <code>apps/server/src/db/types.ts</code> hand-maintains a
+local mirror of 8 DuckDB row shapes that already exist, field-for-field identical once corrected, in
+<code>packages/shared</code> — a second copy that several past features updated on one side (almost always
+<code>packages/shared</code>, since that is what routes/the web UI needed) without updating the other. In every
+one of the 9 currently-drifted entities, the real DB query function
+(<code>apps/server/src/db/queries/*.ts</code>) already builds the complete, correctly-named object matching the
+real schema and <code>packages/shared</code> — only the stale local interface declaration blocks <code>tsc</code>. One
+entity (<code>PricePartsJob</code>) also has a genuine one-line code gap: its query&#x27;s <code>mapRow</code> never reads the
+<code>updated_at</code> column into the returned object, even though the column exists and is written on every
+update. A sibling connector-staging type (<code>apps/server/src/connectors/types.ts</code>&#x27;s <code>CandidateListing</code>)
+is missing one field the same way.
+
+Rather than re-fix this second copy in place (which only repeats the bug&#x27;s precondition — two
+declarations of the same shape, free to drift again next feature), this plan eliminates the
+duplication for every entity where it is pure staleness with nothing deliberately different left: of
+<code>db/types.ts</code>&#x27;s 12 exported entity types, 8 (<code>Source</code>, <code>Listing</code>, <code>Purchase</code>, <code>TeardownResult</code>,
+<code>Part</code>, <code>SaleListing</code>, <code>Sale</code>, plus their 6 backing enums) are exact duplicates of
+<code>packages/shared</code>&#x27;s own types once corrected, with no remaining reason to keep two copies. One more,
+<code>ExpectedPart</code>, has a single deliberate, documented difference (<code>packages/shared</code>&#x27;s version makes
+<code>aiConfidence</code>/<code>aiSource</code>/<code>priceSource</code> optional for backward compatibility with callers built before
+a past feature; the DB-row version keeps them required since every migrated row already has them) —
+still safely collapsible, since optional is a strict superset of required, but called out rather than
+silently flattened. The remaining 4 (<code>SourcingAttempt</code>, <code>ReferencePhoto</code>, <code>PartPriceCacheEntry</code>,
+<code>PricePartsJob</code>) correctly have no <code>packages/shared</code> counterpart at all — they never cross the HTTP
+boundary (internal job-queue/cache/training-data concerns) — and stay exactly where they are.
+
+This has no runtime or test impact today — the live dev service runs via <code>tsx watch</code> (no compile
+step) and the test suite runs via vitest&#x27;s esbuild transform (no type-check) — which is why the
+drift went unnoticed across multiple features. Fixing it is still worth doing: a broken build blocks
+any future CI/tooling that type-checks, and collapsing the duplication (rather than only re-syncing
+it) removes the precondition for this exact bug recurring.</p>
+<h2>Requirements</h2><ul class="items"><li><span class="tag">1</span><span><code>apps/server/src/db/types.ts</code> no longer declares <code>Source</code>, <code>Listing</code>, <code>Purchase</code>,
+   <code>TeardownResult</code>, <code>Part</code>, <code>SaleListing</code>, <code>Sale</code>, <code>ExpectedPart</code>, or their 6 backing enums
+   (<code>PlatformType</code>, <code>ListingStatus</code>, <code>PurchaseStatus</code>, <code>ComponentCategory</code>, <code>TeardownResultType</code>,
+   <code>PartStatus</code>) — every one of these 15 names is deleted from this file. It keeps only
+   <code>SourcingAttempt</code>, <code>ReferencePhoto</code>, <code>PartPriceCacheEntry</code>, <code>PricePartsJob</code>, and
+   <code>PricePartsJobStage</code> (the 4 entities + 1 enum with no <code>packages/shared</code> counterpart, since they
+   never cross the HTTP boundary), each already corrected to match the real schema (field renames
+   below).</span></li><li><span class="tag">2</span><span><code>apps/server/src/db/index.ts</code>&#x27;s barrel (<code>export * from &#x27;./types.js&#x27;</code>) gains a second export
+   statement re-exporting the 15 collapsed names from <code>@pc-parts-flipper/shared</code> instead, so every
+   one of the 23 files that imports these names via <code>../db/index.js</code> needs zero changes.</span></li><li><span class="tag">3</span><span>Every file that currently imports one of the 15 collapsed names directly from <code>&#x27;../types.js&#x27;</code>
+   (the full list: <code>connectors/ebayConnector.ts</code>, <code>connectors/registry.ts</code>,
+   <code>db/queries/catalogSourcingAttempts.ts</code>, <code>db/queries/expectedParts.ts</code>, <code>db/queries/listings.ts</code>,
+   <code>db/queries/parts.ts</code>, <code>db/queries/profit.ts</code>, <code>db/queries/purchases.ts</code>,
+   <code>db/queries/saleListings.ts</code>, <code>db/queries/sales.ts</code>, <code>db/queries/sources.ts</code>,
+   <code>db/queries/sourcingAttempts.ts</code>, <code>db/queries/teardownResults.ts</code>,
+   <code>db/seedReferencePhotosData.ts</code> — confirmed by a direct repo-wide grep; re-confirm this list is
+   still exhaustive before editing, since this plan&#x27;s own grep could itself be stale by the time
+   this task runs) instead imports those same names from <code>@pc-parts-flipper/shared</code>, keeping any
+   remaining genuinely-local names (e.g. <code>partPriceCache.ts</code>/<code>pricePartsJobs.ts</code>/
+   <code>referencePhotoLookup.ts</code> still import <code>PartPriceCacheEntry</code>/<code>PricePartsJob</code>/<code>ReferencePhoto</code>
+   from <code>&#x27;../types.js&#x27;</code>, only their <code>ComponentCategory</code> import moves to shared) from <code>&#x27;../types.js&#x27;</code>
+   unchanged.
+3a. <code>apps/server/src/db/queries/expectedParts.ts</code>&#x27;s own <code>mapRow</code> (or wherever it builds an
+    <code>ExpectedPart</code>) is checked against the now-optional <code>aiConfidence</code>/<code>aiSource</code>/<code>priceSource</code>
+    fields — since optional is a superset of required, no code change should be needed here, but
+    confirm this directly rather than assume it; if <code>tsc</code> surfaces anything, it is one of this
+    plan&#x27;s few genuinely new findings, not an already-known fix.</span></li><li><span class="tag">4</span><span>The remaining 4 local entities&#x27; fields are corrected to match the real schema (pure renames, no
+   deletion/collapse, since there is nothing to collapse them into):
+   - <code>ReferencePhoto</code>: rename <code>partCategory</code>→<code>category</code>, <code>partBrand</code>→<code>brand</code>; remove the fabricated
+     <code>notes</code>/<code>updatedAt</code> fields (neither column exists on <code>part_reference_photos</code>); add
+     <code>source: string</code>, <code>listingId: string | null</code>.
+   - <code>PartPriceCacheEntry</code>: rename <code>partCategory</code>→<code>category</code>, <code>partBrand</code>→<code>brand</code>,
+     <code>cachedPrice</code>→<code>estimatedResaleValue</code>; add <code>lastResearchedAt: string | null</code>.
+   - <code>PricePartsJob</code>: rename <code>partCategory</code>→<code>category</code>, <code>partBrand</code>→<code>brand</code>; add
+     <code>errorMessage: string | null</code>, <code>startedAt: string | null</code>, <code>completedAt: string | null</code>,
+     <code>updatedAt: string</code>. The query function itself
+     (<code>apps/server/src/db/queries/pricePartsJobs.ts</code>&#x27;s <code>mapRow</code>) gets an actual code change, not
+     just a type fix: add <code>updatedAt: row.updated_at as string,</code> to the object it returns — the
+     column already exists and is already written by every UPDATE, but is currently silently
+     dropped on read.</span></li><li><span class="tag">5</span><span><code>apps/server/src/connectors/types.ts</code>&#x27;s <code>CandidateListing</code> interface gains
+   <code>listingDate: string</code> — every producer (<code>ebayConnector.ts</code>&#x27;s <code>mapItemSummary</code>) already builds
+   this field; every consumer (<code>scanService.ts</code>&#x27;s <code>importCandidateIfNew</code>) already reads it. (This
+   type is a connector-staging shape, unrelated to the <code>db/types.ts</code> collapse above — it never had
+   a <code>packages/shared</code> counterpart and correctly stays exactly where it is.)</span></li><li><span class="tag">6</span><span>After every change above, <code>npm run build -w apps/server</code> and the root <code>npm run build</code> both exit 0
+   with zero <code>tsc</code> errors. No behavioral change anywhere outside Requirement 4&#x27;s one <code>updatedAt</code>
+   read — every other change is either a pure type-source change (import from <code>@pc-parts-flipper/
+   shared</code> instead of a local duplicate that already matched it) or a type-annotation correction
+   matching what the code already does at runtime, confirmed by the fact that the whole test
+   suite&#x27;s observable behavior and count are unchanged.</span></li></ul>
+<div class="totals">
+<div class="total"><div class="n" data-since="2026-10-12T06:10:00Z">&mdash;</div><div class="l">total time</div></div>
+<div class="total"><div class="n">1,247,978</div><div class="l">total tokens</div></div>
+</div>
+<details><summary>Where that token figure comes from</summary><p class="note">input 0 + output 33,359 + cache-write 300,700 + cache-read 377,701, across 85 turns</p><p class="note">Most of a long conversation's token count is cache-read: the accumulated context is resent on every turn and billed at a fraction of the normal rate. A high total reflects the turn count over time, not necessarily a large bill.</p></details>
+</section>
+<nav class="tabs">
+<button data-cycle-tab="0" aria-selected="true" onclick="showCycle(0)">Cycle 0</button>
+</nav>
+<section class="panel" data-cycle-panel="0">
+<h2>Cycle 0</h2>
+<p><strong>Trigger.</strong> initial</p>
+<p><span class="good"><span class="dot"></span>UAT passed.</span></p>
+<ul><li>apps/server booted clean against an isolated temp DuckDB file (DUCKDB_DATA_DIR override), GET /health returned 200 {&quot;status&quot;:&quot;ok&quot;}.</li><li>apps/web booted clean via vite on an isolated port, GET / returned 200 with valid HTML.</li><li>POST /api/sources returned 201 with a full Source object (exercises collapsed Source/PlatformType).</li><li>POST /api/listings with a nested Expected Part returned 201 with ListingDetail populated (exercises collapsed Listing/ListingStatus/ComponentCategory).</li><li>POST /api/listings/:id/accept returned 201, status flipped to accepted, and a Purchase row was created with status ordered, pricePaid matching (exercises collapsed Purchase/PurchaseStatus).</li><li>PATCH /api/purchases/:id/status to shipped then received both returned 200 with the new status.</li><li>POST /api/purchases/:id/teardown returned 200 with populated teardownResults and createdParts arrays (exercises collapsed TeardownResult and Part directly).</li><li>POST /api/parts/:partId/sale-listings returned 201 with a full SaleListing (listedAt null, draft) — exercises collapsed SaleListing.</li><li>POST /api/sale-listings/:id/mark-listed returned 200 with listedAt populated and the Part&#x27;s status flipped to listed.</li><li>POST /api/parts/:partId/sale returned 201 with a full Sale object (soldPrice, soldDate, platformFee, shippingCost, buyerNote) and the Part&#x27;s status flipped to sold — exercises collapsed Sale.</li><li>Direct read of apps/server/src/db/types.ts confirmed none of the 15 collapsed names remain, and exactly the 5 permitted local names do.</li><li>Direct read of apps/server/src/db/index.ts confirmed the barrel re-exports all 15 collapsed names from @pc-parts-flipper/shared, not a local declaration.</li><li>Repo-wide grep confirmed zero remaining imports of a collapsed name from local types.js anywhere outside the barrel.</li><li>Fresh (this UAT&#x27;s own run, not reused from the builder/validator) npm run build -w apps/server, the root npm run build, and the root npm run typecheck all exited 0.</li><li>git diff review confirmed zero behavioral change anywhere beyond the one sanctioned pricePartsJobs.ts updatedAt read and pure type-signature narrowings.</li><li>Standing gate (cited from feature-validate-lead&#x27;s digest, not re-run): 962/962 tests matching BaselineTests, suite result pass, lint clean, no DuckDB schema change.</li></ul>
+<p class="note">7 task(s). Estimated 170 min. Actual tokens 536,218, estimated 181,400. This never includes the driving conversation's own tokens, which cannot honestly be split by cycle.
+<div class="scroll"><table><thead><tr><th></th><th>Id</th><th>Description</th><th>Duration (Estimate)</th><th>Started At (Estimate)</th></tr></thead><tbody><tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T1</span></td><td><span class="desc">Execute Requirements 1-6 exactly: delete the 8 interfaces + 6 enums named in Requirement 1 from <code>apps/server/src/db/types.ts</code>; add the re-export statement in Requirement 2 to <code>apps/server/src/db/index.ts</code>; update every file listed in Requirement 3 to import the collapsed names from <code>@pc-parts-flipper/shared</code> instead of <code>&#x27;../types.js&#x27;</code> (re-confirm the file list is still exhaustive via a fresh grep before starting, per Requirement 3&#x27;s own caveat); check Requirement 3a&#x27;s <code>ExpectedPart</code> optional-field nuance directly; fix the 4 remaining local entities&#x27; fields per Requirement 4, including the one real <code>mapRow</code> code change in <code>pricePartsJobs.ts</code>; fix <code>connectors/types.ts</code>&#x27;s <code>CandidateListing</code> per Requirement 5. After every change, run <code>npm run build -w apps/server</code> and confirm it exits 0 with zero errors; if any error remains, it names something this plan&#x27;s own investigation missed (a 10th entity, a 19th importing file, or similar) — read the real schema/query/shared-type triad for that one specifically, the same method this plan&#x27;s own investigation already used throughout, rather than guessing a type into place or reintroducing a local duplicate to silence the error. Do not touch any file&#x27;s runtime logic beyond the one specified <code>pricePartsJobs.ts</code> line.</span></td><td><span data-since="2026-10-12T16:24:02Z" data-until="2026-10-12T16:31:58Z">&mdash;</span> (60 min)</td><td><span data-at="2026-10-12T16:24:02Z">&mdash;</span> (<span data-at="2026-10-12T06:25:00Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens 68900 &middot; Actual tokens null</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R1</span></td><td><span class="desc">Review T1 against Requirements 1-6. Confirm the 8 interfaces + 6 enums are genuinely gone from <code>db/types.ts</code> (not merely re-exported from there), and that <code>db/index.ts</code>&#x27;s new re-export line genuinely sources them from <code>@pc-parts-flipper/shared</code>, not from a leftover local declaration. Spot-check at least 5 of the files in Requirement 3&#x27;s list to confirm the import source actually changed (not just that the build happens to pass some other way, e.g. a stray <code>any</code>). Confirm Requirement 3a&#x27;s <code>ExpectedPart</code> check was actually performed and its outcome stated, not silently skipped. Confirm the 4 remaining local entities&#x27; fields and the <code>pricePartsJobs.ts</code> <code>mapRow</code> line match Requirement 4 exactly. Confirm no file&#x27;s runtime behavior changed beyond that one line (<code>git diff</code> should show only type/import-source changes everywhere else). Run <code>npm run build -w apps/server</code> and the root <code>npm run build</code> yourself and confirm both exit 0.</span></td><td><span data-since="2026-10-12T16:40:48Z" data-until="2026-10-12T17:04:39Z">&mdash;</span> (25 min)</td><td><span data-at="2026-10-12T16:40:48Z">&mdash;</span> (<span data-at="2026-10-12T16:40:48Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 48000 &middot; Actual tokens 202340</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE1</span></td><td><span class="desc">Test T1. No new runtime behavior was introduced (Requirement 6), so this is a build-verification task, not a new-test-writing one: run the full existing suite (<code>npm run test -w packages/shared -w apps/web -w apps/server</code>) and confirm the test count and pass/fail outcome are unchanged from <code>BaselineTests</code>/<code>BaselineSuite</code> above (a type-only/import-source-only fix must not change any test&#x27;s observable behavior). Separately, run <code>npm run build -w apps/server</code> and the root <code>npm run build</code> and confirm both exit 0 — this is this task&#x27;s actual pass/fail bar, standing in for &quot;the new test&quot; a behavior-changing task would otherwise need.</span></td><td><span data-since="2026-10-12T16:40:48Z" data-until="2026-10-12T17:04:39Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-12T16:40:48Z">&mdash;</span> (<span data-at="2026-10-12T16:40:48Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 10300 &middot; Actual tokens 116358</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">T2</span></td><td><span class="desc">Add a <code>&quot;typecheck&quot;: &quot;tsc -p tsconfig.json --noEmit&quot;</code> script to <code>apps/server/package.json</code>, and a matching root-level <code>&quot;typecheck&quot;: &quot;npm run typecheck -w apps/server&quot;</code> wired alongside the existing root <code>lint</code> script (same place/pattern <code>lint</code> is invoked from), so a future type error of any kind — not only a repeat of this specific duplication pattern, since that precondition is now gone — fails loudly and routinely rather than silently, the way it did here until this feature. Confirm <code>npm run typecheck</code> (root) exits 0 on the now-fixed codebase, and confirm it exits non-zero against a deliberately-reintroduced single-field type error (then revert that temporary change before finishing) — proving it actually catches this exact class of problem, not just that it runs.</span></td><td><span data-since="2026-10-12T17:05:53Z" data-until="2026-10-12T17:10:07Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-12T17:05:53Z">&mdash;</span> (<span data-at="2026-10-12T07:25:00Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">builder &middot; Est tokens 5600 &middot; Actual tokens 29804</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">R2</span></td><td><span class="desc">Review T2. Confirm the new <code>typecheck</code> script actually invokes <code>tsc --noEmit</code> against <code>apps/server</code>&#x27;s real <code>tsconfig.json</code> (not a no-op, not scoped to the wrong directory). Confirm it is wired somewhere a human would actually run it routinely (say exactly where, rather than overclaiming automatic CI enforcement this repo may not have). Confirm it does not change <code>build</code>&#x27;s own behavior (both now independent: <code>build</code> still emits, <code>typecheck</code> only checks).</span></td><td><span data-since="2026-10-12T17:16:04Z" data-until="2026-10-12T17:18:07Z">&mdash;</span> (15 min)</td><td><span data-at="2026-10-12T17:16:04Z">&mdash;</span> (<span data-at="2026-10-12T17:16:04Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">reviewer &middot; Est tokens 11800 &middot; Actual tokens 39464</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">TE2</span></td><td><span class="desc">Test T2. Confirm <code>npm run typecheck</code> (root) exits 0 on the fixed codebase. Confirm it exits non-zero against a deliberately-reintroduced single-field type error (e.g. temporarily renaming one field back to its old, wrong name), then confirm reverting that temporary change restores a clean exit — proving the new script is load-bearing, not cosmetic.</span></td><td><span data-since="2026-10-12T17:16:04Z" data-until="2026-10-12T17:17:29Z">&mdash;</span> (10 min)</td><td><span data-at="2026-10-12T17:16:04Z">&mdash;</span> (<span data-at="2026-10-12T17:16:04Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">tester &middot; Est tokens 10800 &middot; Actual tokens 29103</td></tr>
+<tr><td><span class="good"><span class="dot"></span>Complete.</span></td><td><span class="tag">U0</span></td><td><span class="desc">UAT pass over the whole feature (Requirements 1-6): this feature changes zero user-facing behavior by design, so the exercise is proving that holds true for real, not demonstrating a new capability. Start apps/server + apps/web for real in the worktree, on isolated ports against the worktree&#x27;s own isolated DuckDB file (never the live production database) — confirm the app boots clean with the collapsed types (a type-only/import-source-only change could still break something real <code>tsc</code>&#x27;s structural typing missed, e.g. a subtly wrong <code>null</code> vs <code>undefined</code> at a true runtime boundary). Exercise, end to end through the real HTTP API: create a Source, create a Listing on it, accept it into a Purchase, tear it down into Parts (touches <code>TeardownResult</code>/<code>Part</code>, two of the collapsed types), create a Sale Listing for a Part and mark it listed (touches <code>SaleListing</code>), record a Sale (touches <code>Sale</code>) — confirming each collapsed-type entity&#x27;s real read/write path still works, not just that <code>tsc</code> is satisfied. Separately, fresh in this UAT&#x27;s own pass (not trusting the builder/validator&#x27;s prior runs forward): run <code>npm run build -w apps/server</code>, the root <code>npm run build</code>, and the root <code>npm run typecheck</code>, and confirm all three exit 0.</span></td><td><span data-since="2026-10-12T17:20:00Z" data-until="2026-10-12T17:30:00Z">&mdash;</span> (20 min)</td><td><span data-at="2026-10-12T17:20:00Z">&mdash;</span> (<span data-at="2026-10-12T17:20:00Z">&mdash;</span>)</td></tr>
+<tr class="sub"><td colspan="5">uat &middot; Est tokens 26000 &middot; Actual tokens 119149</td></tr></tbody></table></div>
+<h2>Assumptions</h2><ul class="items"><li><span class="tag">A1</span><span>Revises the original narrower plan (re-sync <code>db/types.ts</code> in place, add only a</span></li><li><span class="tag">A2</span><span>The typecheck guard (T2) is kept as a still-valuable but now more modestly-justified</span></li><li><span class="tag">A3</span><span><code>BaselineSuite</code> is recorded <code>pass</code> for this feature&#x27;s baseline run (59/59 server</span></li><li><span class="tag">A4</span><span><code>ebayConnector.ts</code> and <code>registry.ts</code>, named in the plan&#x27;s Requirement 3 file list,</span></li><li><span class="tag">A5</span><span><code>jobs/identifyPartsWorkerPool.ts</code> (importing <code>Listing</code> from <code>&#x27;../db/types.js&#x27;</code>) was</span></li><li><span class="tag">A6</span><span><code>routes/listingPhotos.ts</code>&#x27;s type error (<code>ExpectedPart[]</code> vs <code>ExpectedPartInput[]</code></span></li><li><span class="tag">A7</span><span><code>PartPriceCacheEntry.estimatedResaleValue</code> was typed <code>number | null</code> (not the plain</span></li><li><span class="tag">A8</span><span><code>SourcingAttempt</code> (<code>db/types.ts</code>) was left completely unchanged — Requirement 4</span></li><li><span class="tag">A9</span><span><code>feature-pm</code> is not in this validator&#x27;s allowed spawn set in this run (only</span></li><li><span class="tag">A10</span><span>T2&#x27;s root <code>package.json</code> has <code>lint</code> wired as a single top-level command (`eslint</span></li><li><span class="tag">A11</span><span><code>measure-child-cost.py child-cost --tag &quot;review T2&quot;</code> / <code>&quot;test T2&quot;</code> both returned</span></li></ul>
+</section>
+</main><script>
+// REFRESH_MS and LOADED_AT drive the scheduled reload, the on-page countdown, and
+// the auto-refresh toggle below, so none of them can ever disagree with each other.
+var REFRESH_MS=300000, LOADED_AT=Date.now();
+var AUTOREFRESH_KEY='feature-dashboard-autorefresh';
+var reloadTimer=null;
+
+function armReload(){
+  if(reloadTimer) clearTimeout(reloadTimer);
+  reloadTimer=setTimeout(function(){location.reload();}, REFRESH_MS-(Date.now()-LOADED_AT));
+}
+function disarmReload(){
+  if(reloadTimer){clearTimeout(reloadTimer);reloadTimer=null;}
+}
+function storedAutorefreshPref(){
+  try{return localStorage.getItem(AUTOREFRESH_KEY);}catch(e){return null;}
+}
+function setAutorefreshUI(button,on){
+  button.textContent='Auto refresh '+(on?'on':'off');
+  button.setAttribute('aria-pressed',String(on));
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){el.hidden=!on;});
+  document.querySelectorAll('[data-refresh-off-note]').forEach(function(el){el.hidden=on;});
+}
+
+// Durations count up client-side, so an in-progress row does not freeze between
+// publishes, and every timestamp reads in the viewer's own zone rather than one
+// chosen when the page was written.
+function fmt(ms){var s=Math.max(0,Math.round(ms/1000)),h=Math.floor(s/3600),
+m=Math.floor(s%3600/60);return h?h+'h '+m+'m':m+'m';}
+function fmtCountdown(ms){var s=Math.max(0,Math.round(ms/1000)),
+m=Math.floor(s/60);return m+'m '+(s%60)+'s';}
+var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtAt(d){
+  var h=d.getHours(),m=d.getMinutes(),ap=h>=12?'pm':'am';
+  h=h%12;if(h===0)h=12;
+  var mm=m<10?'0'+m:m;
+  return MONTHS[d.getMonth()]+' '+d.getDate()+', '+h+':'+mm+ap;
+}
+function tick(){
+  var now=Date.now();
+  document.querySelectorAll('[data-since]').forEach(function(el){
+    var until=el.dataset.until?Date.parse(el.dataset.until):now;
+    el.textContent=fmt(until-Date.parse(el.dataset.since));});
+  document.querySelectorAll('[data-at]').forEach(function(el){
+    el.textContent=fmtAt(new Date(el.dataset.at));});
+  document.querySelectorAll('[data-refresh-in]').forEach(function(el){
+    el.textContent=fmtCountdown(REFRESH_MS-(now-LOADED_AT));});
+}
+tick(); setInterval(tick,1000);
+
+// Auto-refresh defaults off once the feature is done (data-feature-done, set by the
+// page itself) and on otherwise, unless this browser already recorded its own choice.
+(function(){
+  var button=document.getElementById('autorefresh');
+  if(!button) return;
+  var stored=storedAutorefreshPref();
+  var defaultOn=!document.querySelector('[data-feature-done]');
+  var isOn=stored===null?defaultOn:stored==='on';
+  setAutorefreshUI(button,isOn);
+  if(isOn) armReload();
+  button.addEventListener('click',function(){
+    var on=button.getAttribute('aria-pressed')!=='true';
+    try{localStorage.setItem(AUTOREFRESH_KEY,on?'on':'off');}catch(e){}
+    setAutorefreshUI(button,on);
+    if(on){LOADED_AT=Date.now();armReload();}else{disarmReload();}
+  });
+  var refreshNow=document.getElementById('refresh-now');
+  if(refreshNow) refreshNow.addEventListener('click',function(){location.reload();});
+})();
+
+// A description gets an expand control only when it truly does not fit.
+document.querySelectorAll('.desc').forEach(function(el){
+  if(el.scrollWidth<=el.clientWidth) return;
+  var b=document.createElement('button');b.className='more';b.textContent='more';
+  b.onclick=function(){el.classList.toggle('open');
+    b.textContent=el.classList.contains('open')?'less':'more';};
+  el.parentNode.appendChild(b);});
+
+function showCycle(n){
+  document.querySelectorAll('[data-cycle-panel]').forEach(function(p){
+    p.hidden=(p.dataset.cyclePanel!==String(n));});
+  document.querySelectorAll('[data-cycle-tab]').forEach(function(t){
+    t.setAttribute('aria-selected',t.dataset.cycleTab===String(n));});
+}
+</script>

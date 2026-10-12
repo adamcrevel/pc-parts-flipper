@@ -1,7 +1,7 @@
 // Typed CRUD for the `teardown_results` table (Req 6).
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
-import type { TeardownResult, TeardownResultType } from '../types.js';
+import type { TeardownResult, TeardownResultType } from '@pc-parts-flipper/shared';
 
 /** Fields supplied for one reconciled line of a teardown submission. */
 export interface CreateTeardownResultInput {

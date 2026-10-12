@@ -27,7 +27,7 @@ import { getConnection } from '../client.js';
 import { newId } from '../id.js';
 import { logger } from '../../logger.js';
 import { computeNextRetryAt } from '../../retryBackoff.js';
-import type { ComponentCategory } from '../types.js';
+import type { ComponentCategory } from '@pc-parts-flipper/shared';
 
 // Same pattern as referencePhotos.ts's UNIQUE_CONSTRAINT_MESSAGE: matches the
 // DuckDB error text raised when the unique index on

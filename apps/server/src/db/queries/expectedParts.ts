@@ -1,9 +1,8 @@
 // Typed CRUD for the `expected_parts` table (Req 2-3, 6).
-import type { AiPartConfidence, AiPartSource, IdentityCandidate } from '@pc-parts-flipper/shared';
+import type { AiPartConfidence, AiPartSource, ComponentCategory, ExpectedPart, IdentityCandidate } from '@pc-parts-flipper/shared';
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
 import { buildSetClause, toNullableNumber } from '../sqlHelpers.js';
-import type { ComponentCategory, ExpectedPart } from '../types.js';
 
 /**
  * Fields the caller supplies when adding an Expected Part to a Listing.

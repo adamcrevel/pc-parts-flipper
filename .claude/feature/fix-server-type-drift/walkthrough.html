@@ -1,0 +1,836 @@
+<title>Walkthrough</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--ink:#1a1a18;--muted:#6b6b66;--line:#e2e2dd;
+--good:#1f5f4f;--bad:#a3312a;--add-bg:rgba(31,95,79,.10);--del-bg:rgba(163,49,42,.10);--radius:8px}
+@media(prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececea;
+--muted:#9a9a94;--line:#32343a;--good:#4fb59a;--bad:#e07b74;
+--add-bg:rgba(79,181,154,.14);--del-bg:rgba(224,123,116,.14)}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+h1{margin:0 0 8px;font-size:20px;letter-spacing:-.01em}
+.overview-text{margin:0;font-size:15px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.card-head,.file-head{width:100%;display:flex;justify-content:space-between;align-items:center;
+gap:12px;font:inherit;text-align:left;background:none;border:none;color:var(--ink);cursor:pointer;
+padding:14px 18px}
+.card-head{font-weight:600}
+.card-head .meta{font-size:12px;color:var(--muted);font-weight:400}
+.card-body{padding:0 18px 16px;display:grid;gap:12px}
+.summary{margin:0;font-size:14px}
+.note{font-size:12px;color:var(--muted);margin:2px 0}
+.flow{overflow-x:auto}
+.flow-svg{display:block}
+.flow-box{fill:var(--bg);stroke:var(--line)}
+.flow-box-text{width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;
+justify-content:center;align-items:center;gap:4px;padding:8px 12px;text-align:center;
+font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.flow-label{font-size:12px;font-weight:600;color:var(--ink);line-height:1.25;margin:0;
+display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+text-overflow:ellipsis;word-break:break-word}
+.flow-note{font-size:10.5px;color:var(--muted);line-height:1.3;margin:0;
+display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+text-overflow:ellipsis;word-break:break-word}
+.flow-arrow{stroke:var(--muted);stroke-width:1.5}
+.flow-arrowhead{fill:var(--muted)}
+.files{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.file-group{padding:10px 4px 12px}
+.file-group:not(:last-child){border-bottom:1px solid var(--line)}
+.file-note{margin:0 0 8px;font-size:13px}
+.file-rows{list-style:none;margin:0;padding:0}
+.file{border-top:1px solid var(--line)}
+.file:first-child{border-top:none}
+.file-head{padding:10px 4px;font-size:13px}
+.file-head .path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.tag{display:inline-block;padding:0 6px;border:1px solid var(--line);border-radius:999px;
+font-size:11px;color:var(--muted)}
+.file-body{padding:0 4px 12px;display:grid;gap:8px}
+.hunk{overflow-x:auto;border:1px solid var(--line);border-radius:6px}
+.hunk-head{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);
+padding:5px 9px;border-bottom:1px solid var(--line)}
+.hunk pre{margin:0;padding:6px 9px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+white-space:pre}
+.hunk pre span{display:block;padding:0 4px}
+.hunk pre .add{background:var(--add-bg);color:var(--good)}
+.hunk pre .del{background:var(--del-bg);color:var(--bad)}
+</style>
+<main>
+<section class="panel overview">
+<h1>Walkthrough</h1>
+<p class="overview-text">`apps/server`&#x27;s build was broken by ~40 `tsc` errors, all rooted in one cause: `apps/server/src/db/types.ts` hand-maintained a second, stale copy of 8 entity types and 6 enums that already lived, correctly, in `packages/shared` — and the two copies had drifted apart. The fix deletes the duplicates and re-exports the real `packages/shared` types instead, fixes two small real code gaps the drift was hiding, and adds a `typecheck` script so a broken build like this fails loudly next time instead of going unnoticed.</p>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Collapsing the duplicate types</span><span class="meta">19 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">Of `db/types.ts`&#x27;s 12 entity types, 8 (plus 6 backing enums) were exact, correctable duplicates of `packages/shared`&#x27;s own types with no remaining reason to exist twice — deleted from the server and re-exported from the shared package through the existing barrel instead, so no importer needed its own source edited.</p>
+<p class="note">Tasks: T1</p>
+<div class="flow"><svg viewBox="0 0 914 108" role="img" aria-label="data flow" class="flow-svg">
+<rect x="8" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="8" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Local duplicate</div><div class="flow-note">`db/types.ts` declared its own Source, Listing, Purchase, etc.</div></div></foreignObject>
+<line x1="198" y1="54" x2="238" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="244" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="244" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Delete</div><div class="flow-note">8 interfaces + 6 enums removed entirely</div></div></foreignObject>
+<line x1="434" y1="54" x2="474" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="480" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="480" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Re-export</div><div class="flow-note">`db/index.ts` barrel sources them from `@pc-parts-flipper/shared`</div></div></foreignObject>
+<line x1="670" y1="54" x2="710" y2="54" class="flow-arrow" marker-end="url(#arrow)"/>
+<rect x="716" y="8" width="190" height="92" rx="6" class="flow-box"/>
+<foreignObject x="716" y="8" width="190" height="92"><div xmlns="http://www.w3.org/1999/xhtml" class="flow-box-text"><div class="flow-label">Importers unchanged</div><div class="flow-note">23 files keep importing from `../db/index.js`</div></div></foreignObject>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" class="flow-arrowhead"/></marker></defs>
+</svg></div>
+<ul class="files"><li class="file-group">
+<p class="file-note">Deletes the 8 duplicated entity interfaces and 6 enums, keeping only the 4 entities (plus 1 enum) that genuinely have no `packages/shared` counterpart because they never cross the HTTP boundary.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/types.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Collapsing the duplicate types, Fixing the real gaps the drift was hiding) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -1,162 +1,26 @@</div><pre><span class="del">-// Row types for every DuckDB table owned by this data-access module, plus the</span>
+<span class="del">-// enum unions that back DuckDB&#x27;s native ENUM columns. These are intentionally</span>
+<span class="del">-// local to apps/server (not packages/shared) for this task — promoting them</span>
+<span class="del">-// to the shared package, so apps/web can reuse them over the HTTP API&#x27;s JSON</span>
+<span class="del">-// shapes, is left to the tasks that build the routes/screens on top of this</span>
+<span class="del">-// module.</span>
+<span class="del">-import type { AiPartConfidence, AiPartSource, IdentityCandidate } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="del">-</span>
+<span class="del">-// -- Enums -------------------------------------------------------------</span>
+<span class="del">-</span>
+<span class="del">-/** Marketplace a Source/SaleListing lives on. Fixed set, matches Req 1 &amp; 8. */</span>
+<span class="del">-export type PlatformType = &#x27;ebay&#x27; | &#x27;facebook_marketplace&#x27; | &#x27;other&#x27;;</span>
+<span class="del">-</span>
+<span class="del">-/** Listing lifecycle. Accepting creates a Purchase (Req 4). */</span>
+<span class="del">-export type ListingStatus = &#x27;open&#x27; | &#x27;accepted&#x27; | &#x27;rejected&#x27;;</span>
+<span class="del">-</span>
+<span class="del">-/** Purchase lifecycle (Req 5). */</span>
+<span class="del">-export type PurchaseStatus = &#x27;ordered&#x27; | &#x27;shipped&#x27; | &#x27;received&#x27; | &#x27;torn_down&#x27; | &#x27;closed&#x27;;</span>
+<span class="del">-</span>
+<span class="del">-/** Fixed component category list (assumption A8), used by ExpectedPart and Part. */</span>
+<span class="del">-export type ComponentCategory =</span>
+<span class="del">-  | &#x27;CPU&#x27;</span>
+<span class="del">-  | &#x27;GPU&#x27;</span>
+<span class="del">-  | &#x27;Motherboard&#x27;</span>
+<span class="del">-  | &#x27;RAM&#x27;</span>
+<span class="del">-  | &#x27;Storage&#x27;</span>
+<span class="del">-  | &#x27;PSU&#x27;</span>
+<span class="del">-  | &#x27;Case&#x27;</span>
+<span class="del">-  | &#x27;Cooler&#x27;</span>
+<span class="del">-  | &#x27;Other&#x27;;</span>
+<span class="del">-</span>
+<span class="del">-/** Outcome of reconciling one Expected Part during teardown (Req 6). */</span>
+<span class="del">-export type TeardownResultType =</span>
+<span class="del">-  | &#x27;present_as_expected&#x27;</span>
+<span class="del">-  | &#x27;present_but_different&#x27;</span>
+<span class="del">-  | &#x27;missing&#x27;</span>
+<span class="del">-  | &#x27;additional&#x27;;</span>
+<span class="del">-</span>
+<span class="del">-/** Part lifecycle (Req 7). */</span>
+<span class="del">-export type PartStatus = &#x27;ready_to_list&#x27; | &#x27;listed&#x27; | &#x27;sold&#x27; | &#x27;unsellable&#x27;;</span>
+<span class="add">+// Row types for the DuckDB tables with no packages/shared counterpart: these</span>
+<span class="add">+// never cross the HTTP boundary (internal job-queue/cache/training-data</span>
+<span class="add">+// concerns), so they stay local to apps/server rather than living in</span>
+<span class="add">+// packages/shared like every other entity this data-access module reads.</span>
+<span class="add">+// Every other table&#x27;s row type (Source, Listing, Purchase, TeardownResult,</span>
+<span class="add">+// Part, SaleListing, Sale, ExpectedPart, plus their 6 backing enums) is</span>
+<span class="add">+// re-exported from @pc-parts-flipper/shared via db/index.ts instead, since</span>
+<span class="add">+// each of those is an exact duplicate of its packages/shared counterpart</span>
+<span class="add">+// once corrected — one declaration per entity, not two free to drift apart.</span>
+<span class="add">+import type { ComponentCategory } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> // -- Rows --------------------------------------------------------------</span>
+<span class="ctx"> </span>
+<span class="del">-/** A purchase source: a place listings are found (Req 1). */</span>
+<span class="del">-export interface Source {</span>
+<span class="del">-  id: string;</span>
+<span class="del">-  platform: PlatformType;</span>
+<span class="del">-  name: string;</span>
+<span class="del">-  /** EbayConnectorConfig (JSON-encoded), available for sources that auto-import listings via the ebay-scanning feature. */</span>
+<span class="del">-  connectorConfig: string | null;</span>
+<span class="del">-  /** Last time a scheduled scan pulled listings from this source (ebay-scanning feature). */</span>
+<span class="del">-  lastScannedAt: string | null;</span>
+<span class="del">-  /** Count of listings found on the most recent scan (ebay-scanning feature); used to show &quot;found N&quot; without separate query. */</span>
+<span class="del">-  lastScanFoundCount: number | null;</span>
+<span class="del">-  createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="del">-/** A candidate pre-built computer found on a Source (Req 2-4). */</span>
+<span class="del">-export interface Listing {</span>
+<span class="del">-  id: string;</span>
+<span class="del">-  sourceId: string;</span>
+<span class="del">-  title: string;</span>
+<span class="del">-  description: string | null;</span>
+<span class="del">-  listingUrl: string | null;</span>
+<span class="del">-  askingPrice: number;</span>
+<span class="del">-  listingDate: string;</span>
+<span class="del">-  status: ListingStatus;</span>
+<span class="del">-  acquisitionFees: number;</span>
+<span class="del">-  /** Local-disk paths to uploaded photos (assumption A4); JSON-encoded on disk. */</span>
+<span class="del">-  photoPaths: string[];</span>
+<span class="del">-  /** Marketplace this Listing was auto-imported from by an eBay scan (Req 3), or null for manually-entered Listings. */</span>
+<span class="del">-  externalSource: string | null;</span>
+<span class="del">-  /** The marketplace&#x27;s own item id for this Listing (Req 3), used to detect duplicates on re-scan; null for manually-entered Listings. */</span>
+<span class="del">-  externalItemId: string | null;</span>
+<span class="del">-  /** Whether this listing&#x27;s computer cannot be powered on or has non-functional components (server-only field, never from request body). */</span>
+<span class="del">-  nonWorking: boolean;</span>
+<span class="del">-  createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="del">-/**</span>
+<span class="del">- * One expected part on a Listing, with its estimated resale value (Req 2-3).</span>
+<span class="del">- * `brand`/`partNumber` are the component&#x27;s structured identity, null when it</span>
+<span class="del">- * was not confidently identified (never guessed); `description` holds the</span>
+<span class="del">- * remaining context.</span>
+<span class="del">- */</span>
+<span class="del">-export interface ExpectedPart {</span>
+<span class="del">-  id: string;</span>
+<span class="del">-  listingId: string;</span>
+<span class="del">-  componentCategory: ComponentCategory;</span>
+<span class="del">-  brand: string | null;</span>
+<span class="del">-  partNumber: string | null;</span>
+<span class="del">-  description: string;</span>
+<span class="del">-  estimatedResaleValue: number | null;</span>
+<span class="del">-  /** Other plausible brand/partNumber pairings the AI identifier considered but did not pick as primary; empty for manually-entered Expected Parts. */</span>
+<span class="del">-  identityCandidates: IdentityCandidate[];</span>
+<span class="del">-  /** Persisted AI-suggestion provenance (see packages/shared/src/listings.ts&#x27;s ExpectedPart doc comment); both null for a manual or since-edited row. */</span>
+<span class="del">-  aiConfidence: AiPartConfidence | null;</span>
+<span class="del">-  aiSource: AiPartSource | null;</span>
+<span class="del">-  /** Three-state (assumption A22, correcting A8): null = undecided (still eligible for the route&#x27;s first auto-claim), `&#x27;auto&#x27;` = the background price-estimation pipeline owns this row&#x27;s estimatedResaleValue, `&#x27;manual&#x27;` = the user has explicitly taken ownership (typed a value, or cleared one the pipeline had filled in) and it must never be auto-claimed or cache-overwritten again. */</span>
+<span class="del">-  priceSource: &#x27;auto&#x27; | &#x27;manual&#x27; | null;</span>
+<span class="del">-  /** The working/non-working status of this component. */</span>
+<span class="del">-  workingStatus: &#x27;working&#x27; | &#x27;non_working&#x27;;</span>
+<span class="del">-  /** Free-text notes about this Expected Part (e.g. condition quirks, missing hardware); null when none were recorded. */</span>
+<span class="del">-  notes: string | null;</span>
+<span class="del">-  createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="del">-/** The actual buy created when a Listing is accepted (Req 4-5). */</span>
+<span class="del">-export interface Purchase {</span>
+<span class="del">-  id: string;</span>
+<span class="del">-  listingId: string;</span>
+<span class="del">-  status: PurchaseStatus;</span>
+<span class="del">-  pricePaid: number;</span>
+<span class="del">-  purchaseDate: string;</span>
+<span class="del">-  createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="del">-/** Reconciliation of one Expected Part (or an unexpected find) during teardown (Req 6). */</span>
+<span class="del">-export interface TeardownResult {</span>
+<span class="del">-  id: string;</span>
+<span class="del">-  purchaseId: string;</span>
+<span class="del">-  expectedPartId: string | null;</span>
+<span class="del">-  resultType: TeardownResultType;</span>
+<span class="del">-  notes: string;</span>
+<span class="del">-  createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="del">-/**</span>
+<span class="del">- * A physical part produced by a teardown, tracked through resale (Req 6-7).</span>
+<span class="del">- * `brand`/`partNumber` carry over from the Expected Part (or Additional Part</span>
+<span class="del">- * row) the teardown reconciled; null when never identified.</span>
+<span class="del">- */</span>
+<span class="del">-export interface Part {</span>
+<span class="del">-  id: string;</span>
+<span class="del">-  purchaseId: string;</span>
+<span class="del">-  componentCategory: ComponentCategory;</span>
+<span class="del">-  brand: string | null;</span>
+<span class="del">-  partNumber: string | null;</span>
+<span class="del">-  status: PartStatus;</span>
+<span class="del">-  identityCandidates: IdentityCandidate[];</span>
+<span class="del">-  createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="ctx"> /** A reference photo of a part, used for AI visual identification training data. */</span>
+<span class="ctx"> export interface ReferencePhoto {</span>
+<span class="ctx">   id: string;</span>
+<span class="ctx">   photoPath: string;</span>
+<span class="del">-  partCategory: ComponentCategory;</span>
+<span class="del">-  partBrand: string | null;</span>
+<span class="add">+  category: ComponentCategory;</span>
+<span class="add">+  brand: string | null;</span>
+<span class="ctx">   partNumber: string | null;</span>
+<span class="del">-  notes: string;</span>
+<span class="add">+  source: string;</span>
+<span class="add">+  listingId: string | null;</span>
+<span class="ctx">   createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** One attempt (successful or not) to auto-source a reference photo for a (category, brand, partNumber) combo. */</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -169,29 +33,6 @@ export interface SourcingAttempt {</div><pre><span class="ctx">   updatedAt: string;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="del">-/** A draft/posted marketplace listing for one ready_to_list Part (Req 8). */</span>
+<span class="del">-export interface SaleListing {</span>
+<span class="del">-  id: string;</span>
+<span class="del">-  partId: string;</span>
+<span class="del">-  platform: PlatformType;</span>
+<span class="del">-  platformListingUrl: string | null;</span>
+<span class="del">-  status: string;</span>
+<span class="del">-  createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="del">-/** The recorded outcome of selling a Part (Req 9). */</span>
+<span class="del">-export interface Sale {</span>
+<span class="del">-  id: string;</span>
+<span class="del">-  partId: string;</span>
+<span class="del">-  platform: PlatformType;</span>
+<span class="del">-  saleDate: string;</span>
+<span class="del">-  priceSold: number;</span>
+<span class="del">-  notes: string;</span>
+<span class="del">-  createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="ctx"> /**</span>
+<span class="ctx">  * Cache of an AI-researched resale-value estimate for a (category, brand,</span>
+<span class="ctx">  * partNumber) combo, updated in the background by the price-estimation</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -201,10 +42,11 @@ export interface Sale {</div><pre><span class="ctx">  */</span>
+<span class="ctx"> export interface PartPriceCacheEntry {</span>
+<span class="ctx">   id: string;</span>
+<span class="del">-  partCategory: ComponentCategory;</span>
+<span class="del">-  partBrand: string;</span>
+<span class="add">+  category: ComponentCategory;</span>
+<span class="add">+  brand: string;</span>
+<span class="ctx">   partNumber: string;</span>
+<span class="del">-  cachedPrice: number;</span>
+<span class="add">+  estimatedResaleValue: number | null;</span>
+<span class="add">+  lastResearchedAt: string | null;</span>
+<span class="ctx">   createdAt: string;</span>
+<span class="ctx">   updatedAt: string;</span>
+<span class="ctx"> }</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -224,10 +66,13 @@ export type PricePartsJobStage = &#x27;queued&#x27; | &#x27;pricing&#x27; | &#x27;completed&#x27; | &#x27;failed&#x27;;</div><pre><span class="ctx">  */</span>
+<span class="ctx"> export interface PricePartsJob {</span>
+<span class="ctx">   id: string;</span>
+<span class="del">-  partCategory: ComponentCategory;</span>
+<span class="del">-  partBrand: string;</span>
+<span class="add">+  category: ComponentCategory;</span>
+<span class="add">+  brand: string;</span>
+<span class="ctx">   partNumber: string;</span>
+<span class="ctx">   stage: PricePartsJobStage;</span>
+<span class="add">+  errorMessage: string | null;</span>
+<span class="ctx">   createdAt: string;</span>
+<span class="add">+  startedAt: string | null;</span>
+<span class="add">+  completedAt: string | null;</span>
+<span class="ctx">   updatedAt: string;</span>
+<span class="ctx"> }</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">Adds the re-export statement that sources the 15 collapsed names from `@pc-parts-flipper/shared` instead of a local declaration, so the barrel&#x27;s public surface is unchanged even though its source moved.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/index.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -3,6 +3,22 @@</div><pre><span class="ctx"> // never by importing @duckdb/node-api or a db/*.ts file directly — which is</span>
+<span class="ctx"> // what keeps &quot;all DuckDB access confined to one data-access module&quot; true.</span>
+<span class="ctx"> export * from &#x27;./types.js&#x27;;</span>
+<span class="add">+export type {</span>
+<span class="add">+  Source,</span>
+<span class="add">+  Listing,</span>
+<span class="add">+  Purchase,</span>
+<span class="add">+  TeardownResult,</span>
+<span class="add">+  Part,</span>
+<span class="add">+  SaleListing,</span>
+<span class="add">+  Sale,</span>
+<span class="add">+  ExpectedPart,</span>
+<span class="add">+  PlatformType,</span>
+<span class="add">+  ListingStatus,</span>
+<span class="add">+  PurchaseStatus,</span>
+<span class="add">+  ComponentCategory,</span>
+<span class="add">+  TeardownResultType,</span>
+<span class="add">+  PartStatus,</span>
+<span class="add">+} from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> export * from &#x27;./queries/sources.js&#x27;;</span>
+<span class="ctx"> export * from &#x27;./queries/listings.js&#x27;;</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">Each query module&#x27;s import of a collapsed name switches from the local `&#x27;../types.js&#x27;` to `@pc-parts-flipper/shared`, with no other change — every `mapRow` already built the shared shape.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/queries/listings.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -3,7 +3,7 @@ import type { DuckDBValue } from &#x27;@duckdb/node-api&#x27;;</div><pre><span class="ctx"> import { getConnection } from &#x27;../client.js&#x27;;</span>
+<span class="ctx"> import { newId } from &#x27;../id.js&#x27;;</span>
+<span class="ctx"> import { buildSetClause, toNumber } from &#x27;../sqlHelpers.js&#x27;;</span>
+<span class="del">-import type { Listing, ListingStatus } from &#x27;../types.js&#x27;;</span>
+<span class="add">+import type { Listing, ListingStatus } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** Fields the caller supplies when creating a Listing; id/status/timestamps are server-assigned. */</span>
+<span class="ctx"> export interface CreateListingInput {</span></pre></div></div></li>
+<li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/queries/parts.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -4,7 +4,7 @@ import type { IdentityCandidate } from &#x27;@pc-parts-flipper/shared&#x27;;</div><pre><span class="ctx"> import { getConnection } from &#x27;../client.js&#x27;;</span>
+<span class="ctx"> import { newId } from &#x27;../id.js&#x27;;</span>
+<span class="ctx"> import { buildSetClause } from &#x27;../sqlHelpers.js&#x27;;</span>
+<span class="del">-import type { ComponentCategory, Part, PartStatus } from &#x27;../types.js&#x27;;</span>
+<span class="add">+import type { ComponentCategory, Part, PartStatus } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> /**</span>
+<span class="ctx">  * Fields supplied when the teardown workflow generates a Part (Req 6).</span></pre></div></div></li>
+<li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/queries/profit.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -9,7 +9,7 @@</div><pre><span class="ctx"> import type { DuckDBValue } from &#x27;@duckdb/node-api&#x27;;</span>
+<span class="ctx"> import { getConnection } from &#x27;../client.js&#x27;;</span>
+<span class="ctx"> import { toNumber } from &#x27;../sqlHelpers.js&#x27;;</span>
+<span class="del">-import type { PurchaseStatus } from &#x27;../types.js&#x27;;</span>
+<span class="add">+import type { PurchaseStatus } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** Columns the Profit dashboard can sort by (Req 11). */</span>
+<span class="ctx"> export type ProfitSortBy = &#x27;netProfit&#x27; | &#x27;pricePaid&#x27; | &#x27;purchaseDate&#x27;;</span></pre></div></div></li>
+<li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/queries/purchases.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -2,7 +2,7 @@</div><pre><span class="ctx"> import { getConnection } from &#x27;../client.js&#x27;;</span>
+<span class="ctx"> import { newId } from &#x27;../id.js&#x27;;</span>
+<span class="ctx"> import { buildSetClause, toNumber } from &#x27;../sqlHelpers.js&#x27;;</span>
+<span class="del">-import type { Purchase, PurchaseStatus } from &#x27;../types.js&#x27;;</span>
+<span class="add">+import type { Purchase, PurchaseStatus } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** Fields supplied when a Purchase is created (typically pre-filled from accepting a Listing, Req 4). */</span>
+<span class="ctx"> export interface CreatePurchaseInput {</span></pre></div></div></li>
+<li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/queries/saleListings.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -3,7 +3,7 @@ import type { DuckDBValue } from &#x27;@duckdb/node-api&#x27;;</div><pre><span class="ctx"> import { getConnection } from &#x27;../client.js&#x27;;</span>
+<span class="ctx"> import { newId } from &#x27;../id.js&#x27;;</span>
+<span class="ctx"> import { buildSetClause, toNumber } from &#x27;../sqlHelpers.js&#x27;;</span>
+<span class="del">-import type { PlatformType, SaleListing } from &#x27;../types.js&#x27;;</span>
+<span class="add">+import type { PlatformType, SaleListing } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** Fields supplied when drafting a Sale Listing for a ready_to_list Part (Req 8). */</span>
+<span class="ctx"> export interface CreateSaleListingInput {</span></pre></div></div></li>
+<li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/queries/sales.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -4,7 +4,7 @@ import { listValue } from &#x27;@duckdb/node-api&#x27;;</div><pre><span class="ctx"> import { getConnection } from &#x27;../client.js&#x27;;</span>
+<span class="ctx"> import { newId } from &#x27;../id.js&#x27;;</span>
+<span class="ctx"> import { toNumber } from &#x27;../sqlHelpers.js&#x27;;</span>
+<span class="del">-import type { Sale } from &#x27;../types.js&#x27;;</span>
+<span class="add">+import type { Sale } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** Fields supplied when recording the final sale outcome of a listed Part (Req 9). */</span>
+<span class="ctx"> export interface CreateSaleInput {</span></pre></div></div></li>
+<li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/queries/sources.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -2,7 +2,7 @@</div><pre><span class="ctx"> import { getConnection } from &#x27;../client.js&#x27;;</span>
+<span class="ctx"> import { newId } from &#x27;../id.js&#x27;;</span>
+<span class="ctx"> import { buildSetClause } from &#x27;../sqlHelpers.js&#x27;;</span>
+<span class="del">-import type { PlatformType, Source } from &#x27;../types.js&#x27;;</span>
+<span class="add">+import type { PlatformType, Source } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** Fields the caller supplies when creating a Source; id/timestamps are server-assigned. */</span>
+<span class="ctx"> export interface CreateSourceInput {</span></pre></div></div></li>
+<li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/queries/teardownResults.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -1,7 +1,7 @@</div><pre><span class="ctx"> // Typed CRUD for the `teardown_results` table (Req 6).</span>
+<span class="ctx"> import { getConnection } from &#x27;../client.js&#x27;;</span>
+<span class="ctx"> import { newId } from &#x27;../id.js&#x27;;</span>
+<span class="del">-import type { TeardownResult, TeardownResultType } from &#x27;../types.js&#x27;;</span>
+<span class="add">+import type { TeardownResult, TeardownResultType } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** Fields supplied for one reconciled line of a teardown submission. */</span>
+<span class="ctx"> export interface CreateTeardownResultInput {</span></pre></div></div></li>
+<li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/queries/expectedParts.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -1,9 +1,8 @@</div><pre><span class="ctx"> // Typed CRUD for the `expected_parts` table (Req 2-3, 6).</span>
+<span class="del">-import type { AiPartConfidence, AiPartSource, IdentityCandidate } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="add">+import type { AiPartConfidence, AiPartSource, ComponentCategory, ExpectedPart, IdentityCandidate } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> import { getConnection } from &#x27;../client.js&#x27;;</span>
+<span class="ctx"> import { newId } from &#x27;../id.js&#x27;;</span>
+<span class="ctx"> import { buildSetClause, toNullableNumber } from &#x27;../sqlHelpers.js&#x27;;</span>
+<span class="del">-import type { ComponentCategory, ExpectedPart } from &#x27;../types.js&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> /**</span>
+<span class="ctx">  * Fields the caller supplies when adding an Expected Part to a Listing.</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">Only these files&#x27; `ComponentCategory` import moves to shared; their other imports (`ReferencePhoto`, `PartPriceCacheEntry`, `PricePartsJob`, `PricePartsJobStage`) correctly stay pointed at the local `types.ts`, since those entities have no shared counterpart.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/queries/catalogSourcingAttempts.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -27,7 +27,7 @@ import { getConnection } from &#x27;../client.js&#x27;;</div><pre><span class="ctx"> import { newId } from &#x27;../id.js&#x27;;</span>
+<span class="ctx"> import { logger } from &#x27;../../logger.js&#x27;;</span>
+<span class="ctx"> import { computeNextRetryAt } from &#x27;../../retryBackoff.js&#x27;;</span>
+<span class="del">-import type { ComponentCategory } from &#x27;../types.js&#x27;;</span>
+<span class="add">+import type { ComponentCategory } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> import type { SourcingOutcome } from &#x27;./sourcingAttempts.js&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> // Same pattern as sourcingAttempts.ts&#x27;s UNIQUE_CONSTRAINT_MESSAGE: matches</span></pre></div></div></li>
+<li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/queries/sourcingAttempts.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -27,7 +27,7 @@ import { getConnection } from &#x27;../client.js&#x27;;</div><pre><span class="ctx"> import { newId } from &#x27;../id.js&#x27;;</span>
+<span class="ctx"> import { logger } from &#x27;../../logger.js&#x27;;</span>
+<span class="ctx"> import { computeNextRetryAt } from &#x27;../../retryBackoff.js&#x27;;</span>
+<span class="del">-import type { ComponentCategory } from &#x27;../types.js&#x27;;</span>
+<span class="add">+import type { ComponentCategory } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> // Same pattern as referencePhotos.ts&#x27;s UNIQUE_CONSTRAINT_MESSAGE: matches the</span>
+<span class="ctx"> // DuckDB error text raised when the unique index on</span></pre></div></div></li>
+<li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/queries/referencePhotos.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -8,7 +8,7 @@ import { newId } from &#x27;../id.js&#x27;;</div><pre><span class="ctx"> import { logger } from &#x27;../../logger.js&#x27;;</span>
+<span class="ctx"> import { downloadFile } from &#x27;../download.js&#x27;;</span>
+<span class="ctx"> import { isDecodableImage } from &#x27;../imageSignature.js&#x27;;</span>
+<span class="del">-import type { ComponentCategory } from &#x27;../types.js&#x27;;</span>
+<span class="add">+import type { ComponentCategory } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> const UNIQUE_CONSTRAINT_MESSAGE = /constraint error.*violates unique constraint/i;</span>
+<span class="ctx"> </span></pre></div></div></li>
+<li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/queries/referencePhotoLookup.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -6,7 +6,8 @@</div><pre><span class="ctx"> // the only remaining caller of.</span>
+<span class="ctx"> import type { DuckDBValue } from &#x27;@duckdb/node-api&#x27;;</span>
+<span class="ctx"> import { getConnection } from &#x27;../client.js&#x27;;</span>
+<span class="del">-import type { ComponentCategory, ReferencePhoto } from &#x27;../types.js&#x27;;</span>
+<span class="add">+import type { ComponentCategory } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="add">+import type { ReferencePhoto } from &#x27;../types.js&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** Converts one raw JSON row into the camelCase ReferencePhoto shape. */</span>
+<span class="ctx"> function mapRow(row: Record&lt;string, unknown&gt;): ReferencePhoto {</span></pre></div></div></li>
+<li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/queries/partPriceCache.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -7,7 +7,8 @@</div><pre><span class="ctx"> import { getConnection } from &#x27;../client.js&#x27;;</span>
+<span class="ctx"> import { newId } from &#x27;../id.js&#x27;;</span>
+<span class="ctx"> import { toNullableNumber } from &#x27;../sqlHelpers.js&#x27;;</span>
+<span class="del">-import type { ComponentCategory, PartPriceCacheEntry } from &#x27;../types.js&#x27;;</span>
+<span class="add">+import type { ComponentCategory } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="add">+import type { PartPriceCacheEntry } from &#x27;../types.js&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> // Same pattern as referencePhotos.ts&#x27;s / sourcingAttempts.ts&#x27;s</span>
+<span class="ctx"> // UNIQUE_CONSTRAINT_MESSAGE: matches the DuckDB error text raised when the</span></pre></div></div></li>
+<li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/queries/pricePartsJobs.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Collapsing the duplicate types, Fixing the real gaps the drift was hiding) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -10,7 +10,8 @@</div><pre><span class="ctx"> import { getConnection } from &#x27;../client.js&#x27;;</span>
+<span class="ctx"> import { newId } from &#x27;../id.js&#x27;;</span>
+<span class="ctx"> import { computeNextRetryAt } from &#x27;../../retryBackoff.js&#x27;;</span>
+<span class="del">-import type { ComponentCategory, PricePartsJob, PricePartsJobStage } from &#x27;../types.js&#x27;;</span>
+<span class="add">+import type { ComponentCategory } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="add">+import type { PricePartsJob, PricePartsJobStage } from &#x27;../types.js&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> // Converts one raw JSON row into the camelCase PricePartsJob shape.</span>
+<span class="ctx"> function mapRow(row: Record&lt;string, unknown&gt;): PricePartsJob {</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -24,6 +25,7 @@ function mapRow(row: Record&lt;string, unknown&gt;): PricePartsJob {</div><pre><span class="ctx">     createdAt: row.created_at as string,</span>
+<span class="ctx">     startedAt: (row.started_at as string | null) ?? null,</span>
+<span class="ctx">     completedAt: (row.completed_at as string | null) ?? null,</span>
+<span class="add">+    updatedAt: row.updated_at as string,</span>
+<span class="ctx">   };</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span></pre></div></div></li>
+<li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/seedReferencePhotosData.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -1,4 +1,4 @@</div><pre><span class="del">-import type { ComponentCategory } from &#x27;./types.js&#x27;;</span>
+<span class="add">+import type { ComponentCategory } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> /**</span>
+<span class="ctx">  * Metadata for each seed photo: source URL, local filename,</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">A 19th file, found only via a broader grep, whose `Listing` import is merged into its existing `@pc-parts-flipper/shared` import line rather than left pointing at the now-deleted local declaration.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/jobs/identifyPartsWorkerPool.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -38,8 +38,7 @@ import {</div><pre><span class="ctx"> import { identifyListingParts } from &#x27;../ai/partIdentification.js&#x27;;</span>
+<span class="ctx"> import { resolveWorkingStatuses } from &#x27;../ai/identificationParser.js&#x27;;</span>
+<span class="ctx"> import { triggerPriceLookups } from &#x27;./pricePartsTrigger.js&#x27;;</span>
+<span class="del">-import type { IdentifyPartsJob, IdentifyPartsResponse } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="del">-import type { Listing } from &#x27;../db/types.js&#x27;;</span>
+<span class="add">+import type { IdentifyPartsJob, IdentifyPartsResponse, Listing } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> /**</span>
+<span class="ctx">  * Maximum number of identify-parts jobs to process concurrently, parsed</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Fixing the real gaps the drift was hiding</span><span class="meta">4 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">Lining up the two copies surfaced two places where the stale type had been quietly masking real code gaps — a dropped column on read, and a missing field on a connector-staging type — both fixed directly rather than just re-typed.</p>
+<p class="note">Tasks: T1</p>
+<ul class="files"><li class="file-group">
+<p class="file-note">`mapRow` now reads `updated_at` into the returned `PricePartsJob.updatedAt` — the column already existed and was already written on every update, but silently dropped on read until now.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/queries/pricePartsJobs.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Collapsing the duplicate types, Fixing the real gaps the drift was hiding) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -10,7 +10,8 @@</div><pre><span class="ctx"> import { getConnection } from &#x27;../client.js&#x27;;</span>
+<span class="ctx"> import { newId } from &#x27;../id.js&#x27;;</span>
+<span class="ctx"> import { computeNextRetryAt } from &#x27;../../retryBackoff.js&#x27;;</span>
+<span class="del">-import type { ComponentCategory, PricePartsJob, PricePartsJobStage } from &#x27;../types.js&#x27;;</span>
+<span class="add">+import type { ComponentCategory } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="add">+import type { PricePartsJob, PricePartsJobStage } from &#x27;../types.js&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> // Converts one raw JSON row into the camelCase PricePartsJob shape.</span>
+<span class="ctx"> function mapRow(row: Record&lt;string, unknown&gt;): PricePartsJob {</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -24,6 +25,7 @@ function mapRow(row: Record&lt;string, unknown&gt;): PricePartsJob {</div><pre><span class="ctx">     createdAt: row.created_at as string,</span>
+<span class="ctx">     startedAt: (row.started_at as string | null) ?? null,</span>
+<span class="ctx">     completedAt: (row.completed_at as string | null) ?? null,</span>
+<span class="add">+    updatedAt: row.updated_at as string,</span>
+<span class="ctx">   };</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">The 4 remaining local entities (`ReferencePhoto`, `PartPriceCacheEntry`, `PricePartsJob`, plus the unchanged `SourcingAttempt`) get their fields renamed/added to match the real schema (`partCategory`→`category`, `partBrand`→`brand`, `cachedPrice`→`estimatedResaleValue`, plus `source`, `listingId`, `lastResearchedAt`, `errorMessage`, `startedAt`, `completedAt`, `updatedAt`), removing fabricated fields that had no backing column.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/db/types.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><p class="note">Touched by more than one section (Collapsing the duplicate types, Fixing the real gaps the drift was hiding) — no per-task commit exists in this feature to separate this file's changes further.</p><div class="hunk"><div class="hunk-head">@@ -1,162 +1,26 @@</div><pre><span class="del">-// Row types for every DuckDB table owned by this data-access module, plus the</span>
+<span class="del">-// enum unions that back DuckDB&#x27;s native ENUM columns. These are intentionally</span>
+<span class="del">-// local to apps/server (not packages/shared) for this task — promoting them</span>
+<span class="del">-// to the shared package, so apps/web can reuse them over the HTTP API&#x27;s JSON</span>
+<span class="del">-// shapes, is left to the tasks that build the routes/screens on top of this</span>
+<span class="del">-// module.</span>
+<span class="del">-import type { AiPartConfidence, AiPartSource, IdentityCandidate } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="del">-</span>
+<span class="del">-// -- Enums -------------------------------------------------------------</span>
+<span class="del">-</span>
+<span class="del">-/** Marketplace a Source/SaleListing lives on. Fixed set, matches Req 1 &amp; 8. */</span>
+<span class="del">-export type PlatformType = &#x27;ebay&#x27; | &#x27;facebook_marketplace&#x27; | &#x27;other&#x27;;</span>
+<span class="del">-</span>
+<span class="del">-/** Listing lifecycle. Accepting creates a Purchase (Req 4). */</span>
+<span class="del">-export type ListingStatus = &#x27;open&#x27; | &#x27;accepted&#x27; | &#x27;rejected&#x27;;</span>
+<span class="del">-</span>
+<span class="del">-/** Purchase lifecycle (Req 5). */</span>
+<span class="del">-export type PurchaseStatus = &#x27;ordered&#x27; | &#x27;shipped&#x27; | &#x27;received&#x27; | &#x27;torn_down&#x27; | &#x27;closed&#x27;;</span>
+<span class="del">-</span>
+<span class="del">-/** Fixed component category list (assumption A8), used by ExpectedPart and Part. */</span>
+<span class="del">-export type ComponentCategory =</span>
+<span class="del">-  | &#x27;CPU&#x27;</span>
+<span class="del">-  | &#x27;GPU&#x27;</span>
+<span class="del">-  | &#x27;Motherboard&#x27;</span>
+<span class="del">-  | &#x27;RAM&#x27;</span>
+<span class="del">-  | &#x27;Storage&#x27;</span>
+<span class="del">-  | &#x27;PSU&#x27;</span>
+<span class="del">-  | &#x27;Case&#x27;</span>
+<span class="del">-  | &#x27;Cooler&#x27;</span>
+<span class="del">-  | &#x27;Other&#x27;;</span>
+<span class="del">-</span>
+<span class="del">-/** Outcome of reconciling one Expected Part during teardown (Req 6). */</span>
+<span class="del">-export type TeardownResultType =</span>
+<span class="del">-  | &#x27;present_as_expected&#x27;</span>
+<span class="del">-  | &#x27;present_but_different&#x27;</span>
+<span class="del">-  | &#x27;missing&#x27;</span>
+<span class="del">-  | &#x27;additional&#x27;;</span>
+<span class="del">-</span>
+<span class="del">-/** Part lifecycle (Req 7). */</span>
+<span class="del">-export type PartStatus = &#x27;ready_to_list&#x27; | &#x27;listed&#x27; | &#x27;sold&#x27; | &#x27;unsellable&#x27;;</span>
+<span class="add">+// Row types for the DuckDB tables with no packages/shared counterpart: these</span>
+<span class="add">+// never cross the HTTP boundary (internal job-queue/cache/training-data</span>
+<span class="add">+// concerns), so they stay local to apps/server rather than living in</span>
+<span class="add">+// packages/shared like every other entity this data-access module reads.</span>
+<span class="add">+// Every other table&#x27;s row type (Source, Listing, Purchase, TeardownResult,</span>
+<span class="add">+// Part, SaleListing, Sale, ExpectedPart, plus their 6 backing enums) is</span>
+<span class="add">+// re-exported from @pc-parts-flipper/shared via db/index.ts instead, since</span>
+<span class="add">+// each of those is an exact duplicate of its packages/shared counterpart</span>
+<span class="add">+// once corrected — one declaration per entity, not two free to drift apart.</span>
+<span class="add">+import type { ComponentCategory } from &#x27;@pc-parts-flipper/shared&#x27;;</span>
+<span class="ctx"> </span>
+<span class="ctx"> // -- Rows --------------------------------------------------------------</span>
+<span class="ctx"> </span>
+<span class="del">-/** A purchase source: a place listings are found (Req 1). */</span>
+<span class="del">-export interface Source {</span>
+<span class="del">-  id: string;</span>
+<span class="del">-  platform: PlatformType;</span>
+<span class="del">-  name: string;</span>
+<span class="del">-  /** EbayConnectorConfig (JSON-encoded), available for sources that auto-import listings via the ebay-scanning feature. */</span>
+<span class="del">-  connectorConfig: string | null;</span>
+<span class="del">-  /** Last time a scheduled scan pulled listings from this source (ebay-scanning feature). */</span>
+<span class="del">-  lastScannedAt: string | null;</span>
+<span class="del">-  /** Count of listings found on the most recent scan (ebay-scanning feature); used to show &quot;found N&quot; without separate query. */</span>
+<span class="del">-  lastScanFoundCount: number | null;</span>
+<span class="del">-  createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="del">-/** A candidate pre-built computer found on a Source (Req 2-4). */</span>
+<span class="del">-export interface Listing {</span>
+<span class="del">-  id: string;</span>
+<span class="del">-  sourceId: string;</span>
+<span class="del">-  title: string;</span>
+<span class="del">-  description: string | null;</span>
+<span class="del">-  listingUrl: string | null;</span>
+<span class="del">-  askingPrice: number;</span>
+<span class="del">-  listingDate: string;</span>
+<span class="del">-  status: ListingStatus;</span>
+<span class="del">-  acquisitionFees: number;</span>
+<span class="del">-  /** Local-disk paths to uploaded photos (assumption A4); JSON-encoded on disk. */</span>
+<span class="del">-  photoPaths: string[];</span>
+<span class="del">-  /** Marketplace this Listing was auto-imported from by an eBay scan (Req 3), or null for manually-entered Listings. */</span>
+<span class="del">-  externalSource: string | null;</span>
+<span class="del">-  /** The marketplace&#x27;s own item id for this Listing (Req 3), used to detect duplicates on re-scan; null for manually-entered Listings. */</span>
+<span class="del">-  externalItemId: string | null;</span>
+<span class="del">-  /** Whether this listing&#x27;s computer cannot be powered on or has non-functional components (server-only field, never from request body). */</span>
+<span class="del">-  nonWorking: boolean;</span>
+<span class="del">-  createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="del">-/**</span>
+<span class="del">- * One expected part on a Listing, with its estimated resale value (Req 2-3).</span>
+<span class="del">- * `brand`/`partNumber` are the component&#x27;s structured identity, null when it</span>
+<span class="del">- * was not confidently identified (never guessed); `description` holds the</span>
+<span class="del">- * remaining context.</span>
+<span class="del">- */</span>
+<span class="del">-export interface ExpectedPart {</span>
+<span class="del">-  id: string;</span>
+<span class="del">-  listingId: string;</span>
+<span class="del">-  componentCategory: ComponentCategory;</span>
+<span class="del">-  brand: string | null;</span>
+<span class="del">-  partNumber: string | null;</span>
+<span class="del">-  description: string;</span>
+<span class="del">-  estimatedResaleValue: number | null;</span>
+<span class="del">-  /** Other plausible brand/partNumber pairings the AI identifier considered but did not pick as primary; empty for manually-entered Expected Parts. */</span>
+<span class="del">-  identityCandidates: IdentityCandidate[];</span>
+<span class="del">-  /** Persisted AI-suggestion provenance (see packages/shared/src/listings.ts&#x27;s ExpectedPart doc comment); both null for a manual or since-edited row. */</span>
+<span class="del">-  aiConfidence: AiPartConfidence | null;</span>
+<span class="del">-  aiSource: AiPartSource | null;</span>
+<span class="del">-  /** Three-state (assumption A22, correcting A8): null = undecided (still eligible for the route&#x27;s first auto-claim), `&#x27;auto&#x27;` = the background price-estimation pipeline owns this row&#x27;s estimatedResaleValue, `&#x27;manual&#x27;` = the user has explicitly taken ownership (typed a value, or cleared one the pipeline had filled in) and it must never be auto-claimed or cache-overwritten again. */</span>
+<span class="del">-  priceSource: &#x27;auto&#x27; | &#x27;manual&#x27; | null;</span>
+<span class="del">-  /** The working/non-working status of this component. */</span>
+<span class="del">-  workingStatus: &#x27;working&#x27; | &#x27;non_working&#x27;;</span>
+<span class="del">-  /** Free-text notes about this Expected Part (e.g. condition quirks, missing hardware); null when none were recorded. */</span>
+<span class="del">-  notes: string | null;</span>
+<span class="del">-  createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="del">-/** The actual buy created when a Listing is accepted (Req 4-5). */</span>
+<span class="del">-export interface Purchase {</span>
+<span class="del">-  id: string;</span>
+<span class="del">-  listingId: string;</span>
+<span class="del">-  status: PurchaseStatus;</span>
+<span class="del">-  pricePaid: number;</span>
+<span class="del">-  purchaseDate: string;</span>
+<span class="del">-  createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="del">-/** Reconciliation of one Expected Part (or an unexpected find) during teardown (Req 6). */</span>
+<span class="del">-export interface TeardownResult {</span>
+<span class="del">-  id: string;</span>
+<span class="del">-  purchaseId: string;</span>
+<span class="del">-  expectedPartId: string | null;</span>
+<span class="del">-  resultType: TeardownResultType;</span>
+<span class="del">-  notes: string;</span>
+<span class="del">-  createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="del">-/**</span>
+<span class="del">- * A physical part produced by a teardown, tracked through resale (Req 6-7).</span>
+<span class="del">- * `brand`/`partNumber` carry over from the Expected Part (or Additional Part</span>
+<span class="del">- * row) the teardown reconciled; null when never identified.</span>
+<span class="del">- */</span>
+<span class="del">-export interface Part {</span>
+<span class="del">-  id: string;</span>
+<span class="del">-  purchaseId: string;</span>
+<span class="del">-  componentCategory: ComponentCategory;</span>
+<span class="del">-  brand: string | null;</span>
+<span class="del">-  partNumber: string | null;</span>
+<span class="del">-  status: PartStatus;</span>
+<span class="del">-  identityCandidates: IdentityCandidate[];</span>
+<span class="del">-  createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="ctx"> /** A reference photo of a part, used for AI visual identification training data. */</span>
+<span class="ctx"> export interface ReferencePhoto {</span>
+<span class="ctx">   id: string;</span>
+<span class="ctx">   photoPath: string;</span>
+<span class="del">-  partCategory: ComponentCategory;</span>
+<span class="del">-  partBrand: string | null;</span>
+<span class="add">+  category: ComponentCategory;</span>
+<span class="add">+  brand: string | null;</span>
+<span class="ctx">   partNumber: string | null;</span>
+<span class="del">-  notes: string;</span>
+<span class="add">+  source: string;</span>
+<span class="add">+  listingId: string | null;</span>
+<span class="ctx">   createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="ctx"> /** One attempt (successful or not) to auto-source a reference photo for a (category, brand, partNumber) combo. */</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -169,29 +33,6 @@ export interface SourcingAttempt {</div><pre><span class="ctx">   updatedAt: string;</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="del">-/** A draft/posted marketplace listing for one ready_to_list Part (Req 8). */</span>
+<span class="del">-export interface SaleListing {</span>
+<span class="del">-  id: string;</span>
+<span class="del">-  partId: string;</span>
+<span class="del">-  platform: PlatformType;</span>
+<span class="del">-  platformListingUrl: string | null;</span>
+<span class="del">-  status: string;</span>
+<span class="del">-  createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="del">-/** The recorded outcome of selling a Part (Req 9). */</span>
+<span class="del">-export interface Sale {</span>
+<span class="del">-  id: string;</span>
+<span class="del">-  partId: string;</span>
+<span class="del">-  platform: PlatformType;</span>
+<span class="del">-  saleDate: string;</span>
+<span class="del">-  priceSold: number;</span>
+<span class="del">-  notes: string;</span>
+<span class="del">-  createdAt: string;</span>
+<span class="del">-  updatedAt: string;</span>
+<span class="del">-}</span>
+<span class="del">-</span>
+<span class="ctx"> /**</span>
+<span class="ctx">  * Cache of an AI-researched resale-value estimate for a (category, brand,</span>
+<span class="ctx">  * partNumber) combo, updated in the background by the price-estimation</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -201,10 +42,11 @@ export interface Sale {</div><pre><span class="ctx">  */</span>
+<span class="ctx"> export interface PartPriceCacheEntry {</span>
+<span class="ctx">   id: string;</span>
+<span class="del">-  partCategory: ComponentCategory;</span>
+<span class="del">-  partBrand: string;</span>
+<span class="add">+  category: ComponentCategory;</span>
+<span class="add">+  brand: string;</span>
+<span class="ctx">   partNumber: string;</span>
+<span class="del">-  cachedPrice: number;</span>
+<span class="add">+  estimatedResaleValue: number | null;</span>
+<span class="add">+  lastResearchedAt: string | null;</span>
+<span class="ctx">   createdAt: string;</span>
+<span class="ctx">   updatedAt: string;</span>
+<span class="ctx"> }</span></pre></div>
+<div class="hunk"><div class="hunk-head">@@ -224,10 +66,13 @@ export type PricePartsJobStage = &#x27;queued&#x27; | &#x27;pricing&#x27; | &#x27;completed&#x27; | &#x27;failed&#x27;;</div><pre><span class="ctx">  */</span>
+<span class="ctx"> export interface PricePartsJob {</span>
+<span class="ctx">   id: string;</span>
+<span class="del">-  partCategory: ComponentCategory;</span>
+<span class="del">-  partBrand: string;</span>
+<span class="add">+  category: ComponentCategory;</span>
+<span class="add">+  brand: string;</span>
+<span class="ctx">   partNumber: string;</span>
+<span class="ctx">   stage: PricePartsJobStage;</span>
+<span class="add">+  errorMessage: string | null;</span>
+<span class="ctx">   createdAt: string;</span>
+<span class="add">+  startedAt: string | null;</span>
+<span class="add">+  completedAt: string | null;</span>
+<span class="ctx">   updatedAt: string;</span>
+<span class="ctx"> }</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">`CandidateListing` gains `listingDate: string`, a field every producer already built and every consumer already read.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/connectors/types.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -17,6 +17,7 @@ export interface CandidateListing {</div><pre><span class="ctx">   title: string;</span>
+<span class="ctx">   listingUrl: string;</span>
+<span class="ctx">   askingPrice: number;</span>
+<span class="add">+  listingDate: string;</span>
+<span class="ctx">   /**</span>
+<span class="ctx">    * Marketplace-hosted photo URLs for this listing, highest resolution the</span>
+<span class="ctx">    * platform offers, in display order (primary image first). The scan</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">`promoteReferencesForExpectedParts`&#x27;s parameter type is narrowed to just the three fields it actually reads, a pure type-signature correction so it also accepts already-persisted `ExpectedPart` rows whose optional AI-provenance fields don&#x27;t satisfy the stricter `ExpectedPartInput` shape.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/src/routes/listings.ts</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -212,11 +212,18 @@ function requireOpenListing(listing: Listing): void {</div><pre><span class="ctx">   }</span>
+<span class="ctx"> }</span>
+<span class="ctx"> </span>
+<span class="del">-/** Promotes reference photos for any Expected Parts with confirmed brands. */</span>
+<span class="add">+/**</span>
+<span class="add">+ * Promotes reference photos for any Expected Parts with confirmed brands.</span>
+<span class="add">+ * Takes only the fields actually read below (not the full `ExpectedPartInput`</span>
+<span class="add">+ * shape) so this also accepts already-persisted `ExpectedPart` rows (e.g.</span>
+<span class="add">+ * listingPhotos.ts&#x27;s post-upload promotion pass), whose `aiConfidence`/</span>
+<span class="add">+ * `aiSource`/`priceSource` are optional on `ExpectedPart` and would otherwise</span>
+<span class="add">+ * fail `ExpectedPartInput`&#x27;s stricter required-field shape.</span>
+<span class="add">+ */</span>
+<span class="ctx"> export async function promoteReferencesForExpectedParts(</span>
+<span class="ctx">   listingId: string,</span>
+<span class="ctx">   photoPaths: readonly string[],</span>
+<span class="del">-  expectedParts: ExpectedPartInput[],</span>
+<span class="add">+  expectedParts: Pick&lt;ExpectedPartInput, &#x27;componentCategory&#x27; | &#x27;brand&#x27; | &#x27;partNumber&#x27;&gt;[],</span>
+<span class="ctx"> ): Promise&lt;void&gt; {</span>
+<span class="ctx">   for (const part of expectedParts) {</span>
+<span class="ctx">     if (part.brand) {</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+<section class="card" data-section>
+<button class="card-head" aria-expanded="false" onclick="toggleSection(this)"><span class="title">Guarding against this drifting back</span><span class="meta">2 file(s)</span></button>
+<div class="card-body" hidden>
+<p class="summary">A routinely-runnable `typecheck` script is added at both the server and root level so a future type error — of any kind, not just a repeat of this duplication — fails loudly instead of going unnoticed the way this one did for multiple features.</p>
+<p class="note">Tasks: T2</p>
+<ul class="files"><li class="file-group">
+<p class="file-note">Adds a `&quot;typecheck&quot;: &quot;tsc -p tsconfig.json --noEmit&quot;` script, independent of `build` (which still emits output); verified to exit 0 on the fixed codebase and non-zero against a deliberately reintroduced type error.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">apps/server/package.json</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -10,6 +10,7 @@</div><pre><span class="ctx">     &quot;build&quot;: &quot;tsc -p tsconfig.json&quot;,</span>
+<span class="ctx">     &quot;start&quot;: &quot;node --env-file-if-exists=.env dist/index.js&quot;,</span>
+<span class="ctx">     &quot;lint&quot;: &quot;eslint .&quot;,</span>
+<span class="add">+    &quot;typecheck&quot;: &quot;tsc -p tsconfig.json --noEmit&quot;,</span>
+<span class="ctx">     &quot;test&quot;: &quot;vitest run&quot;,</span>
+<span class="ctx">     &quot;backfill-photos&quot;: &quot;tsx --env-file-if-exists=.env src/scripts/backfill-photos.ts&quot;,</span>
+<span class="ctx">     &quot;backfill-descriptions&quot;: &quot;tsx --env-file-if-exists=.env src/scripts/backfill-descriptions.ts&quot;,</span></pre></div></div></li></ul>
+</li>
+<li class="file-group">
+<p class="file-note">Adds a matching root-level `typecheck` script wired alongside the existing `lint` script, so a human can run one command to type-check the whole repo the way `lint` is already run.</p>
+<ul class="file-rows"><li class="file"><button class="file-head" aria-expanded="false" onclick="toggleFile(this)"><span class="path">package.json</span><span class="tag">modified</span></button><div class="file-body" hidden><div class="hunk"><div class="hunk-head">@@ -14,6 +14,7 @@</div><pre><span class="ctx">     &quot;dev&quot;: &quot;npm run build -w packages/shared &amp;&amp; concurrently -n web,server -c blue,green \&quot;npm run dev -w apps/web\&quot; \&quot;npm run dev -w apps/server\&quot;&quot;,</span>
+<span class="ctx">     &quot;build&quot;: &quot;npm run build -w packages/shared &amp;&amp; npm run build --workspaces --if-present&quot;,</span>
+<span class="ctx">     &quot;lint&quot;: &quot;eslint .&quot;,</span>
+<span class="add">+    &quot;typecheck&quot;: &quot;npm run typecheck -w apps/server&quot;,</span>
+<span class="ctx">     &quot;format&quot;: &quot;prettier --write .&quot;,</span>
+<span class="ctx">     &quot;test&quot;: &quot;npm run build -w packages/shared &amp;&amp; npm run test --workspaces --if-present&quot;</span>
+<span class="ctx">   },</span></pre></div></div></li></ul>
+</li></ul>
+</div>
+</section>
+</main><script>
+function toggleSection(btn){
+  var body = btn.nextElementSibling;
+  body.hidden = !body.hidden;
+  btn.setAttribute('aria-expanded', String(!body.hidden));
+}
+function toggleFile(btn){
+  var body = btn.nextElementSibling;
+  body.hidden = !body.hidden;
+  btn.setAttribute('aria-expanded', String(!body.hidden));
+}
+</script>

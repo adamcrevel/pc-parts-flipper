@@ -10,7 +10,8 @@
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
 import { computeNextRetryAt } from '../../retryBackoff.js';
-import type { ComponentCategory, PricePartsJob, PricePartsJobStage } from '../types.js';
+import type { ComponentCategory } from '@pc-parts-flipper/shared';
+import type { PricePartsJob, PricePartsJobStage } from '../types.js';
 
 // Converts one raw JSON row into the camelCase PricePartsJob shape.
 function mapRow(row: Record<string, unknown>): PricePartsJob {
@@ -24,6 +25,7 @@ function mapRow(row: Record<string, unknown>): PricePartsJob {
     createdAt: row.created_at as string,
     startedAt: (row.started_at as string | null) ?? null,
     completedAt: (row.completed_at as string | null) ?? null,
+    updatedAt: row.updated_at as string,
   };
 }
 

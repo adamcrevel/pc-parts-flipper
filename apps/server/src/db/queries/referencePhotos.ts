@@ -8,7 +8,7 @@ import { newId } from '../id.js';
 import { logger } from '../../logger.js';
 import { downloadFile } from '../download.js';
 import { isDecodableImage } from '../imageSignature.js';
-import type { ComponentCategory } from '../types.js';
+import type { ComponentCategory } from '@pc-parts-flipper/shared';
 
 const UNIQUE_CONSTRAINT_MESSAGE = /constraint error.*violates unique constraint/i;
 

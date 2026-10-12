@@ -3,7 +3,7 @@ import type { DuckDBValue } from '@duckdb/node-api';
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
 import { buildSetClause, toNumber } from '../sqlHelpers.js';
-import type { Listing, ListingStatus } from '../types.js';
+import type { Listing, ListingStatus } from '@pc-parts-flipper/shared';
 
 /** Fields the caller supplies when creating a Listing; id/status/timestamps are server-assigned. */
 export interface CreateListingInput {

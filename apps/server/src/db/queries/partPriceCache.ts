@@ -7,7 +7,8 @@
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
 import { toNullableNumber } from '../sqlHelpers.js';
-import type { ComponentCategory, PartPriceCacheEntry } from '../types.js';
+import type { ComponentCategory } from '@pc-parts-flipper/shared';
+import type { PartPriceCacheEntry } from '../types.js';
 
 // Same pattern as referencePhotos.ts's / sourcingAttempts.ts's
 // UNIQUE_CONSTRAINT_MESSAGE: matches the DuckDB error text raised when the

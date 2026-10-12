@@ -4,7 +4,7 @@ import type { IdentityCandidate } from '@pc-parts-flipper/shared';
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
 import { buildSetClause } from '../sqlHelpers.js';
-import type { ComponentCategory, Part, PartStatus } from '../types.js';
+import type { ComponentCategory, Part, PartStatus } from '@pc-parts-flipper/shared';
 
 /**
  * Fields supplied when the teardown workflow generates a Part (Req 6).
