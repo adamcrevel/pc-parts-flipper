@@ -1,7 +1,18 @@
-// Request-body validation for Listing create/update (Req 2, 13). Split out of
+// Request validation for Listings: the strict create/update body checks
+// (Req 2, 13) and the loose GET column-filter query parsing. Split out of
 // listings.ts to keep that file under the ~200-line standing check; imported
 // only by listings.ts, never a route-registration entry point itself.
-import type { AiPartConfidence, AiPartSource, ComponentCategory, ExpectedPartInput, IdentityCandidate, ListingStatus } from '@pc-parts-flipper/shared';
+import type {
+  AiPartConfidence,
+  AiPartSource,
+  ComponentCategory,
+  ExpectedPartInput,
+  IdentifyPartsJobStage,
+  IdentityCandidate,
+  ListingColumnFilters,
+  ListingStatus,
+  PricingStatus,
+} from '@pc-parts-flipper/shared';
 import { AppError } from '../error-handler.js';
 
 // The only values DuckDB's component_category/listing_status ENUM columns
@@ -16,6 +27,81 @@ const VALID_PRICE_SOURCES: readonly ('auto' | 'manual')[] = ['auto', 'manual'];
 export const VALID_STATUSES: readonly ListingStatus[] = ['open', 'accepted', 'rejected'];
 // Two-state: 'working' is the default for any component not explicitly marked otherwise.
 const VALID_WORKING_STATUSES: readonly ('working' | 'non_working')[] = ['working', 'non_working'];
+// The accepted values of the two computed-column filters on GET
+// /api/listings (Req 5, 6): every IdentifyPartsJobStage plus the 'none'
+// sentinel ListingColumnFilters documents for "no job has ever run", and
+// the three PricingStatus buckets.
+export const VALID_IDENTIFY_PARTS_STAGE_FILTERS: readonly (IdentifyPartsJobStage | 'none')[] = ['none', 'queued', 'identifying', 'sourcing_references', 'comparing', 'completed', 'failed'];
+export const VALID_PRICING_STATUSES: readonly PricingStatus[] = ['not_priced', 'partially_priced', 'fully_priced'];
+
+/**
+ * The raw query-string shape of the column filters, one key per
+ * `ListingColumnFilters` field. Every value arrives as a string, or as a
+ * string[] when the same key was repeated (Fastify's default parser turns
+ * `?statuses=open&statuses=accepted` into an array).
+ */
+export type ListingColumnFilterQuery = Partial<Record<keyof ListingColumnFilters, string | string[]>>;
+
+// Splits one multi-value query param into its trimmed, non-empty values.
+// Both `?statuses=open,accepted` (comma-separated, what URLSearchParams.set
+// naturally produces) and `?statuses=open&statuses=accepted` (repeated key)
+// are accepted, since neither form was an existing convention here.
+function splitListParam(raw: string | string[] | undefined): string[] {
+  const values = Array.isArray(raw) ? raw : raw === undefined ? [] : [raw];
+  return values
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+// Keeps only the values in `validValues`: an unrecognized value is ignored
+// rather than rejected, the same loose GET validation the old single
+// `status` param had. An empty surviving set means "no filter on this
+// column" (assumption A4), never "match nothing", so it comes back as
+// undefined like an absent param.
+function parseEnumListParam<T extends string>(raw: string | string[] | undefined, validValues: readonly T[]): T[] | undefined {
+  const values = splitListParam(raw).filter((value): value is T => validValues.includes(value as T));
+  return values.length > 0 ? values : undefined;
+}
+
+// A blank or non-numeric bound is ignored (no bound on that side), matching
+// the loose GET validation above.
+function parseNumberParam(raw: string | string[] | undefined): number | undefined {
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    return undefined;
+  }
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * Parses the eight column-filter query params of GET /api/listings and GET
+ * /api/listings/ids (Req 2-7) into a `ListingColumnFilters`. Validates
+ * loosely, like every other GET param on these routes: a blank, malformed
+ * or unrecognized value simply applies no filter on that column. The
+ * returned object carries ONLY the keys that are actually active, so
+ * `Object.keys(result).length === 0` means "no filter at all" — the signal
+ * the route uses to keep the SQL-only fast path.
+ */
+export function parseListingColumnFilters(query: ListingColumnFilterQuery): ListingColumnFilters {
+  const sourceIds = splitListParam(query.sourceIds);
+  const parsed: ListingColumnFilters = {
+    title: typeof query.title === 'string' && query.title.trim().length > 0 ? query.title : undefined,
+    // Same empty-means-absent rule as parseEnumListParam, minus the
+    // allow-list: a Source id is only checked by membership later.
+    sourceIds: sourceIds.length > 0 ? sourceIds : undefined,
+    statuses: parseEnumListParam(query.statuses, VALID_STATUSES),
+    askingPriceMin: parseNumberParam(query.askingPriceMin),
+    askingPriceMax: parseNumberParam(query.askingPriceMax),
+    expectedResaleMin: parseNumberParam(query.expectedResaleMin),
+    expectedResaleMax: parseNumberParam(query.expectedResaleMax),
+    differenceMin: parseNumberParam(query.differenceMin),
+    differenceMax: parseNumberParam(query.differenceMax),
+    identifyPartsStages: parseEnumListParam(query.identifyPartsStages, VALID_IDENTIFY_PARTS_STAGE_FILTERS),
+    pricingStatuses: parseEnumListParam(query.pricingStatuses, VALID_PRICING_STATUSES),
+  };
+  return Object.fromEntries(Object.entries(parsed).filter(([, value]) => value !== undefined)) as ListingColumnFilters;
+}
 
 // Loosely-typed shapes of untrusted request input, confirmed by the validate
 // functions below before anything reaches the db layer.

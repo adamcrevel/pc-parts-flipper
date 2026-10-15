@@ -1,6 +1,17 @@
 import { Fragment, useEffect, useRef } from 'react';
-import { ArrowDown, ArrowUp, Image } from 'lucide-react';
-import type { CreateListingInput, ListingDetail, ListingSortDirection, ListingSortField, ListingSummary, Source } from '@pc-parts-flipper/shared';
+import { Image } from 'lucide-react';
+import type {
+  CreateListingInput,
+  IdentifyPartsJobStage,
+  ListingColumnFilters,
+  ListingDetail,
+  ListingSortDirection,
+  ListingSortField,
+  ListingStatus,
+  ListingSummary,
+  PricingStatus,
+  Source,
+} from '@pc-parts-flipper/shared';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { ListingForm } from '@/features/listings/listing-form';
@@ -8,6 +19,9 @@ import { EbayScanBadge } from '@/features/listings/ebay-scan-badge';
 import { NonWorkingBadge } from '@/features/listings/non-working-badge';
 import { IdentifyPartsStatusBadge } from '@/features/listings/identify-parts-status-badge';
 import { PricingStatusBadge } from '@/features/listings/pricing-status-badge';
+import { FilterableHeader } from '@/features/listings/filterable-header';
+import { EnumFilterContent, NumberRangeFilterContent, TextFilterContent } from '@/features/listings/filter-content';
+import { hasActiveColumnFilter, isColumnFilterSet } from '@/features/listings/column-filters';
 import { cn } from '@/lib/utils';
 
 interface ListingListProps {
@@ -57,6 +71,14 @@ interface ListingListProps {
   // whole table reads as inert, while the rows themselves stay visible
   // underneath rather than being replaced by a full-page spinner.
   isLoading?: boolean;
+  // The filter currently applied to each column (Req 1-7), owned by the
+  // page above exactly like the sort state: this component renders each
+  // header's filter body from it and reports edits upward as a partial
+  // patch — one column's field(s) at a time — never holding filter state
+  // of its own. A column's own Clear (Req 9) is the same callback with that
+  // column's field(s) set back to undefined.
+  columnFilters: ListingColumnFilters;
+  onColumnFilterChange: (patch: Partial<ListingColumnFilters>) => void;
 }
 
 // One table body plus, for whichever row is open, an extra full-width row
@@ -65,68 +87,162 @@ interface ListingListProps {
 // Listing it edits regardless of scroll position.
 const COLUMN_COUNT = 10;
 
-// Every sortable column, in the left-to-right order the table renders them:
-// the shared `ListingSortField` value sent to the server paired with the
-// header label shown to the user. The two non-comparable columns (the
-// leading selection checkbox and the trailing Accept/Reject actions) carry
-// no comparable value, so they have no entry here and stay plain `<th>`s.
-const SORTABLE_COLUMNS: { field: ListingSortField; label: string }[] = [
-  { field: 'title', label: 'Title' },
-  { field: 'source', label: 'Source' },
-  { field: 'status', label: 'Status' },
-  { field: 'askingPrice', label: 'Asking Price' },
-  { field: 'expectedResale', label: 'Expected Resale' },
-  { field: 'difference', label: 'Expected Profit' },
-  { field: 'identifyParts', label: 'Sourcing Status' },
-  { field: 'unpriced', label: 'Pricing Status' },
+// Every sortable/filterable column, in the left-to-right order the table
+// renders them: the shared `ListingSortField` value sent to the server
+// paired with the header label shown to the user, plus which
+// `ListingColumnFilters` field(s) that column's filter lives in (a number
+// column has two, its min and max bound). The two non-comparable columns
+// (the leading selection checkbox and the trailing Accept/Reject actions)
+// carry no comparable value, so they have no entry here and stay plain
+// `<th>`s.
+const COLUMNS: { field: ListingSortField; label: string; filterKeys: (keyof ListingColumnFilters)[] }[] = [
+  { field: 'title', label: 'Title', filterKeys: ['title'] },
+  { field: 'source', label: 'Source', filterKeys: ['sourceIds'] },
+  { field: 'status', label: 'Status', filterKeys: ['statuses'] },
+  { field: 'askingPrice', label: 'Asking Price', filterKeys: ['askingPriceMin', 'askingPriceMax'] },
+  { field: 'expectedResale', label: 'Expected Resale', filterKeys: ['expectedResaleMin', 'expectedResaleMax'] },
+  { field: 'difference', label: 'Expected Profit', filterKeys: ['differenceMin', 'differenceMax'] },
+  { field: 'identifyParts', label: 'Sourcing Status', filterKeys: ['identifyPartsStages'] },
+  { field: 'unpriced', label: 'Pricing Status', filterKeys: ['pricingStatuses'] },
 ];
 
-/**
- * One clickable column header. Its label is a button that reports the
- * click up to the page (which owns the sort state and the refetch); the
- * header renders a direction arrow — up for ascending, down for
- * descending — only when its own field is the active one, so exactly one
- * header in the table ever shows an indicator. `aria-sort` carries the same
- * information for assistive tech, reading `none` on every inactive column.
- * Req 8: `isLoading` disables the button while a fetch for the table's own
- * rows is in flight, so a click can't queue a second sort change against
- * data that's already stale and about to be replaced.
- */
-function SortableHeader({
-  field,
-  label,
-  sortBy,
-  sortDirection,
-  onSortChange,
-  isLoading,
-}: {
+// The fixed option lists for the three enum columns whose values are
+// closed sets (Req 4-6). Source's list is not fixed — it comes from the
+// page's live `sources` prop, matched by id — so it is built inline below.
+const STATUS_OPTIONS: { value: ListingStatus; label: string }[] = [
+  { value: 'open', label: 'Open' },
+  { value: 'accepted', label: 'Accepted' },
+  { value: 'rejected', label: 'Rejected' },
+];
+
+// Req 5: the six job stages plus the explicit `'none'` sentinel the server
+// matches to a Listing with no identify-parts job at all.
+const IDENTIFY_PARTS_STAGE_OPTIONS: { value: IdentifyPartsJobStage | 'none'; label: string }[] = [
+  { value: 'none', label: '(Not started)' },
+  { value: 'queued', label: 'Queued' },
+  { value: 'identifying', label: 'Identifying' },
+  { value: 'sourcing_references', label: 'Sourcing References' },
+  { value: 'comparing', label: 'Comparing' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'failed', label: 'Failed' },
+];
+
+const PRICING_STATUS_OPTIONS: { value: PricingStatus; label: string }[] = [
+  { value: 'not_priced', label: 'Not Priced' },
+  { value: 'partially_priced', label: 'Partially Priced' },
+  { value: 'fully_priced', label: 'Fully Priced' },
+];
+
+// An enum filter reports `[]` for "nothing checked"; the page's filter
+// object stores that as an absent field (A4), the same way the text and
+// number columns store theirs.
+function checkedSetOrUndefined<T extends string>(value: T[]): T[] | undefined {
+  return value.length > 0 ? value : undefined;
+}
+
+// The props every column's filter body is built from: which column, its
+// header label, the page's whole filter object (each body reads only its
+// own field(s)), the Sources for the Source column's options, and the
+// patch callback. Shared by the two components below.
+interface ColumnFilterContentProps {
   field: ListingSortField;
   label: string;
-  sortBy?: ListingSortField;
-  sortDirection?: ListingSortDirection;
-  onSortChange: (field: ListingSortField) => void;
-  isLoading?: boolean;
-}) {
-  const isActive = sortBy === field;
-  // A field can only ever be active ascending or descending; an active
-  // field with no direction yet reads as ascending, matching the page's own
-  // first-click behaviour.
-  const isDescending = isActive && sortDirection === 'desc';
-  const Arrow = isDescending ? ArrowDown : ArrowUp;
+  columnFilters: ListingColumnFilters;
+  sources: Source[];
+  onChange: (patch: Partial<ListingColumnFilters>) => void;
+}
 
-  return (
-    <th className="px-4 py-2 font-medium" aria-sort={isActive ? (isDescending ? 'descending' : 'ascending') : 'none'}>
-      <button
-        type="button"
-        className="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-        onClick={() => onSortChange(field)}
-        disabled={isLoading}
-      >
-        {label}
-        {isActive && <Arrow className="h-3.5 w-3.5 shrink-0" aria-label={`Sorted ${isDescending ? 'descending' : 'ascending'}`} />}
-      </button>
-    </th>
-  );
+/**
+ * The checkbox multi-select body for one of the four enum columns (Req
+ * 3-6): the column's fixed option list — or, for Source, one option per
+ * Source the page knows about, every Source including inactive ones since
+ * a past Listing may belong to one, labelled by name but matched by id —
+ * bound to that column's array field. Split out of ColumnFilterContent
+ * purely so neither switch has to carry the other's cases.
+ */
+function EnumColumnFilterContent({
+  field,
+  label,
+  columnFilters,
+  sources,
+  onChange,
+}: ColumnFilterContentProps & { field: 'source' | 'status' | 'identifyParts' | 'unpriced' }) {
+  switch (field) {
+    case 'source':
+      return (
+        <EnumFilterContent
+          label={label}
+          options={sources.map((source) => ({ value: source.id, label: source.name }))}
+          value={columnFilters.sourceIds ?? []}
+          onChange={(value) => onChange({ sourceIds: checkedSetOrUndefined(value) })}
+        />
+      );
+    case 'status':
+      return <EnumFilterContent label={label} options={STATUS_OPTIONS} value={columnFilters.statuses ?? []} onChange={(value) => onChange({ statuses: checkedSetOrUndefined(value) })} />;
+    case 'identifyParts':
+      return (
+        <EnumFilterContent
+          label={label}
+          options={IDENTIFY_PARTS_STAGE_OPTIONS}
+          value={columnFilters.identifyPartsStages ?? []}
+          onChange={(value) => onChange({ identifyPartsStages: checkedSetOrUndefined(value) })}
+        />
+      );
+    case 'unpriced':
+      return (
+        <EnumFilterContent
+          label={label}
+          options={PRICING_STATUS_OPTIONS}
+          value={columnFilters.pricingStatuses ?? []}
+          onChange={(value) => onChange({ pricingStatuses: checkedSetOrUndefined(value) })}
+        />
+      );
+  }
+}
+
+/**
+ * The filter body for one column's FilterableHeader popover: the content
+ * component matching that column's type, bound to its field(s) in
+ * `columnFilters`. Each change is reported as a patch holding only this
+ * column's field(s), with a column's "no filter" value normalised to
+ * `undefined` (`''` for text, `[]` for an enum) so the page's filter
+ * object never carries an empty-but-present field. A number column's two
+ * bounds always travel together in one patch (Req 7). The `isFiltered`
+ * indicator is computed by the caller from the same `filterKeys` list, so
+ * the two can't disagree about which field a column reads.
+ */
+function ColumnFilterContent(props: ColumnFilterContentProps) {
+  const { field, label, columnFilters, onChange } = props;
+  switch (field) {
+    case 'title':
+      return <TextFilterContent label={label} value={columnFilters.title ?? ''} onChange={(value) => onChange({ title: value === '' ? undefined : value })} />;
+    case 'askingPrice':
+      return (
+        <NumberRangeFilterContent
+          label={label}
+          value={{ min: columnFilters.askingPriceMin, max: columnFilters.askingPriceMax }}
+          onChange={(range) => onChange({ askingPriceMin: range.min, askingPriceMax: range.max })}
+        />
+      );
+    case 'expectedResale':
+      return (
+        <NumberRangeFilterContent
+          label={label}
+          value={{ min: columnFilters.expectedResaleMin, max: columnFilters.expectedResaleMax }}
+          onChange={(range) => onChange({ expectedResaleMin: range.min, expectedResaleMax: range.max })}
+        />
+      );
+    case 'difference':
+      return (
+        <NumberRangeFilterContent
+          label={label}
+          value={{ min: columnFilters.differenceMin, max: columnFilters.differenceMax }}
+          onChange={(range) => onChange({ differenceMin: range.min, differenceMax: range.max })}
+        />
+      );
+    default:
+      return <EnumColumnFilterContent {...props} field={field} />;
+  }
 }
 
 /**
@@ -134,7 +250,13 @@ function SortableHeader({
  * Source, Identify-Parts status, and Accept/Reject actions, plus a
  * selection checkbox column. Clicking a Listing's title (not a separate
  * Edit button) opens that Listing's edit form inline, directly below its
- * row.
+ * row. Every data column's header both sorts and filters that column.
+ *
+ * Two distinct empty states: with no rows and no active filter the table
+ * is replaced by the "No listings yet" prompt, but once any column filter
+ * is active (Req 13) the table — and so every header's filter and sort —
+ * stays rendered, with a single full-width row saying nothing matched, so
+ * a user can loosen the filter from right where they tightened it.
  */
 export function ListingList({
   listings,
@@ -158,6 +280,8 @@ export function ListingList({
   sortDirection,
   onSortChange,
   isLoading,
+  columnFilters,
+  onColumnFilterChange,
 }: ListingListProps) {
   const headerCheckboxRef = useRef<HTMLInputElement>(null);
 
@@ -176,7 +300,7 @@ export function ListingList({
     }
   }, [someFilteredSelected]);
 
-  if (listings.length === 0) {
+  if (listings.length === 0 && !hasActiveColumnFilter(columnFilters)) {
     return <p className="text-sm text-muted-foreground">No listings yet. Add one to get started.</p>;
   }
 
@@ -201,8 +325,8 @@ export function ListingList({
                 onChange={onToggleAllFiltered}
               />
             </th>
-            {SORTABLE_COLUMNS.map((column) => (
-              <SortableHeader
+            {COLUMNS.map((column) => (
+              <FilterableHeader
                 key={column.field}
                 field={column.field}
                 label={column.label}
@@ -210,12 +334,22 @@ export function ListingList({
                 sortDirection={sortDirection}
                 onSortChange={onSortChange}
                 isLoading={isLoading}
-              />
+                isFiltered={column.filterKeys.some((key) => isColumnFilterSet(columnFilters[key]))}
+              >
+                <ColumnFilterContent field={column.field} label={column.label} columnFilters={columnFilters} sources={sources} onChange={onColumnFilterChange} />
+              </FilterableHeader>
             ))}
             <th className="px-4 py-2 font-medium" />
           </tr>
         </thead>
         <tbody>
+          {listings.length === 0 && (
+            <tr>
+              <td colSpan={COLUMN_COUNT} className="px-4 py-6 text-center text-muted-foreground">
+                No listings match the current filters.
+              </td>
+            </tr>
+          )}
           {listings.map((listing) => {
             const isOpen = listing.id === editingListingId;
             return (

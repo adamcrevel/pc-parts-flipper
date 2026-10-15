@@ -203,11 +203,10 @@ export async function countListings(options?: Pick<ListListingsOptions, 'status'
   return Number(reader.getRowObjectsJson()[0].total);
 }
 
-/** Lists every Listing id matching the same status/Source filters as listListings, across all matching rows (not paginated), newest first — backs GET /api/listings/ids for bulk identify-parts enqueueing. */
-export async function listListingIds(options?: Pick<ListListingsOptions, 'status' | 'sourceId'>): Promise<string[]> {
+/** Lists every Listing id, across all rows (not paginated), newest first — the no-filter fast path of GET /api/listings/ids for bulk identify-parts enqueueing; column-filtered id sets are built in memory by that route instead. */
+export async function listListingIds(): Promise<string[]> {
   const connection = await getConnection();
-  const { whereSql, params } = buildListingsWhere(options);
-  const reader = await connection.runAndReadAll(`SELECT id FROM listings ${whereSql} ORDER BY listing_date DESC, id ASC`, params);
+  const reader = await connection.runAndReadAll('SELECT id FROM listings ORDER BY listing_date DESC, id ASC');
   return reader.getRowObjectsJson().map((row) => row.id as string);
 }
 

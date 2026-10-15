@@ -124,7 +124,7 @@ describe('Listings accept/reject + queue filters (T7)', () => {
     expect(final.body.status).toBe('rejected');
   }, 30_000);
 
-  it("narrows the queue by status and Source independently, and combined (Req 12, 15)", async () => {
+  it("narrows the queue by statuses and sourceIds independently, and combined (Req 12, 15)", async () => {
     // Fresh Source-B listing, left open, so this test's status/source
     // counts are unaffected by the open Listings the earlier tests left on
     // Source A.
@@ -136,33 +136,33 @@ describe('Listings accept/reject + queue filters (T7)', () => {
     const acceptResult = await postJson<AcceptListingResponse>(`${server.baseUrl}/api/listings/${acceptedOnA.body.id}/accept`, {});
     expect(acceptResult.status).toBe(201);
 
-    // status filter alone: every row returned must actually carry that
+    // statuses filter alone: every row returned must actually carry that
     // status (not just the right count), and the just-accepted Listing
     // must be present.
-    const acceptedFiltered = await getJson<ListListingsResponse>(`${server.baseUrl}/api/listings?status=accepted&limit=100`);
+    const acceptedFiltered = await getJson<ListListingsResponse>(`${server.baseUrl}/api/listings?statuses=accepted&limit=100`);
     expect(acceptedFiltered.status).toBe(200);
-    expect(acceptedFiltered.body.listings.every((l) => l.status === 'accepted'), 'status=accepted must only return accepted Listings').toBe(true);
+    expect(acceptedFiltered.body.listings.every((l) => l.status === 'accepted'), 'statuses=accepted must only return accepted Listings').toBe(true);
     expect(acceptedFiltered.body.listings.map((l) => l.id)).toContain(acceptedOnA.body.id);
 
-    // sourceId filter alone: every row returned must belong to Source B,
+    // sourceIds filter alone: every row returned must belong to Source B,
     // and the Source-B open listing must be present while the Source-A one
     // must not.
-    const bFiltered = await getJson<ListListingsResponse>(`${server.baseUrl}/api/listings?sourceId=${sourceIdB}&limit=100`);
+    const bFiltered = await getJson<ListListingsResponse>(`${server.baseUrl}/api/listings?sourceIds=${sourceIdB}&limit=100`);
     expect(bFiltered.status).toBe(200);
-    expect(bFiltered.body.listings.every((l) => l.sourceId === sourceIdB), 'sourceId filter must only return that Source\'s Listings').toBe(true);
+    expect(bFiltered.body.listings.every((l) => l.sourceId === sourceIdB), 'sourceIds filter must only return that Source\'s Listings').toBe(true);
     const bIds = bFiltered.body.listings.map((l) => l.id);
     expect(bIds).toContain(openOnB.body.id);
     expect(bIds).not.toContain(acceptedOnA.body.id);
 
-    // Combined status + sourceId: Source A has an accepted Listing, so
-    // status=accepted&sourceId=A must include it...
-    const combinedHit = await getJson<ListListingsResponse>(`${server.baseUrl}/api/listings?status=accepted&sourceId=${sourceIdA}&limit=100`);
+    // Combined statuses + sourceIds: Source A has an accepted Listing, so
+    // statuses=accepted&sourceIds=A must include it...
+    const combinedHit = await getJson<ListListingsResponse>(`${server.baseUrl}/api/listings?statuses=accepted&sourceIds=${sourceIdA}&limit=100`);
     expect(combinedHit.body.listings.map((l) => l.id)).toContain(acceptedOnA.body.id);
 
-    // ...while status=accepted&sourceId=B must exclude it (Source B's only
-    // Listing here is still open), proving the two filters actually AND
-    // together rather than either one alone satisfying the query.
-    const combinedMiss = await getJson<ListListingsResponse>(`${server.baseUrl}/api/listings?status=accepted&sourceId=${sourceIdB}&limit=100`);
+    // ...while statuses=accepted&sourceIds=B must exclude it (Source B's
+    // only Listing here is still open), proving the two filters actually
+    // AND together rather than either one alone satisfying the query.
+    const combinedMiss = await getJson<ListListingsResponse>(`${server.baseUrl}/api/listings?statuses=accepted&sourceIds=${sourceIdB}&limit=100`);
     expect(combinedMiss.body.listings.map((l) => l.id)).not.toContain(acceptedOnA.body.id);
   }, 30_000);
 

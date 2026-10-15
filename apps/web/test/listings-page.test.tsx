@@ -25,14 +25,29 @@
 // (no RTL dependency in this workspace), and drives fetchListing through
 // controlled, independently-resolvable promises so resolution order is
 // deterministic.
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import type { ListingDetail, ListingSummary, Source } from '@pc-parts-flipper/shared';
+import type { ListingColumnFilters, ListingDetail, ListingSummary, Source } from '@pc-parts-flipper/shared';
+import type { FetchListingsOptions } from '../src/features/listings/listings-api';
+import { COLUMN_FILTER_KEYS } from '../src/features/listings/column-filters';
 import { ListingsPage } from '../src/routes/listings-page';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+beforeAll(() => {
+  // Radix's popover (each column header's filter, T4/T5) positions its
+  // content with floating-ui, which needs a ResizeObserver jsdom doesn't
+  // ship. Nothing here asserts on position, only on presence.
+  if (!('ResizeObserver' in globalThis)) {
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+  }
+});
 
 const fetchListingsMock = vi.fn();
 const fetchListingMock = vi.fn();
@@ -57,8 +72,11 @@ vi.mock('@/features/listings/listings-api', () => ({
 }));
 
 vi.mock('@/features/sources/sources-api', () => ({
+  // Two Sources, one inactive, so the Source column's filter can be shown
+  // to list every Source the page knows about and to match by id.
   fetchSources: () => Promise.resolve<Source[]>([
     { id: 'source-1', name: 'Test Source', platformType: 'ebay', url: null, notes: null, active: true, createdAt: '2024-01-01', updatedAt: '2024-01-01' },
+    { id: 'source-2', name: 'Inactive Source', platformType: 'ebay', url: null, notes: null, active: false, createdAt: '2024-01-01', updatedAt: '2024-01-01' },
   ]),
 }));
 
@@ -174,6 +192,107 @@ function findButton(el: HTMLElement, text: string): HTMLButtonElement {
   return button as HTMLButtonElement;
 }
 
+// The options object handed to the most recent fetchListings call — what
+// actually determines the server-side filter/sort/page of the whole
+// dataset; the rendered rows on a mocked page prove nothing about it.
+function lastFetchOptions(): FetchListingsOptions {
+  const calls = fetchListingsMock.mock.calls;
+  return calls[calls.length - 1][0] as FetchListingsOptions;
+}
+
+// Opens one column header's filter popover (T4/T5: the funnel button next
+// to the sort label) and returns its content. Radix portals the content to
+// document.body and links it from the trigger's aria-controls, so it is
+// resolved from that attribute rather than searched for — two popovers
+// left open at once (nothing here closes them) can't be confused.
+async function openColumnFilter(el: HTMLElement, column: string): Promise<HTMLElement> {
+  const trigger = el.querySelector(`thead button[aria-label^="Filter by ${column}"]`) as HTMLButtonElement | null;
+  if (!trigger) {
+    throw new Error(`No filter trigger found for column "${column}"`);
+  }
+  if (trigger.getAttribute('data-state') !== 'open') {
+    await act(async () => {
+      trigger.click();
+    });
+  }
+  const content = document.getElementById(trigger.getAttribute('aria-controls') ?? '');
+  if (!content) {
+    throw new Error(`Filter popover for column "${column}" did not open`);
+  }
+  return content;
+}
+
+// Toggles one checkbox option, by its label, inside an enum column's filter.
+async function checkColumnFilterOption(el: HTMLElement, column: string, option: string): Promise<void> {
+  const content = await openColumnFilter(el, column);
+  const label = Array.from(content.querySelectorAll('label')).find((l) => l.textContent?.trim() === option);
+  const input = label?.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+  if (!input) {
+    throw new Error(`No "${option}" option found in the ${column} filter`);
+  }
+  await act(async () => {
+    input.click();
+  });
+}
+
+// Replaces the text in a text column's filter input with `value`, as one
+// keystroke (React sees a single change event).
+async function typeColumnFilterText(el: HTMLElement, column: string, value: string): Promise<HTMLInputElement> {
+  const content = await openColumnFilter(el, column);
+  const input = content.querySelector('input[type="text"]') as HTMLInputElement | null;
+  if (!input) {
+    throw new Error(`No text input found in the ${column} filter`);
+  }
+  await act(async () => {
+    setInputValue(input, value);
+  });
+  return input;
+}
+
+// Sets the Min or Max input of a number column's filter.
+async function setColumnFilterBound(el: HTMLElement, column: string, bound: 'Min' | 'Max', value: string): Promise<void> {
+  const content = await openColumnFilter(el, column);
+  const label = Array.from(content.querySelectorAll('label')).find((l) => l.textContent?.trim().startsWith(bound));
+  const input = label?.querySelector('input[type="number"]') as HTMLInputElement | null;
+  if (!input) {
+    throw new Error(`No ${bound} input found in the ${column} filter`);
+  }
+  await act(async () => {
+    setInputValue(input, value);
+  });
+}
+
+// Clicks the Clear button inside one column's own filter (Req 9).
+async function clearColumnFilter(el: HTMLElement, column: string): Promise<void> {
+  const content = await openColumnFilter(el, column);
+  const clear = Array.from(content.querySelectorAll('button')).find((b) => b.textContent === 'Clear');
+  if (!clear) {
+    throw new Error(`No Clear button found in the ${column} filter`);
+  }
+  await act(async () => {
+    clear.click();
+  });
+}
+
+// The "Clear all" control, or null while no filter is active (Req 8).
+function queryClearAllButton(el: HTMLElement): HTMLButtonElement | null {
+  return (Array.from(el.querySelectorAll('button')).find((b) => b.textContent === 'Clear all') as HTMLButtonElement | undefined) ?? null;
+}
+
+function filterTriggerLabel(el: HTMLElement, column: string): string | null {
+  return el.querySelector(`thead button[aria-label^="Filter by ${column}"]`)?.getAttribute('aria-label') ?? null;
+}
+
+// Just the 11 column-filter fields of a fetchListings options object, for
+// comparing against what fetchListingIds was handed (Req 11).
+function columnFilterFields(options: FetchListingsOptions): ListingColumnFilters {
+  const picked: Record<string, unknown> = {};
+  for (const key of COLUMN_FILTER_KEYS) {
+    if (options[key] !== undefined) picked[key] = options[key];
+  }
+  return picked as ListingColumnFilters;
+}
+
 describe('ListingsPage inline edit stale-fetch race (MUST FIX)', () => {
   it('cross-listing: ends up holding the last-clicked listing\'s own data, not an earlier click\'s slower-resolving detail', async () => {
     fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });
@@ -242,7 +361,9 @@ describe('ListingsPage inline edit stale-fetch race (MUST FIX)', () => {
     // starts collapsed, so its description input isn't mounted until the
     // row is expanded — expand it to read the staleness-proving value.
     await act(async () => {
-      (el.querySelector('button[aria-expanded="false"]') as HTMLButtonElement | null)?.click();
+      // Scoped to the form: every column header's filter trigger (T5) is
+      // an aria-expanded popover button too, and comes first in the DOM.
+      (el.querySelector('form button[aria-expanded="false"]') as HTMLButtonElement | null)?.click();
     });
     const partDescriptionInput = el.querySelector('[aria-label="Expected part 1 description"]') as HTMLInputElement | null;
     if (!titleInput || !priceInput || !partDescriptionInput) {
@@ -344,7 +465,7 @@ describe('ListingsPage inline edit stale-fetch race (MUST FIX)', () => {
     const titleInput = el.querySelector('#listing-title') as HTMLInputElement | null;
     const priceInput = el.querySelector('#listing-asking-price') as HTMLInputElement | null;
     await act(async () => {
-      (el.querySelector('button[aria-expanded="false"]') as HTMLButtonElement | null)?.click();
+      (el.querySelector('form button[aria-expanded="false"]') as HTMLButtonElement | null)?.click();
     });
     const partDescriptionInput = el.querySelector('[aria-label="Expected part 1 description"]') as HTMLInputElement | null;
     if (!titleInput || !priceInput || !partDescriptionInput) {
@@ -553,11 +674,6 @@ describe('ListingsPage Add Listing create flow (Req 12)', () => {
 describe('ListingsPage sortable columns (T3)', () => {
   const PAGE_SIZE = 20;
 
-  function lastFetchOptions(): { sortBy?: string; sortDirection?: string; offset?: number; status?: string; sourceId?: string } {
-    const calls = fetchListingsMock.mock.calls;
-    return calls[calls.length - 1][0] as { sortBy?: string; sortDirection?: string; offset?: number; status?: string; sourceId?: string };
-  }
-
   // Clicks a column header and waits for the reload the sort change
   // triggers, so the assertions read the request carrying the new sort
   // rather than the previous one.
@@ -662,13 +778,8 @@ describe('ListingsPage sortable columns (T3)', () => {
     await clickHeader(el, 'Expected Resale');
     expect(lastFetchOptions().sortDirection).toBe('desc');
 
-    // The status select is the first of the two filter selects.
-    const statusSelect = el.querySelectorAll('select')[0] as HTMLSelectElement;
-    await act(async () => {
-      statusSelect.value = 'accepted';
-      statusSelect.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    await waitFor(() => lastFetchOptions().status === 'accepted');
+    await checkColumnFilterOption(el, 'Status', 'Accepted');
+    await waitFor(() => lastFetchOptions().statuses?.[0] === 'accepted');
 
     const options = lastFetchOptions();
     expect(options.sortBy).toBe('expectedResale');
@@ -747,6 +858,407 @@ describe('ListingsPage loading state (Req 6-8)', () => {
         await promise;
       });
       expect(el.querySelector('[role="status"]')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 10_000);
+});
+
+// T5: column-header filtering wired through the real ListingsPage (Req
+// 1-13). ListingsPage owns the filter state; each assertion reads the
+// options object handed to fetchListings (and fetchListingIds), which is
+// what determines the server-side result — the mocked rows never change
+// in response to a filter, so a filter that silently failed to reach the
+// request would be invisible in the DOM alone.
+describe('ListingsPage column filters (T5)', () => {
+  const PAGE_SIZE = 20;
+
+  // Waits for the reload a filter change triggers, identified by the
+  // request it produces rather than by call count, so a Title change
+  // (debounced) and a checkbox change (immediate) read the same way.
+  async function waitForFetchWith(predicate: (options: FetchListingsOptions) => boolean) {
+    await waitFor(() => fetchListingsMock.mock.calls.length > 0 && predicate(lastFetchOptions()));
+  }
+
+  it('sends no filter field at all until a filter is set, and shows no Clear all control (Req 8)', async () => {
+    fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 2);
+
+    expect(columnFilterFields(lastFetchOptions())).toEqual({});
+    expect(fetchListingIdsMock).toHaveBeenLastCalledWith({});
+    expect(queryClearAllButton(el)).toBeNull();
+    for (const column of ['Title', 'Source', 'Status', 'Asking Price', 'Expected Resale', 'Expected Profit', 'Sourcing Status', 'Pricing Status']) {
+      expect(filterTriggerLabel(el, column)).toBe(`Filter by ${column}`);
+    }
+  }, 10_000);
+
+  it('applies every one of the 8 column filters end to end, composing them all into one request (Req 1-7, 11)', async () => {
+    fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 2);
+
+    // Req 2: free text, forwarded verbatim (the server does the
+    // case-insensitive substring match).
+    await typeColumnFilterText(el, 'Title', 'gPu');
+    await waitForFetchWith((o) => o.title === 'gPu');
+    expect(filterTriggerLabel(el, 'Title')).toBe('Filter by Title (filter active)');
+
+    // Req 3: the Source list is the page's own fetched Sources — every
+    // one, inactive included — labelled by name but sent by id.
+    const sourceContent = await openColumnFilter(el, 'Source');
+    expect(Array.from(sourceContent.querySelectorAll('label')).map((l) => l.textContent?.trim())).toEqual(['Test Source', 'Inactive Source']);
+    await checkColumnFilterOption(el, 'Source', 'Inactive Source');
+    await waitForFetchWith((o) => o.sourceIds?.[0] === 'source-2');
+    expect(lastFetchOptions().sourceIds).toEqual(['source-2']);
+
+    // Req 4: the three fixed statuses.
+    const statusContent = await openColumnFilter(el, 'Status');
+    expect(Array.from(statusContent.querySelectorAll('label')).map((l) => l.textContent?.trim())).toEqual(['Open', 'Accepted', 'Rejected']);
+    await checkColumnFilterOption(el, 'Status', 'Open');
+    await checkColumnFilterOption(el, 'Status', 'Rejected');
+    await waitForFetchWith((o) => o.statuses?.length === 2);
+    expect(lastFetchOptions().statuses).toEqual(['open', 'rejected']);
+
+    // Req 7: both bounds of a number column travel together.
+    await setColumnFilterBound(el, 'Asking Price', 'Min', '10');
+    await setColumnFilterBound(el, 'Asking Price', 'Max', '20');
+    await waitForFetchWith((o) => o.askingPriceMin === 10 && o.askingPriceMax === 20);
+    await setColumnFilterBound(el, 'Expected Resale', 'Min', '30');
+    await waitForFetchWith((o) => o.expectedResaleMin === 30);
+    await setColumnFilterBound(el, 'Expected Profit', 'Max', '-5');
+    await waitForFetchWith((o) => o.differenceMax === -5);
+
+    // Req 5: six stages plus the explicit "(Not started)" `none` option.
+    const stageContent = await openColumnFilter(el, 'Sourcing Status');
+    expect(Array.from(stageContent.querySelectorAll('label')).map((l) => l.textContent?.trim())).toEqual([
+      '(Not started)',
+      'Queued',
+      'Identifying',
+      'Sourcing References',
+      'Comparing',
+      'Completed',
+      'Failed',
+    ]);
+    await checkColumnFilterOption(el, 'Sourcing Status', '(Not started)');
+    await checkColumnFilterOption(el, 'Sourcing Status', 'Completed');
+    await waitForFetchWith((o) => o.identifyPartsStages?.length === 2);
+    expect(lastFetchOptions().identifyPartsStages).toEqual(['none', 'completed']);
+
+    // Req 6: the three fixed pricing statuses.
+    const pricingContent = await openColumnFilter(el, 'Pricing Status');
+    expect(Array.from(pricingContent.querySelectorAll('label')).map((l) => l.textContent?.trim())).toEqual(['Not Priced', 'Partially Priced', 'Fully Priced']);
+    await checkColumnFilterOption(el, 'Pricing Status', 'Not Priced');
+    await waitForFetchWith((o) => o.pricingStatuses?.length === 1);
+
+    // All eight compose into one request, every other field untouched.
+    const expected: ListingColumnFilters = {
+      title: 'gPu',
+      sourceIds: ['source-2'],
+      statuses: ['open', 'rejected'],
+      askingPriceMin: 10,
+      askingPriceMax: 20,
+      expectedResaleMin: 30,
+      differenceMax: -5,
+      identifyPartsStages: ['none', 'completed'],
+      pricingStatuses: ['not_priced'],
+    };
+    expect(columnFilterFields(lastFetchOptions())).toEqual(expected);
+    expect(lastFetchOptions().limit).toBe(PAGE_SIZE);
+    expect(lastFetchOptions().offset).toBe(0);
+    // Req 11: the id set is built from the identical filters.
+    expect(fetchListingIdsMock).toHaveBeenLastCalledWith(expected);
+    for (const column of ['Title', 'Source', 'Status', 'Asking Price', 'Expected Resale', 'Expected Profit', 'Sourcing Status', 'Pricing Status']) {
+      expect(filterTriggerLabel(el, column)).toBe(`Filter by ${column} (filter active)`);
+    }
+    expect(queryClearAllButton(el)).not.toBeNull();
+  }, 15_000);
+
+  it('unchecking the last box of an enum filter sends no field for that column at all, not an empty list (A4)', async () => {
+    fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 2);
+
+    await checkColumnFilterOption(el, 'Status', 'Accepted');
+    await waitForFetchWith((o) => o.statuses?.[0] === 'accepted');
+    expect(filterTriggerLabel(el, 'Status')).toBe('Filter by Status (filter active)');
+
+    const callsBefore = fetchListingsMock.mock.calls.length;
+    await checkColumnFilterOption(el, 'Status', 'Accepted');
+    await waitFor(() => fetchListingsMock.mock.calls.length > callsBefore);
+    expect(lastFetchOptions().statuses).toBeUndefined();
+    expect(fetchListingIdsMock).toHaveBeenLastCalledWith({});
+    expect(filterTriggerLabel(el, 'Status')).toBe('Filter by Status');
+    expect(queryClearAllButton(el)).toBeNull();
+  }, 10_000);
+
+  it('hands fetchListingIds exactly the filters fetchListings is using, after every change (Req 11)', async () => {
+    fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 2);
+
+    await checkColumnFilterOption(el, 'Pricing Status', 'Fully Priced');
+    await waitForFetchWith((o) => o.pricingStatuses?.[0] === 'fully_priced');
+    expect(fetchListingIdsMock).toHaveBeenLastCalledWith(columnFilterFields(lastFetchOptions()));
+
+    await setColumnFilterBound(el, 'Expected Profit', 'Min', '0');
+    await waitForFetchWith((o) => o.differenceMin === 0);
+    expect(fetchListingIdsMock).toHaveBeenLastCalledWith(columnFilterFields(lastFetchOptions()));
+    expect(fetchListingIdsMock).toHaveBeenLastCalledWith({ pricingStatuses: ['fully_priced'], differenceMin: 0 });
+
+    await typeColumnFilterText(el, 'Title', 'board');
+    await waitForFetchWith((o) => o.title === 'board');
+    expect(fetchListingIdsMock).toHaveBeenLastCalledWith(columnFilterFields(lastFetchOptions()));
+    expect(fetchListingIdsMock).toHaveBeenLastCalledWith({ pricingStatuses: ['fully_priced'], differenceMin: 0, title: 'board' });
+    // One id-set fetch per applied change, never one per page.
+    expect(fetchListingIdsMock).toHaveBeenCalledTimes(4);
+  }, 10_000);
+
+  it('resets to page 1 when a filter is set, and when one is cleared (Req 10)', async () => {
+    const listings = Array.from({ length: 21 }, (_, i) => makeListing(`listing-${i}`, `Listing ${i}`, 100 + i));
+    fetchListingsMock.mockImplementation(({ limit, offset }: { limit: number; offset: number }) =>
+      Promise.resolve({ listings: listings.slice(offset, offset + limit), total: listings.length }),
+    );
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === PAGE_SIZE);
+
+    await act(async () => {
+      findButton(el, 'Next').click();
+    });
+    await waitFor(() => lastFetchOptions().offset === PAGE_SIZE);
+    expect(el.textContent).toContain('Page 2 of 2 (21 total)');
+
+    await checkColumnFilterOption(el, 'Status', 'Open');
+    await waitForFetchWith((o) => o.statuses?.[0] === 'open');
+    expect(lastFetchOptions().offset).toBe(0);
+    expect(el.textContent).toContain('Page 1 of 2 (21 total)');
+
+    await act(async () => {
+      findButton(el, 'Next').click();
+    });
+    await waitFor(() => lastFetchOptions().offset === PAGE_SIZE);
+
+    await clearColumnFilter(el, 'Status');
+    await waitForFetchWith((o) => o.statuses === undefined);
+    expect(lastFetchOptions().offset).toBe(0);
+    expect(el.textContent).toContain('Page 1 of 2 (21 total)');
+  }, 10_000);
+
+  it("a column's own Clear resets only that column, leaving the others applied (Req 9)", async () => {
+    fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 2);
+
+    await checkColumnFilterOption(el, 'Status', 'Open');
+    await waitForFetchWith((o) => o.statuses?.[0] === 'open');
+    await checkColumnFilterOption(el, 'Source', 'Test Source');
+    await waitForFetchWith((o) => o.sourceIds?.[0] === 'source-1');
+    await setColumnFilterBound(el, 'Asking Price', 'Min', '5');
+    await setColumnFilterBound(el, 'Asking Price', 'Max', '50');
+    await waitForFetchWith((o) => o.askingPriceMax === 50);
+    await typeColumnFilterText(el, 'Title', 'ram');
+    await waitForFetchWith((o) => o.title === 'ram');
+
+    // Number column: Clear drops both bounds, and nothing else.
+    await clearColumnFilter(el, 'Asking Price');
+    await waitForFetchWith((o) => o.askingPriceMin === undefined);
+    expect(columnFilterFields(lastFetchOptions())).toEqual({ statuses: ['open'], sourceIds: ['source-1'], title: 'ram' });
+    expect(filterTriggerLabel(el, 'Asking Price')).toBe('Filter by Asking Price');
+    expect(filterTriggerLabel(el, 'Status')).toBe('Filter by Status (filter active)');
+
+    // Enum column.
+    await clearColumnFilter(el, 'Status');
+    await waitForFetchWith((o) => o.statuses === undefined);
+    expect(columnFilterFields(lastFetchOptions())).toEqual({ sourceIds: ['source-1'], title: 'ram' });
+
+    // Text column: its Clear applies at once, with no debounce to wait out.
+    const callsBefore = fetchListingsMock.mock.calls.length;
+    await clearColumnFilter(el, 'Title');
+    expect(fetchListingsMock.mock.calls.length).toBe(callsBefore + 1);
+    expect(columnFilterFields(lastFetchOptions())).toEqual({ sourceIds: ['source-1'] });
+    expect(fetchListingIdsMock).toHaveBeenLastCalledWith({ sourceIds: ['source-1'] });
+    expect(queryClearAllButton(el)).not.toBeNull();
+  }, 15_000);
+
+  it('Clear all removes every column filter in one action, resets to page 1, and hides itself again (Req 8, 10)', async () => {
+    const listings = Array.from({ length: 21 }, (_, i) => makeListing(`listing-${i}`, `Listing ${i}`, 100 + i));
+    fetchListingsMock.mockImplementation(({ limit, offset }: { limit: number; offset: number }) =>
+      Promise.resolve({ listings: listings.slice(offset, offset + limit), total: listings.length }),
+    );
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === PAGE_SIZE);
+    expect(queryClearAllButton(el)).toBeNull();
+
+    await checkColumnFilterOption(el, 'Status', 'Open');
+    await waitForFetchWith((o) => o.statuses?.[0] === 'open');
+    // Clear all appears as soon as one filter is active.
+    expect(queryClearAllButton(el)).not.toBeNull();
+    await checkColumnFilterOption(el, 'Pricing Status', 'Partially Priced');
+    await waitForFetchWith((o) => o.pricingStatuses?.[0] === 'partially_priced');
+    await setColumnFilterBound(el, 'Expected Resale', 'Max', '999');
+    await waitForFetchWith((o) => o.expectedResaleMax === 999);
+    await typeColumnFilterText(el, 'Title', 'cpu');
+    await waitForFetchWith((o) => o.title === 'cpu');
+
+    await act(async () => {
+      findButton(el, 'Next').click();
+    });
+    await waitFor(() => lastFetchOptions().offset === PAGE_SIZE);
+
+    await act(async () => {
+      findButton(el, 'Clear all').click();
+    });
+    await waitForFetchWith((o) => o.title === undefined && o.offset === 0);
+    expect(columnFilterFields(lastFetchOptions())).toEqual({});
+    expect(fetchListingIdsMock).toHaveBeenLastCalledWith({});
+    expect(el.textContent).toContain('Page 1 of 2 (21 total)');
+    expect(queryClearAllButton(el)).toBeNull();
+    for (const column of ['Title', 'Status', 'Expected Resale', 'Pricing Status']) {
+      expect(filterTriggerLabel(el, column)).toBe(`Filter by ${column}`);
+    }
+    // The popover inputs read as cleared too, not just the request.
+    const titleContent = await openColumnFilter(el, 'Title');
+    expect((titleContent.querySelector('input[type="text"]') as HTMLInputElement).value).toBe('');
+  }, 15_000);
+
+  it('keeps the table and every header filter rendered, with a distinct message, when an active filter matches nothing — but shows the plain empty prompt with no filter active (Req 13)', async () => {
+    fetchListingsMock.mockImplementation((options: FetchListingsOptions) =>
+      Promise.resolve(options.statuses?.includes('rejected') ? { listings: [], total: 0 } : { listings: [listingA, listingB], total: 2 }),
+    );
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const el = await mount();
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 2);
+
+    await checkColumnFilterOption(el, 'Status', 'Rejected');
+    await waitFor(() => el.textContent?.includes('No listings match the current filters.') ?? false);
+
+    expect(el.textContent).not.toContain('No listings yet');
+    expect(el.querySelector('table')).not.toBeNull();
+    expect(el.querySelectorAll('thead button[aria-label^="Filter by"]')).toHaveLength(8);
+    expect(filterTriggerLabel(el, 'Status')).toBe('Filter by Status (filter active)');
+    // Sort is still clickable from the filtered-empty table.
+    expect(findButton(el, 'Title').disabled).toBe(false);
+    // Only the message row, no data rows.
+    expect(el.querySelectorAll('tbody tr')).toHaveLength(1);
+    expect(el.querySelector('tbody td')?.getAttribute('colspan')).toBe('10');
+
+    // Loosening the filter from that same header brings the rows back.
+    await clearColumnFilter(el, 'Status');
+    await waitFor(() => el.querySelectorAll('tbody tr').length === 2);
+    expect(el.textContent).not.toContain('No listings match the current filters.');
+  }, 10_000);
+
+  it('shows the genuinely-empty prompt, with no table at all, when there are no Listings and no filter is active (Req 13)', async () => {
+    fetchListingsMock.mockResolvedValue({ listings: [], total: 0 });
+    fetchListingIdsMock.mockResolvedValue([]);
+
+    const el = await mount();
+    await waitFor(() => el.textContent?.includes('No listings yet. Add one to get started.') ?? false);
+
+    expect(el.querySelector('table')).toBeNull();
+    expect(el.textContent).not.toContain('No listings match the current filters.');
+    expect(queryClearAllButton(el)).toBeNull();
+  }, 10_000);
+
+  it('debounces the Title request until 300ms after the last keystroke, while checkbox and number filters apply immediately (A6)', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });
+      fetchListingIdsMock.mockResolvedValue([]);
+
+      const el = await mount();
+      expect(fetchListingsMock).toHaveBeenCalledTimes(1);
+      expect(fetchListingIdsMock).toHaveBeenCalledTimes(1);
+
+      // Three keystrokes: the input tracks each one at once, the request
+      // waits.
+      let input: HTMLInputElement | null = null;
+      for (const typed of ['g', 'gp', 'gpu']) {
+        input = await typeColumnFilterText(el, 'Title', typed);
+      }
+      expect(input?.value).toBe('gpu');
+      expect(filterTriggerLabel(el, 'Title')).toBe('Filter by Title (filter active)');
+      expect(queryClearAllButton(el)).not.toBeNull();
+      expect(fetchListingsMock).toHaveBeenCalledTimes(1);
+      expect(fetchListingIdsMock).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(299);
+      });
+      expect(fetchListingsMock).toHaveBeenCalledTimes(1);
+
+      // A checkbox toggle inside the window goes out immediately, without
+      // the still-pending title.
+      await checkColumnFilterOption(el, 'Status', 'Open');
+      expect(fetchListingsMock).toHaveBeenCalledTimes(2);
+      expect(columnFilterFields(lastFetchOptions())).toEqual({ statuses: ['open'] });
+      expect(fetchListingIdsMock).toHaveBeenLastCalledWith({ statuses: ['open'] });
+
+      // So does a number bound.
+      await setColumnFilterBound(el, 'Asking Price', 'Min', '5');
+      expect(fetchListingsMock).toHaveBeenCalledTimes(3);
+      expect(columnFilterFields(lastFetchOptions())).toEqual({ statuses: ['open'], askingPriceMin: 5 });
+
+      // The title lands exactly when its own window closes — one request
+      // for three keystrokes, carrying the other two filters with it.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(fetchListingsMock).toHaveBeenCalledTimes(4);
+      expect(columnFilterFields(lastFetchOptions())).toEqual({ title: 'gpu', statuses: ['open'], askingPriceMin: 5 });
+      expect(fetchListingIdsMock).toHaveBeenLastCalledWith({ title: 'gpu', statuses: ['open'], askingPriceMin: 5 });
+
+      // A further keystroke restarts the window from scratch.
+      await typeColumnFilterText(el, 'Title', 'gpus');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      await typeColumnFilterText(el, 'Title', 'gpu ');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      expect(fetchListingsMock).toHaveBeenCalledTimes(4);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(fetchListingsMock).toHaveBeenCalledTimes(5);
+      expect(lastFetchOptions().title).toBe('gpu ');
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 10_000);
+
+  it('Clear all during the Title debounce window drops the pending keystrokes instead of letting them reapply afterwards', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchListingsMock.mockResolvedValue({ listings: [listingA, listingB], total: 2 });
+      fetchListingIdsMock.mockResolvedValue([]);
+
+      const el = await mount();
+      await typeColumnFilterText(el, 'Title', 'gpu');
+      await act(async () => {
+        findButton(el, 'Clear all').click();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(lastFetchOptions().title).toBeUndefined();
+      expect(fetchListingsMock.mock.calls.every(([options]) => (options as FetchListingsOptions).title === undefined)).toBe(true);
     } finally {
       vi.useRealTimers();
     }

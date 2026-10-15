@@ -537,7 +537,7 @@ describe('Reference photo promotion hook — DB-verified (T2)', () => {
   // against before enqueueing, and toSummary's new identifyPartsStatus
   // field, which the Listings queue table (Req 10) reads to show each
   // row's job status without opening the Listing.
-  it('GET /api/listings/ids returns every id matching status/sourceId filters, across more rows than a single /api/listings page would hold', async () => {
+  it('GET /api/listings/ids returns every id matching sourceIds/statuses filters, across more rows than a single /api/listings page would hold', async () => {
     const sourceA = await hookDb.createSource({ name: 'IDs Test Source A', platformType: 'ebay', url: null, notes: null, connectorConfig: null });
     const sourceB = await hookDb.createSource({ name: 'IDs Test Source B', platformType: 'ebay', url: null, notes: null, connectorConfig: null });
 
@@ -565,7 +565,7 @@ describe('Reference photo promotion hook — DB-verified (T2)', () => {
     expect(acceptRes.status).toBe(201);
     const expectedOpenIds = sourceAIds.slice(1);
 
-    const res = await getJson<ListListingIdsResponse>(`${HOOK_BASE_URL}/api/listings/ids?sourceId=${sourceA.id}&status=open`);
+    const res = await getJson<ListListingIdsResponse>(`${HOOK_BASE_URL}/api/listings/ids?sourceIds=${sourceA.id}&statuses=open`);
     expect(res.status).toBe(200);
     // 21 ids — past the 20-row page /api/listings itself defaults to —
     // proves this endpoint never truncates to one page.
@@ -580,7 +580,7 @@ describe('Reference photo promotion hook — DB-verified (T2)', () => {
     const listingId = created.body.id;
 
     async function fetchSummary(): Promise<ListingSummary | undefined> {
-      const list = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${source.id}&limit=50`);
+      const list = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceIds=${source.id}&limit=50`);
       expect(list.status).toBe(200);
       return list.body.listings.find((l) => l.id === listingId);
     }
@@ -812,7 +812,7 @@ describe('Reference photo promotion hook — DB-verified (T2)', () => {
       }
 
       const pageOf = async (offset: number): Promise<ListListingsResponse> => {
-        const res = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${pagingSource.id}&sortBy=askingPrice&limit=2&offset=${offset}`);
+        const res = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceIds=${pagingSource.id}&sortBy=askingPrice&limit=2&offset=${offset}`);
         expect(res.status).toBe(200);
         return res.body;
       };
@@ -828,7 +828,7 @@ describe('Reference photo promotion hook — DB-verified (T2)', () => {
       expect([first.total, second.total, third.total]).toEqual([5, 5, 5]);
 
       // Descending pages mirror the ascending ones exactly.
-      const firstDesc = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${pagingSource.id}&sortBy=askingPrice&sortDirection=desc&limit=2&offset=0`);
+      const firstDesc = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceIds=${pagingSource.id}&sortBy=askingPrice&sortDirection=desc&limit=2&offset=0`);
       expect(firstDesc.status).toBe(200);
       expect(firstDesc.body.listings.map((listing) => listing.askingPrice)).toEqual([50, 40]);
     }, 30_000);
@@ -901,7 +901,7 @@ describe('Reference photo promotion hook — DB-verified (T2)', () => {
       const partiallyPricedTitles = statusSeeds.filter((seed) => seed.bucket === 'partially_priced').map((seed) => seed.title);
       const fullyPricedTitles = statusSeeds.filter((seed) => seed.bucket === 'fully_priced').map((seed) => seed.title);
 
-      const ascendingRes = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${statusSource.id}&sortBy=unpriced&sortDirection=asc&limit=50`);
+      const ascendingRes = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceIds=${statusSource.id}&sortBy=unpriced&sortDirection=asc&limit=50`);
       expect(ascendingRes.status).toBe(200);
       // Confirms the computed pricingStatus itself matches every seed's
       // intended bucket (Req 2-5) before trusting the sort order built on
@@ -921,7 +921,7 @@ describe('Reference photo promotion hook — DB-verified (T2)', () => {
       // Req 8: descending must be the exact reverse of ascending (the same
       // proof the 'status' field's own tie-reversal test above gives), not
       // merely "not_priced last" checked at a single index.
-      const descendingRes = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${statusSource.id}&sortBy=unpriced&sortDirection=desc&limit=50`);
+      const descendingRes = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceIds=${statusSource.id}&sortBy=unpriced&sortDirection=desc&limit=50`);
       expect(descendingRes.status).toBe(200);
       expect(descendingRes.body.listings.map((listing) => listing.title)).toEqual([...ascendingTitles].reverse());
 
@@ -934,13 +934,362 @@ describe('Reference photo promotion hook — DB-verified (T2)', () => {
       // inside the page). Neither boundary lines up with a page edge, so
       // a per-page re-sort (instead of sorting the whole filtered set
       // before slicing) could not reproduce this split.
-      const pageOne = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${statusSource.id}&sortBy=unpriced&sortDirection=asc&limit=3&offset=0`);
-      const pageTwo = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceId=${statusSource.id}&sortBy=unpriced&sortDirection=asc&limit=3&offset=3`);
+      const pageOne = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceIds=${statusSource.id}&sortBy=unpriced&sortDirection=asc&limit=3&offset=0`);
+      const pageTwo = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?sourceIds=${statusSource.id}&sortBy=unpriced&sortDirection=asc&limit=3&offset=3`);
       expect(pageOne.status).toBe(200);
       expect(pageTwo.status).toBe(200);
       expect(pageOne.body.listings.map((listing) => listing.title)).toEqual(ascendingTitles.slice(0, 3));
       expect(pageTwo.body.listings.map((listing) => listing.title)).toEqual(ascendingTitles.slice(3, 6));
       expect([pageOne.body.total, pageTwo.body.total]).toEqual([6, 6]);
+    }, 30_000);
+  });
+
+  // listings-column-filters proof (Req 2-7, 11, 12): the eight per-column
+  // filter query params on GET /api/listings and GET /api/listings/ids.
+  // Nested here for the same module-caching reason as the sort block
+  // above. Seeds four Listings whose eight filterable values are each
+  // spread so that every dimension partitions them differently — no two
+  // columns select the same pair — so a predicate reading the wrong field
+  // could not produce an expected set by luck.
+  describe('column filters on GET /api/listings and GET /api/listings/ids', () => {
+    const seedTitles = {
+      dellOptiplex: 'Filter Dell OptiPlex 7080',
+      hpElitedesk: 'Filter HP EliteDesk 800',
+      lenovoThinkcentre: 'Filter Lenovo ThinkCentre M90',
+      dellPrecision: 'Filter dell precision tower',
+    };
+    const seedIdsByTitle = new Map<string, string>();
+    let sourceOneId: string;
+    let sourceTwoId: string;
+    // Captured so the identifyPartsStages test (below) can walk this one
+    // job through the three real stages no other seed here ever reaches
+    // (F1, Cycle 1) via direct hookDb mutation, the same technique the
+    // beforeAll below already uses to reach 'comparing'.
+    let hpElitedeskJobId: string;
+
+    beforeAll(async () => {
+      const [sourceOne, sourceTwo] = await Promise.all(
+        ['Filter Source One', 'Filter Source Two'].map((name) => hookDb.createSource({ name, platformType: 'ebay', url: null, notes: null, connectorConfig: null })),
+      );
+      sourceOneId = sourceOne.id;
+      sourceTwoId = sourceTwo.id;
+      // Per seed (acquisitionFees 0 throughout, so difference = resale -
+      // askingPrice):
+      //   dellOptiplex  source One, asking 100, resale 300, diff  200, fully_priced,     no job,    open
+      //   hpElitedesk   source Two, asking 250, resale 100, diff -150, partially_priced, queued,    accepted
+      //   lenovo        source One, asking 400, resale   0, diff -400, not_priced,       failed,    rejected
+      //   dellPrecision source Two, asking 250, resale 500, diff  250, fully_priced,     comparing, open
+      const seeds = [
+        { title: seedTitles.dellOptiplex, sourceId: sourceOne.id, askingPrice: 100, parts: [{ componentCategory: 'GPU' as const, brand: null, partNumber: null, description: 'Priced', estimatedResaleValue: 300 }] },
+        {
+          title: seedTitles.hpElitedesk,
+          sourceId: sourceTwo.id,
+          askingPrice: 250,
+          parts: [
+            { componentCategory: 'CPU' as const, brand: null, partNumber: null, description: 'Priced', estimatedResaleValue: 100 },
+            { componentCategory: 'RAM' as const, brand: null, partNumber: null, description: 'Unpriced', estimatedResaleValue: null },
+          ],
+        },
+        { title: seedTitles.lenovoThinkcentre, sourceId: sourceOne.id, askingPrice: 400, parts: [] },
+        { title: seedTitles.dellPrecision, sourceId: sourceTwo.id, askingPrice: 250, parts: [{ componentCategory: 'Storage' as const, brand: null, partNumber: null, description: 'Priced', estimatedResaleValue: 500 }] },
+      ];
+      for (const seed of seeds) {
+        const created = await postJson<ListingDetail>(
+          `${HOOK_BASE_URL}/api/listings`,
+          listingBody(seed.sourceId, { title: seed.title, askingPrice: seed.askingPrice, acquisitionFees: 0, listingDate: '2026-08-01', expectedParts: seed.parts }),
+        );
+        expect(created.status, `filter seed creation failed: ${JSON.stringify(created.body)}`).toBe(201);
+        seedIdsByTitle.set(seed.title, created.body.id);
+      }
+
+      const acceptRes = await fetch(`${HOOK_BASE_URL}/api/listings/${seedIdsByTitle.get(seedTitles.hpElitedesk)}/accept`, { method: 'POST' });
+      expect(acceptRes.status, 'filter seed accept failed').toBe(201);
+      const rejectRes = await fetch(`${HOOK_BASE_URL}/api/listings/${seedIdsByTitle.get(seedTitles.lenovoThinkcentre)}/reject`, { method: 'POST' });
+      expect(rejectRes.status, 'filter seed reject failed').toBe(200);
+
+      // Three distinct real stages plus one Listing (dellOptiplex) with no
+      // job at all — the state the 'none' sentinel must match exactly.
+      const queued = await hookDb.insertQueuedJobIfNoneActive(seedIdsByTitle.get(seedTitles.hpElitedesk)!);
+      expect(queued).not.toBeNull();
+      hpElitedeskJobId = queued!.id;
+      const failing = await hookDb.insertQueuedJobIfNoneActive(seedIdsByTitle.get(seedTitles.lenovoThinkcentre)!);
+      expect(failing).not.toBeNull();
+      await hookDb.failJob(failing!.id, 'Filter seed failure');
+      const comparing = await hookDb.insertQueuedJobIfNoneActive(seedIdsByTitle.get(seedTitles.dellPrecision)!);
+      expect(comparing).not.toBeNull();
+      await hookDb.updateJobStage(comparing!.id, 'comparing');
+    }, 30_000);
+
+    // Sorted titles of this block's own seeds among the ids `GET
+    // /api/listings/ids?<query>` returns — other tests' Listings share
+    // the database and are irrelevant to which seeds a filter keeps.
+    async function filteredIdTitles(query: string): Promise<string[]> {
+      const res = await getJson<ListListingIdsResponse>(`${HOOK_BASE_URL}/api/listings/ids?${query}`);
+      expect(res.status).toBe(200);
+      const idSet = new Set(res.body.ids);
+      return [...seedIdsByTitle.entries()].filter(([, id]) => idSet.has(id)).map(([title]) => title).sort();
+    }
+
+    // Asserts that `query` keeps exactly `expectedTitles` of this block's
+    // seeds on BOTH routes — the page route and the ids route must agree
+    // on every filter, or "select all matching" would diverge from the
+    // table (Req 11).
+    async function expectFiltered(query: string, expectedTitles: string[]): Promise<void> {
+      const res = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?limit=500&${query}`);
+      expect(res.status).toBe(200);
+      const seedIds = new Set(seedIdsByTitle.values());
+      const pageTitles = res.body.listings.filter((listing) => seedIds.has(listing.id)).map((listing) => listing.title).sort();
+      expect(pageTitles, `GET /api/listings?${query}`).toEqual([...expectedTitles].sort());
+      expect(await filteredIdTitles(query), `GET /api/listings/ids?${query}`).toEqual([...expectedTitles].sort());
+    }
+
+    it('title matches a case-insensitive substring anywhere in the title (Req 2)', async () => {
+      // 'DELL' hits both the capitalized 'Dell OptiPlex' and the lowercase
+      // 'dell precision'; a case-sensitive includes() would hit neither.
+      await expectFiltered('title=DELL', [seedTitles.dellOptiplex, seedTitles.dellPrecision]);
+      // A substring from the middle of one title, not a prefix.
+      await expectFiltered('title=elitedesk%20800', [seedTitles.hpElitedesk]);
+      await expectFiltered('title=nothing%20matches%20this', []);
+      // F2 (Cycle 1): no minimum length (Req 2) — a single character,
+      // below every other case here's 4+-char substring, still matches
+      // every title containing it. 'Filter Lenovo ThinkCentre M90' has no
+      // 'd' anywhere, so it alone stays out; a silently-added length floor
+      // would empty this result or throw instead.
+      await expectFiltered('title=d', [seedTitles.dellOptiplex, seedTitles.hpElitedesk, seedTitles.dellPrecision]);
+    });
+
+    it('sourceIds matches by Source id, as a comma-separated list or a repeated key (Req 3)', async () => {
+      await expectFiltered(`sourceIds=${sourceOneId}`, [seedTitles.dellOptiplex, seedTitles.lenovoThinkcentre]);
+      await expectFiltered(`sourceIds=${sourceOneId},${sourceTwoId}`, Object.values(seedTitles));
+      await expectFiltered(`sourceIds=${sourceTwoId}&sourceIds=${sourceOneId}`, Object.values(seedTitles));
+    });
+
+    it('statuses matches any of the listed statuses (Req 4)', async () => {
+      await expectFiltered('statuses=accepted,rejected', [seedTitles.hpElitedesk, seedTitles.lenovoThinkcentre]);
+      await expectFiltered('statuses=open', [seedTitles.dellOptiplex, seedTitles.dellPrecision]);
+    });
+
+    it('askingPriceMin/askingPriceMax are inclusive, each side independently optional, and equal bounds express an exact value (Req 7)', async () => {
+      // 250 sits exactly on each bound, so an exclusive comparison would
+      // drop hpElitedesk and dellPrecision from both of these.
+      await expectFiltered('askingPriceMin=250', [seedTitles.hpElitedesk, seedTitles.lenovoThinkcentre, seedTitles.dellPrecision]);
+      await expectFiltered('askingPriceMax=250', [seedTitles.dellOptiplex, seedTitles.hpElitedesk, seedTitles.dellPrecision]);
+      await expectFiltered('askingPriceMin=250&askingPriceMax=250', [seedTitles.hpElitedesk, seedTitles.dellPrecision]);
+      await expectFiltered('askingPriceMin=101&askingPriceMax=399', [seedTitles.hpElitedesk, seedTitles.dellPrecision]);
+    });
+
+    it('expectedResaleMin/expectedResaleMax bound the computed Expected Parts total, not the asking price (Req 6, 7)', async () => {
+      // Resale 300 and 100 sit exactly on the bounds; by asking price these
+      // same queries would select entirely different rows.
+      await expectFiltered('expectedResaleMin=300', [seedTitles.dellOptiplex, seedTitles.dellPrecision]);
+      await expectFiltered('expectedResaleMax=100', [seedTitles.hpElitedesk, seedTitles.lenovoThinkcentre]);
+      await expectFiltered('expectedResaleMin=100&expectedResaleMax=300', [seedTitles.dellOptiplex, seedTitles.hpElitedesk]);
+      // One unit outside each bound, the direction the cases above cannot
+      // see: a bound that admitted a value just past it would pull
+      // dellOptiplex (resale 300) into both of these, so between them the
+      // bounds are pinned from both sides, not only against being too tight.
+      await expectFiltered('expectedResaleMax=299', [seedTitles.hpElitedesk, seedTitles.lenovoThinkcentre]);
+      await expectFiltered('expectedResaleMin=301', [seedTitles.dellPrecision]);
+    });
+
+    it('differenceMin/differenceMax bound the computed profit, including negative values (Req 6, 7)', async () => {
+      await expectFiltered('differenceMin=200', [seedTitles.dellOptiplex, seedTitles.dellPrecision]);
+      // A negative, inclusive upper bound: -150 itself must stay in.
+      await expectFiltered('differenceMax=-150', [seedTitles.hpElitedesk, seedTitles.lenovoThinkcentre]);
+      await expectFiltered('differenceMin=-150&differenceMax=200', [seedTitles.dellOptiplex, seedTitles.hpElitedesk]);
+      // One unit outside each bound, as above: dellOptiplex (difference 200)
+      // must fall out of both, which a bound off by one in the admitting
+      // direction would keep in.
+      await expectFiltered('differenceMax=199', [seedTitles.hpElitedesk, seedTitles.lenovoThinkcentre]);
+      await expectFiltered('differenceMin=201', [seedTitles.dellPrecision]);
+    });
+
+    it("identifyPartsStages matches the latest job's stage, and 'none' matches exactly the Listings with no job (Req 5)", async () => {
+      await expectFiltered('identifyPartsStages=queued,failed', [seedTitles.hpElitedesk, seedTitles.lenovoThinkcentre]);
+      await expectFiltered('identifyPartsStages=comparing', [seedTitles.dellPrecision]);
+      // The 'none' sentinel: only dellOptiplex has never had a job — a
+      // failed or queued job is still a job, so neither matches 'none'.
+      await expectFiltered('identifyPartsStages=none', [seedTitles.dellOptiplex]);
+      await expectFiltered('identifyPartsStages=none,comparing', [seedTitles.dellOptiplex, seedTitles.dellPrecision]);
+      // F1 (Cycle 1): VALID_IDENTIFY_PARTS_STAGE_FILTERS also allow-lists
+      // completed/identifying/sourcing_references — the three real
+      // IdentifyPartsJobStage values no seed above ever reaches. Walk
+      // hpElitedesk's own job through each in turn via direct hookDb
+      // mutation (the same technique the beforeAll above uses to reach
+      // 'comparing') so each assertion proves the filter actually matches
+      // a real row — an empty-result assertion against a value no seed
+      // ever has would stay green even if that value were deleted from
+      // the allow-list entirely.
+      await hookDb.updateJobStage(hpElitedeskJobId, 'completed');
+      await expectFiltered('identifyPartsStages=completed', [seedTitles.hpElitedesk]);
+      await hookDb.updateJobStage(hpElitedeskJobId, 'identifying');
+      await expectFiltered('identifyPartsStages=identifying', [seedTitles.hpElitedesk]);
+      await hookDb.updateJobStage(hpElitedeskJobId, 'sourcing_references');
+      await expectFiltered('identifyPartsStages=sourcing_references', [seedTitles.hpElitedesk]);
+      // Restore the seed's documented 'queued' stage so this block's
+      // state matches the beforeAll comment above for any later re-read.
+      await hookDb.updateJobStage(hpElitedeskJobId, 'queued');
+    }, 30_000);
+
+    it('pricingStatuses matches the computed pricing bucket (Req 6)', async () => {
+      await expectFiltered('pricingStatuses=fully_priced', [seedTitles.dellOptiplex, seedTitles.dellPrecision]);
+      await expectFiltered('pricingStatuses=not_priced,partially_priced', [seedTitles.hpElitedesk, seedTitles.lenovoThinkcentre]);
+    });
+
+    it('composes filters across columns with AND (Req 11)', async () => {
+      // title alone keeps two, statuses alone keeps two, askingPriceMin
+      // alone keeps three; together exactly one survives.
+      await expectFiltered('title=dell&statuses=open&askingPriceMin=200', [seedTitles.dellPrecision]);
+      await expectFiltered(`sourceIds=${sourceOneId}&pricingStatuses=fully_priced`, [seedTitles.dellOptiplex]);
+      await expectFiltered(`sourceIds=${sourceOneId}&identifyPartsStages=none,failed&differenceMax=0`, [seedTitles.lenovoThinkcentre]);
+    });
+
+    it('reports the filtered count as total and slices the sorted, filtered set into pages (Req 11)', async () => {
+      // 'Filter ' is only in this block's four titles, so total is exactly
+      // the seed count regardless of what other tests seeded.
+      const pageOne = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?title=Filter%20&sortBy=askingPrice&limit=3&offset=0`);
+      const pageTwo = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?title=Filter%20&sortBy=askingPrice&limit=3&offset=3`);
+      expect(pageOne.status).toBe(200);
+      expect(pageTwo.status).toBe(200);
+      expect([pageOne.body.total, pageTwo.body.total]).toEqual([4, 4]);
+      expect(pageOne.body.listings.map((listing) => listing.askingPrice)).toEqual([100, 250, 250]);
+      expect(pageTwo.body.listings.map((listing) => listing.title)).toEqual([seedTitles.lenovoThinkcentre]);
+    });
+
+    it('ignores the removed status/sourceId params and any unrecognized filter value, applying no filter rather than erroring (Req 12)', async () => {
+      const all = Object.values(seedTitles);
+      // The old single-value params: a stale client sending them gets the
+      // unfiltered table, not a 4xx and not a narrowed one.
+      await expectFiltered(`status=accepted&sourceId=${sourceTwoId}`, all);
+      // Loose validation on the new params, matching every other GET
+      // param here: unknown enum values, a blank list and a non-numeric
+      // bound each mean "no filter on that column".
+      await expectFiltered('statuses=bogus&identifyPartsStages=nope&pricingStatuses=', all);
+      await expectFiltered('askingPriceMin=abc&differenceMax=', all);
+      // And a bogus value mixed into a real list only drops itself.
+      await expectFiltered('statuses=bogus,rejected', [seedTitles.lenovoThinkcentre]);
+    });
+  });
+
+  // listings-column-filters proof (Req 9, 11): the no-sort/no-filter fast
+  // paths both GET routes keep, and the order GET /api/listings/ids
+  // returns when nothing is filtered. Nested inside this block for the
+  // module-caching reason documented above, and — unlike the HTTP-only
+  // blocks above — necessarily so: these tests spy on the very db module
+  // instance this block's routes call, which is only possible because the
+  // server here runs in-process. A spy set against the child-process
+  // server the top of this file boots would be invisible to it.
+  describe('unsorted, unfiltered fast paths on GET /api/listings and GET /api/listings/ids', () => {
+    const fastPathTitles = {
+      newest: 'Fast Path Newest',
+      tieOne: 'Fast Path Tie One',
+      tieTwo: 'Fast Path Tie Two',
+      oldest: 'Fast Path Oldest',
+    };
+    // id -> title for this block's own seeds, so an ordering failure names
+    // the Listing a reader can recognize rather than an opaque uuid.
+    const fastPathIdsByTitle = new Map<string, string>();
+    // listing_date DESC, then id ASC — computed from the ids DuckDB
+    // actually generated, since the tie between the two 2027-02-01 rows can
+    // only be resolved once their random uuids exist.
+    let expectedIdOrder: string[] = [];
+
+    beforeAll(async () => {
+      const fastPathSource = await hookDb.createSource({ name: 'Fast Path Source', platformType: 'ebay', url: null, notes: null, connectorConfig: null });
+      // Deliberately the four newest listing_dates in this suite's database
+      // (every other block above seeds 2026 dates), so these four lead the
+      // whole unfiltered id list and their absolute position is assertable,
+      // not just their relative order. Two share 2027-02-01 so the id ASC
+      // tiebreaker has a genuine tie to break, and the creation order below
+      // matches neither the date order nor the expected output order.
+      const seeds = [
+        { title: fastPathTitles.tieTwo, listingDate: '2027-02-01' },
+        { title: fastPathTitles.oldest, listingDate: '2027-01-01' },
+        { title: fastPathTitles.newest, listingDate: '2027-03-01' },
+        { title: fastPathTitles.tieOne, listingDate: '2027-02-01' },
+      ];
+      for (const seed of seeds) {
+        const created = await postJson<ListingDetail>(
+          `${HOOK_BASE_URL}/api/listings`,
+          listingBody(fastPathSource.id, { title: seed.title, listingDate: seed.listingDate, expectedParts: [] }),
+        );
+        expect(created.status, `fast path seed creation failed: ${JSON.stringify(created.body)}`).toBe(201);
+        fastPathIdsByTitle.set(seed.title, created.body.id);
+      }
+      // Two further rows, older than all four above and excluded from the
+      // ordering expectation, purely so the paging test below has more rows
+      // in the table than the page it asks for even when this block is the
+      // only one that runs (`vitest -t`), rather than relying on Listings
+      // other blocks happen to leave behind.
+      for (const listingDate of ['2026-12-02', '2026-12-01']) {
+        const filler = await postJson<ListingDetail>(
+          `${HOOK_BASE_URL}/api/listings`,
+          listingBody(fastPathSource.id, { title: `Fast Path Filler ${listingDate}`, listingDate, expectedParts: [] }),
+        );
+        expect(filler.status, `fast path filler creation failed: ${JSON.stringify(filler.body)}`).toBe(201);
+      }
+      // Plain binary comparison, not localeCompare: DuckDB orders VARCHAR
+      // ids by their bytes, and a locale-aware collation could disagree.
+      const tiedIdsAscending = [fastPathIdsByTitle.get(fastPathTitles.tieOne)!, fastPathIdsByTitle.get(fastPathTitles.tieTwo)!].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+      expectedIdOrder = [fastPathIdsByTitle.get(fastPathTitles.newest)!, ...tiedIdsAscending, fastPathIdsByTitle.get(fastPathTitles.oldest)!];
+    }, 30_000);
+
+    it('GET /api/listings with neither sortBy nor any filter pages in SQL — listListings receives the request\'s own limit/offset, never the whole table (Req 9)', async () => {
+      // Read before the spies exist, so this call is not one of the calls
+      // counted below.
+      const tableTotal = await hookDb.countListings();
+      expect(tableTotal, 'this assertion needs more rows than the page it requests').toBeGreaterThan(5);
+      const listListingsSpy = vi.spyOn(hookDb, 'listListings');
+      const countListingsSpy = vi.spyOn(hookDb, 'countListings');
+
+      const res = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?limit=3&offset=2`);
+      expect(res.status).toBe(200);
+      expect(res.body.listings).toHaveLength(3);
+      expect(res.body.total).toBe(tableTotal);
+
+      // The whole point: the fast path hands the raw limit/offset straight
+      // to SQL. The generalized in-memory path calls
+      // listListings({ limit: <whole table count>, offset: 0 }) instead and
+      // slices afterwards, so this exact argument object is what tells the
+      // two paths apart — and it must be the only listListings call made.
+      expect(listListingsSpy).toHaveBeenCalledTimes(1);
+      expect(listListingsSpy).toHaveBeenCalledWith({ limit: 3, offset: 2 });
+      expect(listListingsSpy).not.toHaveBeenCalledWith({ limit: tableTotal, offset: 0 });
+      expect(countListingsSpy).toHaveBeenCalledTimes(1);
+    }, 30_000);
+
+    it('GET /api/listings/ids with no filter reads the id list straight from SQL via listListingIds, and a filtered one never calls it (Req 11)', async () => {
+      const listListingIdsSpy = vi.spyOn(hookDb, 'listListingIds');
+      const unfiltered = await getJson<ListListingIdsResponse>(`${HOOK_BASE_URL}/api/listings/ids`);
+      expect(unfiltered.status).toBe(200);
+      expect(listListingIdsSpy).toHaveBeenCalledTimes(1);
+
+      // A filter of any kind takes the in-memory listFilteredSummaries
+      // path instead, which cannot use the id-only query at all — so the
+      // count must stay at the one call the unfiltered request made.
+      const filtered = await getJson<ListListingIdsResponse>(`${HOOK_BASE_URL}/api/listings/ids?title=${encodeURIComponent(fastPathTitles.newest)}`);
+      expect(filtered.status).toBe(200);
+      expect(filtered.body.ids).toEqual([fastPathIdsByTitle.get(fastPathTitles.newest)]);
+      expect(listListingIdsSpy).toHaveBeenCalledTimes(1);
+    }, 30_000);
+
+    it('GET /api/listings/ids with no query params returns every Listing id in listing_date DESC, id ASC order', async () => {
+      const res = await getJson<ListListingIdsResponse>(`${HOOK_BASE_URL}/api/listings/ids`);
+      expect(res.status).toBe(200);
+      // Every row in the table, each exactly once — never a page of them.
+      expect(res.body.ids).toHaveLength(await hookDb.countListings());
+      expect(new Set(res.body.ids).size).toBe(res.body.ids.length);
+
+      // These four carry the newest listing_dates in the database, so
+      // listing_date DESC puts them first, and the two tied on
+      // 2027-02-01 must appear in ascending id order between the newest
+      // and the oldest.
+      expect(res.body.ids.slice(0, 4)).toEqual(expectedIdOrder);
+      // Stated again as a relative order over just this block's seeds, so
+      // the proof still names the failure precisely if another block is
+      // ever given a newer date than 2027-03-01.
+      const seedIds = new Set(fastPathIdsByTitle.values());
+      expect(res.body.ids.filter((id) => seedIds.has(id))).toEqual(expectedIdOrder);
     }, 30_000);
   });
 });

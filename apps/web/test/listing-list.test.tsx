@@ -107,6 +107,8 @@ function Harness({
       sortDirection={sortDirection}
       onSortChange={onSortChange}
       isLoading={isLoading}
+      columnFilters={{}}
+      onColumnFilterChange={() => {}}
     />
   );
 }
@@ -295,6 +297,9 @@ describe('ListingList Accept/Reject gating and per-row in-flight disable (Req 4)
           selectedIds={new Set()}
           onToggleOne={() => {}}
           onToggleAllFiltered={() => {}}
+          onSortChange={() => {}}
+          columnFilters={{}}
+          onColumnFilterChange={() => {}}
         />,
       );
     });
@@ -345,7 +350,10 @@ describe('ListingList sortable column headers', () => {
     expect(cells[9].querySelector('button')).toBeNull();
     expect(cells[0].getAttribute('aria-sort')).toBeNull();
     expect(cells[9].getAttribute('aria-sort')).toBeNull();
-    expect(el.querySelectorAll('thead button')).toHaveLength(8);
+    // Every data column's header carries two buttons now — the sort
+    // label and its filter trigger (T4/T5) — so 8 of each.
+    expect(el.querySelectorAll('thead button:not([aria-label^="Filter by"])')).toHaveLength(8);
+    expect(el.querySelectorAll('thead button[aria-label^="Filter by"]')).toHaveLength(8);
     expect(cells.slice(1, 9).map((cell) => cell.textContent?.trim())).toEqual(SORTABLE_LABELS);
 
     for (const label of SORTABLE_LABELS) {

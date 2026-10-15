@@ -18,11 +18,11 @@ import type {
 import type {
   AcceptListingResponse,
   ExpectedPartInput,
+  ListingColumnFilters,
   ListingComparison,
   ListingDetail,
   ListingSortDirection,
   ListingSortField,
-  ListingStatus,
   ListingSummary,
   ListListingIdsResponse,
   ListListingsResponse,
@@ -50,7 +50,7 @@ import { AppError } from '../error-handler.js';
 import { logger } from '../logger.js';
 import { triggerPriceLookups } from '../jobs/pricePartsTrigger.js';
 import { registerListingPhotoRoutes } from './listingPhotos.js';
-import { VALID_STATUSES, validateListingInput, type ListingRequestBody } from './listingValidation.js';
+import { parseListingColumnFilters, validateListingInput, type ListingColumnFilterQuery, type ListingRequestBody } from './listingValidation.js';
 
 // Req 3: sum of Expected Parts' estimated resale values vs. (asking price +
 // acquisition fees/shipping), plus their difference.
@@ -127,7 +127,7 @@ const SORT_KEYS: Record<ListingSortField, (listing: ListingSummary, sourceNamesB
   // -> 1, fully_priced -> 2 is what makes ascending "unpriced" sort read
   // Not Priced, then Partially Priced, then Fully Priced (Req 7), and a
   // descending sort (this same sort key, reversed after the comparator
-  // runs — see listSortedListingsPage) reverses that to Fully Priced,
+  // runs — see sortSummaries) reverses that to Fully Priced,
   // then Partially Priced, then Not Priced.
   unpriced: (listing) => ({ not_priced: 0, partially_priced: 1, fully_priced: 2 })[listing.pricingStatus],
 };
@@ -137,38 +137,55 @@ const SORT_KEYS: Record<ListingSortField, (listing: ListingSummary, sourceNamesB
 const VALID_SORT_FIELDS = Object.keys(SORT_KEYS) as ListingSortField[];
 
 /**
- * Builds one page of the Listings table ordered across the WHOLE filtered
- * dataset rather than within the requested page (Req 1, 6, 8). The table is
- * server-paginated, so a correct "cheapest first" has to reorder every
- * matching Listing before the page is sliced out — sorting only the 20 rows
- * a page happens to hold would be a different, wrong answer.
- *
- * Flow: count the filtered set, fetch all of it in one unpaginated
- * `listListings` call (`limit: total` turns pagination off for this fetch),
- * enrich every row through the same unchanged `toSummary` the unsorted path
- * uses — which is what makes the computed comparison and the identify-parts
- * stage available as real sort keys (Req 6) — resolve Source names only
- * when actually sorting by Source, so no other column pays for that query,
- * then sort, reverse for 'desc', and slice the requested page. `total`
- * still reports the whole filtered count, so pagination controls are
- * unaffected by sorting (Req 8).
- *
- * `Array.prototype.sort` is stable (ES2019+), so rows tied on the sort
- * field keep the relative order `listListings` already gave them
- * (`listing_date DESC, id ASC`) with no secondary sort key needed; the
- * `reverse()` for 'desc' flips those ties too, which keeps 'desc' the exact
- * mirror image of 'asc'.
+ * Per-column filter predicates, one per `ListingColumnFilters` key (Req
+ * 2-7), each given the parsed value of its own key. Like SORT_KEYS, every
+ * predicate reads the value the column actually displays: `sourceIds`
+ * matches the stored Source id (Req 3 — two Sources sharing a name are
+ * never conflated), `expectedResale*`/`difference*` read the computed
+ * `ListingComparison`, and `identifyPartsStages` reads the latest job's
+ * stage, with a Listing that has no job at all matching only the `'none'`
+ * sentinel (Req 5). The six bounds are inclusive and independent — an
+ * absent bound is simply not in the parsed object, so that side stays
+ * unbounded (Req 7). Declared as a mapped type over the shared interface,
+ * so a filter field added to `ListingColumnFilters` later fails to compile
+ * until its predicate lands here.
  */
-async function listSortedListingsPage(
-  filters: { status?: ListingStatus; sourceId?: string },
-  sortBy: ListingSortField,
-  sortDirection: ListingSortDirection,
-  limit: number,
-  offset: number,
-): Promise<ListListingsResponse> {
-  const total = await countListings(filters);
-  const listings = await listListings({ ...filters, limit: total, offset: 0 });
-  const summaries = await Promise.all(listings.map(toSummary));
+const COLUMN_FILTERS: { [K in keyof ListingColumnFilters]-?: (listing: ListingSummary, value: NonNullable<ListingColumnFilters[K]>) => boolean } = {
+  title: (listing, title) => listing.title.toLowerCase().includes(title.toLowerCase()),
+  sourceIds: (listing, sourceIds) => sourceIds.includes(listing.sourceId),
+  statuses: (listing, statuses) => statuses.includes(listing.status),
+  askingPriceMin: (listing, min) => listing.askingPrice >= min,
+  askingPriceMax: (listing, max) => listing.askingPrice <= max,
+  expectedResaleMin: (listing, min) => listing.comparison.totalExpectedResaleValue >= min,
+  expectedResaleMax: (listing, max) => listing.comparison.totalExpectedResaleValue <= max,
+  differenceMin: (listing, min) => listing.comparison.difference >= min,
+  differenceMax: (listing, max) => listing.comparison.difference <= max,
+  identifyPartsStages: (listing, stages) => stages.includes(listing.identifyPartsStatus?.stage ?? 'none'),
+  pricingStatuses: (listing, pricingStatuses) => pricingStatuses.includes(listing.pricingStatus),
+};
+
+// True when the Listing passes every filter present in `filters` — the
+// columns AND together (Req 11). parseListingColumnFilters only emits keys
+// that are active, so iterating the object's own keys is exactly "every
+// active filter".
+function matchesColumnFilters(listing: ListingSummary, filters: ListingColumnFilters): boolean {
+  return (Object.keys(filters) as (keyof ListingColumnFilters)[]).every((key) => {
+    // The mapped type ties each predicate's value type to its own key, but
+    // a lookup by a union-typed key loses that pairing; the cast restores
+    // the call without weakening the table's declaration above.
+    const predicate = COLUMN_FILTERS[key] as (listing: ListingSummary, value: unknown) => boolean;
+    return predicate(listing, filters[key]);
+  });
+}
+
+// Sorts `summaries` in place by one column (Req 1, 6), resolving Source
+// names only when actually sorting by Source, so no other column pays for
+// that query. `Array.prototype.sort` is stable (ES2019+), so rows tied on
+// the sort field keep the relative order `listListings` already gave them
+// (`listing_date DESC, id ASC`) with no secondary sort key needed; the
+// `reverse()` for 'desc' flips those ties too, which keeps 'desc' the
+// exact mirror image of 'asc'.
+async function sortSummaries(summaries: ListingSummary[], sortBy: ListingSortField, sortDirection: ListingSortDirection): Promise<void> {
   const sourceNamesById: Record<string, string> = sortBy === 'source' ? Object.fromEntries((await listSources()).map((source) => [source.id, source.name])) : {};
   const sortKeyOf = SORT_KEYS[sortBy];
   summaries.sort((a, b) => {
@@ -182,7 +199,37 @@ async function listSortedListingsPage(
   if (sortDirection === 'desc') {
     summaries.reverse();
   }
-  return { listings: summaries.slice(offset, offset + limit), total };
+}
+
+/**
+ * Builds the WHOLE filtered, optionally sorted Listings table in memory
+ * (Req 2-7, 11) — the shared slow path behind both GET /api/listings (which
+ * slices one page out of it) and GET /api/listings/ids (which keeps every
+ * row). The table is server-paginated, so a correct "cheapest first" or a
+ * correct "Expected Profit >= 50" has to be decided over every Listing
+ * before a page is sliced out — sorting or filtering only the 20 rows a
+ * page happens to hold would be a different, wrong answer. And most of
+ * the filters cannot be a SQL WHERE at all: Expected Resale, Expected
+ * Profit, Sourcing Status and Pricing Status are all computed by
+ * `toSummary`, not stored columns, so every column filters the same way
+ * rather than splitting into a SQL half and an in-memory half.
+ *
+ * Flow: count the table, fetch all of it in one unpaginated `listListings`
+ * call (`limit: total` turns pagination off for this fetch), enrich every
+ * row through the same unchanged `toSummary` the fast path uses — which
+ * is what makes the computed comparison and the identify-parts stage
+ * available as real filter and sort keys (Req 6) — drop every row that
+ * fails a filter, then sort if a column was requested. Callers that only
+ * want the SQL-level fast path (no filter, no sort) must not come here.
+ */
+async function listFilteredSummaries(filters: ListingColumnFilters, sortBy: ListingSortField | undefined, sortDirection: ListingSortDirection): Promise<ListingSummary[]> {
+  const total = await countListings();
+  const listings = await listListings({ limit: total, offset: 0 });
+  const summaries = (await Promise.all(listings.map(toSummary))).filter((summary) => matchesColumnFilters(summary, filters));
+  if (sortBy !== undefined) {
+    await sortSummaries(summaries, sortBy, sortDirection);
+  }
+  return summaries;
 }
 
 // Attaches both the full Expected Parts set and the Req 3 comparison, for
@@ -317,44 +364,45 @@ export async function registerListingsRoutes<
   });
 
   server.get('/api/listings', async (request): Promise<ListListingsResponse> => {
-    const { status, sourceId, limit, offset, sortBy, sortDirection } = request.query as {
-      status?: string;
-      sourceId?: string;
+    const { limit, offset, sortBy, sortDirection, ...filterQuery } = request.query as ListingColumnFilterQuery & {
       limit?: string;
       offset?: string;
       sortBy?: string;
       sortDirection?: string;
     };
-    // An unrecognized status value is ignored (no filter applied) rather
-    // than rejected — GET requests validate loosely, unlike the write path.
-    const statusFilter = typeof status === 'string' && VALID_STATUSES.includes(status as ListingStatus) ? (status as ListingStatus) : undefined;
-    const sourceIdFilter = sourceId && sourceId.length > 0 ? sourceId : undefined;
+    // The eight column filters (Req 2-7), validated loosely — an
+    // unrecognized value applies no filter rather than being rejected,
+    // since GET requests validate loosely, unlike the write path. The old
+    // single-value `status`/`sourceId` params are gone (Req 12); if a
+    // caller still sends them they are simply not read.
+    const filters = parseListingColumnFilters(filterQuery);
     // Pagination (Req 15): limit/offset query params, defaulting to a
     // single page of 20 so the Listings queue screen never renders an
     // unbounded list. `total` lets the frontend compute page count without
     // a second unpaginated fetch.
     const limitValue = limit !== undefined ? Number(limit) : 20;
     const offsetValue = offset !== undefined ? Number(offset) : 0;
-    // Req 1: the click-to-sort column params, validated as loosely as
-    // `status` above — an unrecognized `sortBy` applies no sort at all, and
+    // Req 1: the click-to-sort column params, validated as loosely as the
+    // filters above — an unrecognized `sortBy` applies no sort at all, and
     // any `sortDirection` other than 'desc' means ascending, the direction
     // a freshly-clicked column starts in (Req 2).
     const sortField = typeof sortBy === 'string' && VALID_SORT_FIELDS.includes(sortBy as ListingSortField) ? (sortBy as ListingSortField) : undefined;
     const sortDirectionValue: ListingSortDirection = sortDirection === 'desc' ? 'desc' : 'asc';
     logger.info(
-      { route: 'GET /api/listings', status: statusFilter, sourceId: sourceIdFilter, limit: limitValue, offset: offsetValue, sortBy: sortField, sortDirection: sortField !== undefined ? sortDirectionValue : undefined },
+      { route: 'GET /api/listings', filters, limit: limitValue, offset: offsetValue, sortBy: sortField, sortDirection: sortField !== undefined ? sortDirectionValue : undefined },
       'Listing listings',
     );
-    if (sortField !== undefined) {
-      return listSortedListingsPage({ status: statusFilter, sourceId: sourceIdFilter }, sortField, sortDirectionValue, limitValue, offsetValue);
+    if (sortField !== undefined || Object.keys(filters).length > 0) {
+      // Sorting (Req 1) and filtering (Req 11) both have to see the whole
+      // table before a page is sliced out, and `total` reports the whole
+      // filtered count so the pagination controls stay accurate.
+      const summaries = await listFilteredSummaries(filters, sortField, sortDirectionValue);
+      return { listings: summaries.slice(offsetValue, offsetValue + limitValue), total: summaries.length };
     }
-    // Req 9: with no sort requested this stays exactly the original path —
-    // SQL-level LIMIT/OFFSET over listListings' default listing_date DESC
-    // ordering, untouched by this feature.
-    const [listings, total] = await Promise.all([
-      listListings({ status: statusFilter, sourceId: sourceIdFilter, limit: limitValue, offset: offsetValue }),
-      countListings({ status: statusFilter, sourceId: sourceIdFilter }),
-    ]);
+    // Req 9: with neither a sort nor a filter requested this stays exactly
+    // the original path — SQL-level LIMIT/OFFSET over listListings'
+    // default listing_date DESC ordering, never materializing the table.
+    const [listings, total] = await Promise.all([listListings({ limit: limitValue, offset: offsetValue }), countListings()]);
     return { listings: await Promise.all(listings.map(toSummary)), total };
   });
 
@@ -363,12 +411,15 @@ export async function registerListingsRoutes<
   // before parametric ones regardless of registration order, but this
   // ordering keeps the file's own route list matching match-priority order.
   server.get('/api/listings/ids', async (request): Promise<ListListingIdsResponse> => {
-    const { status, sourceId } = request.query as { status?: string; sourceId?: string };
-    // Same loose query validation as GET /api/listings above.
-    const statusFilter = typeof status === 'string' && VALID_STATUSES.includes(status as ListingStatus) ? (status as ListingStatus) : undefined;
-    const sourceIdFilter = sourceId && sourceId.length > 0 ? sourceId : undefined;
-    logger.info({ route: 'GET /api/listings/ids', status: statusFilter, sourceId: sourceIdFilter }, 'Listing listing ids');
-    return { ids: await listListingIds({ status: statusFilter, sourceId: sourceIdFilter }) };
+    // Same loose filter parsing as GET /api/listings above, so "select all
+    // matching across every page" sees exactly the rows the table shows
+    // (Req 11) — never sorted or paginated, since only the id set matters.
+    const filters = parseListingColumnFilters(request.query as ListingColumnFilterQuery);
+    logger.info({ route: 'GET /api/listings/ids', filters }, 'Listing listing ids');
+    if (Object.keys(filters).length > 0) {
+      return { ids: (await listFilteredSummaries(filters, undefined, 'asc')).map((summary) => summary.id) };
+    }
+    return { ids: await listListingIds() };
   });
 
   server.get('/api/listings/:id', async (request) => {

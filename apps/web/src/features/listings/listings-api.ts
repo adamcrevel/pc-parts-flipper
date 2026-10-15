@@ -5,7 +5,7 @@ import type {
   IdentifyPartsBulkResponse,
   IdentifyPartsBulkResult,
   ListingDetail,
-  ListingStatus,
+  ListingColumnFilters,
   ListingSortDirection,
   ListingSortField,
   ListListingsResponse,
@@ -13,6 +13,7 @@ import type {
   UpdateListingInput,
 } from '@pc-parts-flipper/shared';
 import { ApiError, apiClient } from '@/lib/api-client';
+import { COLUMN_FILTER_KEYS, isColumnFilterSet } from '@/features/listings/column-filters';
 
 // Thin resource-specific wrapper around apiClient (T4) for the `/api/listings`
 // endpoints (apps/server/src/routes/listings.ts). Keeps the route paths and
@@ -20,26 +21,37 @@ import { ApiError, apiClient } from '@/lib/api-client';
 // sub-components never hand-write a path string or `as` cast.
 
 /**
- * Optional filters/pagination matching the GET /api/listings query support
- * (Req 12, 15), plus the optional sort field/direction the sortable column
- * headers drive. Both sort fields are omitted entirely when no header has
- * been clicked yet, which is what leaves the server on its default
- * newest-first ordering.
+ * Column filters, pagination and sort for GET /api/listings. Every
+ * `ListingColumnFilters` field maps to the query param of the same name
+ * (apps/server/src/routes/listingValidation.ts parses exactly these); an
+ * unset field is simply not sent. Both sort fields are omitted entirely
+ * when no header has been clicked yet, which is what leaves the server on
+ * its default newest-first ordering.
  */
-export interface FetchListingsOptions {
-  status?: ListingStatus;
-  sourceId?: string;
+export interface FetchListingsOptions extends ListingColumnFilters {
   limit?: number;
   offset?: number;
   sortBy?: ListingSortField;
   sortDirection?: ListingSortDirection;
 }
 
+// Appends one query param per *set* filter field: multi-value fields go
+// comma-joined (`statuses=open,accepted`), which is one of the two forms
+// the server accepts and the one URLSearchParams produces without repeated
+// keys; scalars go as-is. Shared by both listings fetches below so the
+// page's id set and its rows can never disagree on how a filter is sent.
+function appendColumnFilterParams(params: URLSearchParams, filters: ListingColumnFilters): void {
+  for (const key of COLUMN_FILTER_KEYS) {
+    const value = filters[key];
+    if (!isColumnFilterSet(value)) continue;
+    params.set(key, Array.isArray(value) ? value.join(',') : String(value));
+  }
+}
+
 /** Fetches one page of Listings (each annotated with its Req 3 comparison) plus the total matching count, for pagination (Req 15). */
 export function fetchListings(options: FetchListingsOptions = {}): Promise<ListListingsResponse> {
   const params = new URLSearchParams();
-  if (options.status) params.set('status', options.status);
-  if (options.sourceId) params.set('sourceId', options.sourceId);
+  appendColumnFilterParams(params, options);
   if (options.limit !== undefined) params.set('limit', String(options.limit));
   if (options.offset !== undefined) params.set('offset', String(options.offset));
   if (options.sortBy) params.set('sortBy', options.sortBy);
@@ -48,11 +60,10 @@ export function fetchListings(options: FetchListingsOptions = {}): Promise<ListL
   return apiClient.get<ListListingsResponse>(`/api/listings${query.length > 0 ? `?${query}` : ''}`);
 }
 
-/** Fetches all Listing IDs matching the given filters, without pagination. */
-export async function fetchListingIds(options: Pick<FetchListingsOptions, 'status' | 'sourceId'> = {}): Promise<string[]> {
+/** Fetches all Listing IDs matching the given column filters, without pagination (GET /api/listings/ids takes no limit/offset/sort). */
+export async function fetchListingIds(filters: ListingColumnFilters = {}): Promise<string[]> {
   const params = new URLSearchParams();
-  if (options.status) params.set('status', options.status);
-  if (options.sourceId) params.set('sourceId', options.sourceId);
+  appendColumnFilterParams(params, filters);
   const query = params.toString();
   const response = await apiClient.get<ListListingIdsResponse>(`/api/listings/ids${query.length > 0 ? `?${query}` : ''}`);
   return response.ids;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { CreateListingInput, ListingDetail, ListingSortDirection, ListingSortField, ListingSummary, Source } from '@pc-parts-flipper/shared';
+import type { CreateListingInput, ListingColumnFilters, ListingDetail, ListingSortDirection, ListingSortField, ListingSummary, Source } from '@pc-parts-flipper/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoadingSpinner } from '@/components/loading-spinner';
@@ -11,7 +11,7 @@ import { fetchSources } from '@/features/sources/sources-api';
 import { acceptListing, createListing, fetchListing, fetchListingIds, fetchListings, rejectListing, updateListing } from '@/features/listings/listings-api';
 import { ListingForm } from '@/features/listings/listing-form';
 import { ListingList } from '@/features/listings/listing-list';
-import { ListingFilters, type ListingsQueueFilterValue } from '@/features/listings/listing-filters';
+import { hasActiveColumnFilter } from '@/features/listings/column-filters';
 import { BulkIdentifyPartsBar } from '@/features/listings/bulk-identify-parts-bar';
 
 // Whether the top-of-page create form is open. Editing an existing Listing
@@ -22,6 +22,11 @@ type PanelState = { mode: 'list' } | { mode: 'create' };
 // One page of rows; the Listings paginates past this rather
 // than rendering an unbounded list.
 const PAGE_SIZE = 20;
+
+// How long after the last keystroke in the Title filter its request goes
+// out. Only Title is debounced: a checkbox toggle or a number-bound edit
+// is applied the moment it happens (see handleColumnFilterChange).
+const TITLE_FILTER_DEBOUNCE_MS = 300;
 
 /**
  * Listings screen (Req 2-3, 5, 6, 8, 9, 10, 12): create/edit a Listing with
@@ -35,7 +40,19 @@ export function ListingsPage() {
   const [listings, setListings] = useState<ListingSummary[] | null>(null);
   const [total, setTotal] = useState(0);
   const [sources, setSources] = useState<Source[] | null>(null);
-  const [filters, setFilters] = useState<ListingsQueueFilterValue>({ status: '', sourceId: '' });
+  // Req 1-7: the per-column filters as the user currently sees them in
+  // each header's popover — `{}` meaning no filter on anything. This is
+  // the *live* value, so the Title input never lags a keystroke; the copy
+  // requests are actually built from is `appliedColumnFilters` below.
+  const [columnFilters, setColumnFilters] = useState<ListingColumnFilters>({});
+  // The filters the listings request and the Req 2 id-set request are
+  // built from. Identical to `columnFilters` except while a Title edit is
+  // still inside its debounce window: every other field is copied across
+  // synchronously, Title only once TITLE_FILTER_DEBOUNCE_MS has passed
+  // since the last keystroke (A6), so typing a word fires one request,
+  // not one per character, while a checkbox or number change never waits.
+  const [appliedColumnFilters, setAppliedColumnFilters] = useState<ListingColumnFilters>({});
+  const titleCommitTimerRef = useRef<number | null>(null);
   const [page, setPage] = useState(1);
   // The column the table is sorted by and its direction, or `undefined` for
   // both until a header is clicked: no sort param is sent then, which is
@@ -94,8 +111,7 @@ export function ListingsPage() {
     }
     try {
       const result = await fetchListings({
-        status: filters.status || undefined,
-        sourceId: filters.sourceId || undefined,
+        ...appliedColumnFilters,
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
         sortBy,
@@ -122,28 +138,34 @@ export function ListingsPage() {
         setIsLoadingListings(false);
       }
     }
-  }, [filters, page, sortBy, sortDirection]);
+  }, [appliedColumnFilters, page, sortBy, sortDirection]);
 
   useEffect(() => {
     void loadListings();
   }, [loadListings]);
 
   useEffect(() => {
-    // Every Source (including inactive) populates the filter dropdown, since
-    // a past Listing may belong to a Source that's since been deactivated.
+    // Every Source (including inactive) populates the Source column's
+    // filter, since a past Listing may belong to a Source that's since been
+    // deactivated.
     void fetchSources(false)
       .then(setSources)
       .catch((err: unknown) => setLoadError(err instanceof ApiError ? err.message : 'Failed to load sources.'));
   }, []);
 
   useEffect(() => {
-    // Req 2: keyed on `filters` alone, never `page` — the filtered id set
-    // is page-independent, so paging must not refetch it (and must not
-    // narrow it to the visible rows).
-    void fetchListingIds({ status: filters.status || undefined, sourceId: filters.sourceId || undefined })
+    // Req 2: keyed on the applied filters alone, never `page` — the
+    // filtered id set is page-independent, so paging must not refetch it
+    // (and must not narrow it to the visible rows). Built from the very
+    // same object loadListings spreads into its own request, so the id set
+    // and the rows can never be filtered differently (Req 11).
+    void fetchListingIds(appliedColumnFilters)
       .then(setAllFilteredIds)
       .catch((err: unknown) => setLoadError(err instanceof ApiError ? err.message : 'Failed to load listing ids.'));
-  }, [filters]);
+  }, [appliedColumnFilters]);
+
+  // A pending Title commit must not fire into an unmounted page.
+  useEffect(() => () => cancelPendingTitleCommit(), []);
 
   useEffect(() => {
     // Req 12: while any *visible* row still has a non-terminal
@@ -203,10 +225,53 @@ export function ListingsPage() {
 
   const sourcesById = useMemo(() => new Map((sources ?? []).map((source) => [source.id, source])), [sources]);
 
-  function handleFiltersChange(next: ListingsQueueFilterValue) {
-    setFilters(next);
-    // A changed filter can shrink the result set below the current offset,
-    // so every filter change resets to page 1 rather than keeping it.
+  function cancelPendingTitleCommit() {
+    if (titleCommitTimerRef.current !== null) {
+      clearTimeout(titleCommitTimerRef.current);
+      titleCommitTimerRef.current = null;
+    }
+  }
+
+  // Merges `patch` into the request-building filters and, because a
+  // changed filter can shrink the result set below the current offset,
+  // resets to page 1 (Req 10) — the same reset handleSortChange does.
+  function applyColumnFilters(patch: Partial<ListingColumnFilters>) {
+    setAppliedColumnFilters((current) => ({ ...current, ...patch }));
+    setPage(1);
+  }
+
+  // One column's filter changed (set, edited, or cleared via its own Clear,
+  // Req 9). The live value updates at once; when it reaches the request
+  // depends on the field:
+  // - Title with a non-empty value: debounced — the request waits until
+  //   the user has stopped typing for TITLE_FILTER_DEBOUNCE_MS.
+  // - Everything else, Title's own Clear included: applied immediately.
+  //   Checkboxes apply on toggle, and number bounds apply on every
+  //   keystroke, the natural commit point NumberRangeFilterContent
+  //   already reports at (A6). Clearing Title immediately means the
+  //   empty-table message can never flip to "No listings yet" while a
+  //   stale filtered-to-zero result waits out a debounce.
+  function handleColumnFilterChange(patch: Partial<ListingColumnFilters>) {
+    setColumnFilters((current) => ({ ...current, ...patch }));
+    if ('title' in patch) {
+      cancelPendingTitleCommit();
+    }
+    if (patch.title !== undefined) {
+      titleCommitTimerRef.current = window.setTimeout(() => {
+        titleCommitTimerRef.current = null;
+        applyColumnFilters({ title: patch.title });
+      }, TITLE_FILTER_DEBOUNCE_MS);
+      return;
+    }
+    applyColumnFilters(patch);
+  }
+
+  // Req 8: every column's filter back to nothing in one action, dropping
+  // any Title keystrokes still waiting on their debounce too.
+  function handleClearAllFilters() {
+    cancelPendingTitleCommit();
+    setColumnFilters({});
+    setAppliedColumnFilters({});
     setPage(1);
   }
 
@@ -216,9 +281,9 @@ export function ListingsPage() {
   // ever sorted by, never a combination. Either way the sorted order is
   // computed server-side across the whole filtered dataset, so the result's
   // first page is a different set of rows than before: reset to page 1, the
-  // same way a filter change does. Note this deliberately leaves `filters`
-  // alone, just as handleFiltersChange leaves the sort alone — the two
-  // compose rather than clearing each other.
+  // same way a filter change does. Note this deliberately leaves the column
+  // filters alone, just as handleColumnFilterChange leaves the sort alone —
+  // the two compose rather than clearing each other.
   function handleSortChange(field: ListingSortField) {
     if (sortBy === field) {
       setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'));
@@ -313,7 +378,11 @@ export function ListingsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Listings</h1>
         <div className="flex items-center gap-4">
-          {sources !== null && <ListingFilters value={filters} sources={sources} onChange={handleFiltersChange} />}
+          {hasActiveColumnFilter(columnFilters) && (
+            <Button variant="outline" onClick={handleClearAllFilters}>
+              Clear all
+            </Button>
+          )}
           <Button onClick={() => setPanel({ mode: 'create' })} disabled={panel.mode === 'create'}>
             Add Listing
           </Button>
@@ -360,6 +429,8 @@ export function ListingsPage() {
                 allFilteredIds={allFilteredIds}
                 selectedIds={selectedIds}
                 onToggleOne={handleToggleOne}
+                columnFilters={columnFilters}
+                onColumnFilterChange={handleColumnFilterChange}
                 sortBy={sortBy}
                 sortDirection={sortDirection}
                 onSortChange={handleSortChange}
