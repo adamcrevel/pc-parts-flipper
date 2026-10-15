@@ -207,6 +207,26 @@ afterEach(() => {
 });
 
 describe('buildIdentificationPrompt', () => {
+  it('does not presuppose the listing is a whole pre-built computer', () => {
+    const text = prompt.buildIdentificationPrompt(listingFixture());
+
+    expect(text).not.toContain('pre-built computer');
+  });
+
+  it('instructs the model to determine listing composition from its own title/description/photos, not assume it', () => {
+    const text = prompt.buildIdentificationPrompt(listingFixture());
+
+    expect(text).toContain('determine what is actually for sale');
+    expect(text).toContain('a single part on its own, a handful of parts sold together, or an entire assembled computer');
+  });
+
+  it('instructs the model not to invent components beyond what the listing actually shows or describes', () => {
+    const text = prompt.buildIdentificationPrompt(listingFixture());
+
+    expect(text).toContain('Do NOT invent or assume additional components beyond what is genuinely present');
+    expect(text).toContain('must produce exactly one entry in "parts"');
+  });
+
   it('enumerates every allowed category and forbids any other value', () => {
     const text = prompt.buildIdentificationPrompt(listingFixture());
 

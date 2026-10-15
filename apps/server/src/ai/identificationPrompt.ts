@@ -36,6 +36,14 @@ function formatPreviousIdentification(existingParts: readonly ExpectedPart[]): s
  * Builds the prompt for one Listing. The instructions it carries are load
  * bearing, each for an observed reason:
  *
+ * - The opening framing deliberately does not presuppose the listing is a
+ *   whole pre-built computer: it instructs the model to read the listing's
+ *   own title, description, and photos first to determine what is actually
+ *   for sale — a single part, a few parts sold together, or an assembled
+ *   computer — rather than assume any one of the three. A Source's search
+ *   queries are free text (e.g. "RTX 3060" as easily as "gaming PC"), so a
+ *   fixed whole-computer framing would actively mislead the model on a
+ *   single-part listing.
  * - The allowed category list is enumerated inline because the model otherwise
  *   invents plausible-but-unusable categories ("Graphics Card", "SSD") that no
  *   longer map onto the Expected Parts editor's fixed select.
@@ -53,6 +61,11 @@ function formatPreviousIdentification(existingParts: readonly ExpectedPart[]): s
  *   sources of truth for the same fact.
  * - The per-part basis (text/image/both) lets the user weigh a part read off
  *   the seller's own spec list differently from one recognized in a photo.
+ * - Rule 9 (don't invent components beyond what the listing's own content
+ *   shows or describes) exists for the same reason as the reworded opening
+ *   framing above: without it, a model primed by the 3-part JSON example
+ *   below risks padding a genuinely single-part listing with invented
+ *   components to match the example's shape.
  * - The raw-JSON-only instruction exists because anything else (a code fence,
  *   a sentence of preamble) has to be stripped back off by the parser.
  * - For non-working listings, the workingStatus rule asks the model to assess
@@ -80,14 +93,15 @@ export function buildIdentificationPrompt(listing: Listing, existingParts: Expec
     '5. For every part, state what your identification is based on in the "source" field: "text" if it came from the listing title/description only, "image" if it came from a photo only, or "both" if the text and a photo agree.',
     '6. Set "confidence" to "high", "medium" or "low" reflecting how sure you are of that specific part.',
     '7. Use the "notes" field for anything that does not belong to one specific part — caveats, data-quality warnings, or observations about the listing itself (for example if the photos look like stock/marketing images rather than the actual item being sold). Use an empty string if you have nothing to add.',
-    `8. If you cannot settle on one brand but can narrow it down to a short list of specific, genuinely plausible brands, report them in an "identityCandidates" array of {"brand","partNumber"} pairs, ranked most-to-least likely and capped at ${MAX_IDENTITY_CANDIDATES} entries — fill in "partNumber" per candidate where you know it, else null. The same applies when the brand is known but the exact model/part number is only narrowed to a short list: repeat that brand on every candidate and vary "partNumber". Do NOT pad the list by repeating the same pair, and do NOT include a candidate identical to the "brand"/"partNumber" you already reported at the top level. Leave "identityCandidates" as an empty array when there is no real lead to narrow from — never invent…`,
+    `8. If you cannot settle on one brand but can narrow it down to a short list of specific, genuinely plausible brands, report them in an "identityCandidates" array of {"brand","partNumber"} pairs, ranked most-to-least likely and capped at ${MAX_IDENTITY_CANDIDATES} entries — fill in "partNumber" per candidate where you know it, else null. The same applies when the brand is known but the exact model/part number is only narrowed to a short list: repeat that brand on every candidate and vary "partNumber". Do NOT pad the list by repeating the same pair, and do NOT include a candidate identical to the "brand"/"partNumber" you already reported at the top level. Leave "identityCandidates" as an empty array when there is no real lead to narrow from — never invent plausible-sounding candidates just to fill the array.`,
+    '9. Only report components the listing\'s own title, description, or photos actually show or describe. Do NOT invent or assume additional components beyond what is genuinely present — a listing selling a single part (for example, one graphics card on its own) must produce exactly one entry in "parts", never padded with other components to look like a larger breakdown.',
   ];
 
   // Add per-part notes carry-forward rules only for a re-identification
-  // (existingParts non-empty); numbered after the fixed rules 1-8 so a
+  // (existingParts non-empty); numbered after the fixed rules 1-9 so a
   // first-ever identification (existingParts empty, the default) keeps
   // exactly the same rule numbering and prompt text as before.
-  let nextRuleNumber = 9;
+  let nextRuleNumber = 10;
   if (existingParts.length > 0) {
     rules.push(
       `${nextRuleNumber}. The PREVIOUS IDENTIFICATION section below lists this listing's existing Expected Parts and any human-entered note on each. Treat each note as a human correction or clarification for that specific part, and prefer its guidance over what the listing text or photos alone would suggest whenever the two conflict.`,
@@ -113,7 +127,7 @@ export function buildIdentificationPrompt(listing: Listing, existingParts: Expec
   const previousIdentificationSection = existingParts.length > 0 ? formatPreviousIdentification(existingParts) : null;
 
   return [
-    'You are helping identify the individual PC components contained in a used pre-built computer that is for sale.',
+    'You are helping identify every distinct, sellable PC component actually being sold in this listing. Read the listing title, description, and any attached photos first to determine what is actually for sale — it could be a single part on its own, a handful of parts sold together, or an entire assembled computer — then identify only the components the listing\'s own content genuinely shows or describes, without assuming any one of these cases.',
     '',
     'LISTING TITLE:',
     listing.title,
