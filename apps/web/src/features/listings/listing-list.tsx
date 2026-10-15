@@ -305,12 +305,10 @@ export function ListingList({
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       {isLoading && (
-        <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground" role="status">
-          {/* Decorative spinner glyph, matching LoadingSpinner's own markup; the text label carries the accessible status */}
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
-          <span>Loading…</span>
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80">
+          <LoadingSpinner />
         </div>
       )}
       <table className={cn('w-full border-collapse text-left text-sm', isLoading && 'pointer-events-none opacity-60')}>
