@@ -93,6 +93,9 @@ describe('ListingsQueueTable eBay scan badge', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        onSortChange={() => {}}
+        columnFilters={{}}
+        onColumnFilterChange={() => {}}
         editingListingId={null}
         editingListing={null}
         editingLoading={false}
@@ -120,6 +123,9 @@ describe('ListingsQueueTable eBay scan badge', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        onSortChange={() => {}}
+        columnFilters={{}}
+        onColumnFilterChange={() => {}}
         editingListingId={null}
         editingListing={null}
         editingLoading={false}
@@ -283,6 +289,9 @@ describe('ListingsQueueTable regression: non-badge columns and Accept/Reject sti
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        onSortChange={() => {}}
+        columnFilters={{}}
+        onColumnFilterChange={() => {}}
         editingListingId={null}
         editingListing={null}
         editingLoading={false}
@@ -334,6 +343,9 @@ describe('ListingsQueueTable identify-parts status badge (Req 10/11)', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        onSortChange={() => {}}
+        columnFilters={{}}
+        onColumnFilterChange={() => {}}
         editingListingId={null}
         editingListing={null}
         editingLoading={false}
@@ -362,6 +374,9 @@ describe('ListingsQueueTable identify-parts status badge (Req 10/11)', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        onSortChange={() => {}}
+        columnFilters={{}}
+        onColumnFilterChange={() => {}}
         editingListingId={null}
         editingListing={null}
         editingLoading={false}
@@ -399,6 +414,9 @@ describe('ListingsQueueTable identify-parts status badge (Req 10/11)', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        onSortChange={() => {}}
+        columnFilters={{}}
+        onColumnFilterChange={() => {}}
         editingListingId={null}
         editingListing={null}
         editingLoading={false}
@@ -431,6 +449,9 @@ describe('ListingsQueueTable identify-parts status badge (Req 10/11)', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        onSortChange={() => {}}
+        columnFilters={{}}
+        onColumnFilterChange={() => {}}
         editingListingId={null}
         editingListing={null}
         editingLoading={false}

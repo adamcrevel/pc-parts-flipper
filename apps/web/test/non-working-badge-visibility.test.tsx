@@ -105,6 +105,9 @@ describe('ListingsQueueTable non-working badge (Req 4)', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        onSortChange={() => {}}
+        columnFilters={{}}
+        onColumnFilterChange={() => {}}
         editingListingId={null}
         editingListing={null}
         editingLoading={false}
@@ -131,6 +134,9 @@ describe('ListingsQueueTable non-working badge (Req 4)', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        onSortChange={() => {}}
+        columnFilters={{}}
+        onColumnFilterChange={() => {}}
         editingListingId={null}
         editingListing={null}
         editingLoading={false}
@@ -158,6 +164,9 @@ describe('ListingsQueueTable non-working badge (Req 4)', () => {
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        onSortChange={() => {}}
+        columnFilters={{}}
+        onColumnFilterChange={() => {}}
         editingListingId={null}
         editingListing={null}
         editingLoading={false}
@@ -190,6 +199,9 @@ describe('ListingsQueueTable selection header/row checkboxes (Req 1/2/3)', () =>
         selectedIds={new Set()}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        onSortChange={() => {}}
+        columnFilters={{}}
+        onColumnFilterChange={() => {}}
         editingListingId={null}
         editingListing={null}
         editingLoading={false}
@@ -219,6 +231,9 @@ describe('ListingsQueueTable selection header/row checkboxes (Req 1/2/3)', () =>
         selectedIds={new Set(['listing-a', 'listing-b'])}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        onSortChange={() => {}}
+        columnFilters={{}}
+        onColumnFilterChange={() => {}}
         editingListingId={null}
         editingListing={null}
         editingLoading={false}
@@ -248,6 +263,9 @@ describe('ListingsQueueTable selection header/row checkboxes (Req 1/2/3)', () =>
         selectedIds={new Set(['listing-a'])}
         onToggleOne={() => {}}
         onToggleAllFiltered={() => {}}
+        onSortChange={() => {}}
+        columnFilters={{}}
+        onColumnFilterChange={() => {}}
         editingListingId={null}
         editingListing={null}
         editingLoading={false}
@@ -277,6 +295,9 @@ describe('ListingsQueueTable selection header/row checkboxes (Req 1/2/3)', () =>
         selectedIds={new Set()}
         onToggleOne={(id) => toggled.push(id)}
         onToggleAllFiltered={() => {}}
+        onSortChange={() => {}}
+        columnFilters={{}}
+        onColumnFilterChange={() => {}}
         editingListingId={null}
         editingListing={null}
         editingLoading={false}

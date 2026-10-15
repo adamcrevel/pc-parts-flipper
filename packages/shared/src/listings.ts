@@ -222,3 +222,31 @@ export interface CreateListingInput {
 
 /** Request body for `PUT /api/listings/:id`. Same shape as create. */
 export type UpdateListingInput = CreateListingInput;
+
+/**
+ * Filter specification for the Listings table columns. All fields are optional;
+ * an absent field means no filter is applied to that column.
+ * 
+ * - `title`: substring match against Listing titles (case-insensitive)
+ * - `sourceIds`: filter to Listings from specific Sources
+ * - `statuses`: filter to Listings matching one of these statuses
+ * - `askingPriceMin`, `askingPriceMax`: bounds on the Listing's asking price
+ * - `expectedResaleMin`, `expectedResaleMax`: bounds on the sum of Expected Parts' estimated resale values
+ * - `differenceMin`, `differenceMax`: bounds on the (expectedResale - cost) difference
+ * - `identifyPartsStages`: filter to Listings matching one of these Identify-Parts job stages;
+ *   the `'none'` sentinel represents Listings with no Identify-Parts job ever run (null job state)
+ * - `pricingStatuses`: filter to Listings matching one of these pricing statuses
+ */
+export interface ListingColumnFilters {
+  title?: string;
+  sourceIds?: string[];
+  statuses?: ListingStatus[];
+  askingPriceMin?: number;
+  askingPriceMax?: number;
+  expectedResaleMin?: number;
+  expectedResaleMax?: number;
+  differenceMin?: number;
+  differenceMax?: number;
+  identifyPartsStages?: (IdentifyPartsJobStage | 'none')[];
+  pricingStatuses?: PricingStatus[];
+}

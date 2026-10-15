@@ -86,22 +86,23 @@ describe('Deterministic pagination tiebreaker across tied rows (T15)', () => {
     }
     const seededIds = new Set(createdIds);
 
-    // Walk every page (not just the first two) to cover this suite's
-    // Source so pre-existing Listings from another concurrently-running
-    // suite's isolated DB can't change the expected counts (each suite
-    // runs against its own temp DuckDB file via startTestServer, but this
-    // keeps the filter explicit rather than relying on that isolation
-    // alone). At SEED_COUNT=500 there are 25 pages of 20, so proving the
-    // tiebreaker holds end-to-end requires checking every adjacent page
-    // boundary, not only offset=0/20 — the bug this suite guards against
-    // can surface at any boundary once rows tie on the primary sort
-    // column.
+    // Walk every page (not just the first two). This suite runs against its
+    // own temp DuckDB file via startTestServer, so no other suite's rows can
+    // change the expected counts — and the request is deliberately sent
+    // with no filter at all, since the SQL-level LIMIT/OFFSET path whose
+    // tiebreaker this proves is exactly the one GET /api/listings takes
+    // only when neither a sort nor a column filter is present (a filter
+    // would route through the in-memory path instead). At SEED_COUNT=500
+    // there are 25 pages of 20, so proving the tiebreaker holds end-to-end
+    // requires checking every adjacent page boundary, not only
+    // offset=0/20 — the bug this suite guards against can surface at any
+    // boundary once rows tie on the primary sort column.
     const pageSize = 20;
     const totalPages = SEED_COUNT / pageSize;
     const allIds: string[] = [];
     for (let p = 0; p < totalPages; p++) {
       const offset = p * pageSize;
-      const page = await getJson<ListListingsResponse>(`${server.baseUrl}/api/listings?sourceId=${sourceId}&limit=${pageSize}&offset=${offset}`);
+      const page = await getJson<ListListingsResponse>(`${server.baseUrl}/api/listings?limit=${pageSize}&offset=${offset}`);
       expect(page.status, `page offset=${offset} failed: ${JSON.stringify(page.body)}`).toBe(200);
       expect(page.body.listings).toHaveLength(Math.min(pageSize, SEED_COUNT - offset));
       allIds.push(...page.body.listings.map((l) => l.id));

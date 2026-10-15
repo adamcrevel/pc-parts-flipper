@@ -19,7 +19,7 @@ describe('bulk identify-parts wrapper request shapes', () => {
     vi.unstubAllGlobals();
   });
 
-  it('fetchListingIds GETs /api/listings/ids with status and sourceId query params and resolves with the unwrapped ids array', async () => {
+  it('fetchListingIds GETs /api/listings/ids with the column-filter query params and resolves with the unwrapped ids array', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ ids: ['listing-1', 'listing-2'] }), {
         status: 200,
@@ -28,14 +28,53 @@ describe('bulk identify-parts wrapper request shapes', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(fetchListingIds({ status: 'open', sourceId: 'source-1' })).resolves.toEqual([
+    await expect(fetchListingIds({ statuses: ['open'], sourceIds: ['source-1'] })).resolves.toEqual([
       'listing-1',
       'listing-2',
     ]);
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('http://localhost:3001/api/listings/ids?status=open&sourceId=source-1');
+    expect(url).toBe('http://localhost:3001/api/listings/ids?sourceIds=source-1&statuses=open');
     expect(init.method).toBe('GET');
+  });
+
+  it('fetchListingIds sends every one of the 11 column-filter fields under its own name, multi-value ones comma-joined', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ids: [] }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchListingIds({
+      title: 'gpu',
+      sourceIds: ['source-1', 'source-2'],
+      statuses: ['open', 'accepted'],
+      askingPriceMin: 10,
+      askingPriceMax: 20,
+      expectedResaleMin: 30,
+      expectedResaleMax: 40,
+      differenceMin: -5,
+      differenceMax: 50,
+      identifyPartsStages: ['none', 'completed'],
+      pricingStatuses: ['not_priced', 'fully_priced'],
+    });
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      'http://localhost:3001/api/listings/ids?title=gpu&sourceIds=source-1%2Csource-2&statuses=open%2Caccepted&askingPriceMin=10&askingPriceMax=20&expectedResaleMin=30&expectedResaleMax=40&differenceMin=-5&differenceMax=50&identifyPartsStages=none%2Ccompleted&pricingStatuses=not_priced%2Cfully_priced',
+    );
+  });
+
+  it('fetchListingIds omits an empty-array or empty-string filter field rather than sending an empty param', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ids: [] }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchListingIds({ title: '', statuses: [], askingPriceMin: 0 });
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    // A zero bound is a real bound, unlike an empty string/array.
+    expect(url).toBe('http://localhost:3001/api/listings/ids?askingPriceMin=0');
   });
 
   it('fetchListingIds omits the query string entirely when no filters are given', async () => {
@@ -88,13 +127,38 @@ describe('fetchListings sort query params', () => {
     return fetchMock;
   }
 
-  it('sends sortBy and sortDirection alongside the existing filter/pagination params', async () => {
+  it('sends sortBy and sortDirection alongside the column-filter/pagination params', async () => {
     const fetchMock = stubListingsFetch();
 
-    await fetchListings({ status: 'open', sourceId: 'source-1', limit: 20, offset: 40, sortBy: 'expectedResale', sortDirection: 'desc' });
+    await fetchListings({ statuses: ['open'], sourceIds: ['source-1'], limit: 20, offset: 40, sortBy: 'expectedResale', sortDirection: 'desc' });
 
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('http://localhost:3001/api/listings?status=open&sourceId=source-1&limit=20&offset=40&sortBy=expectedResale&sortDirection=desc');
+    expect(url).toBe('http://localhost:3001/api/listings?sourceIds=source-1&statuses=open&limit=20&offset=40&sortBy=expectedResale&sortDirection=desc');
+  });
+
+  it('sends every one of the 11 column-filter fields on GET /api/listings under the same names fetchListingIds uses', async () => {
+    const fetchMock = stubListingsFetch();
+
+    await fetchListings({
+      title: 'Ryzen',
+      sourceIds: ['source-2'],
+      statuses: ['rejected'],
+      askingPriceMin: 1.5,
+      askingPriceMax: 2.5,
+      expectedResaleMin: 3,
+      expectedResaleMax: 4,
+      differenceMin: 5,
+      differenceMax: 6,
+      identifyPartsStages: ['queued', 'identifying', 'sourcing_references', 'comparing', 'completed', 'failed'],
+      pricingStatuses: ['partially_priced'],
+      limit: 20,
+      offset: 0,
+    });
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      'http://localhost:3001/api/listings?title=Ryzen&sourceIds=source-2&statuses=rejected&askingPriceMin=1.5&askingPriceMax=2.5&expectedResaleMin=3&expectedResaleMax=4&differenceMin=5&differenceMax=6&identifyPartsStages=queued%2Cidentifying%2Csourcing_references%2Ccomparing%2Ccompleted%2Cfailed&pricingStatuses=partially_priced&limit=20&offset=0',
+    );
   });
 
   it('omits both sort params when no column is sorted, leaving the server on its default ordering', async () => {

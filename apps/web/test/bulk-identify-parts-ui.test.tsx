@@ -5,7 +5,7 @@
 // behaviour (Req 2/4/12). Mounts the real components (not reimplementations)
 // with listings-api/sources-api mocked, following listings-queue-page.test.tsx's
 // react-dom/client + act() mounting pattern (no RTL dependency in this workspace).
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { MemoryRouter } from 'react-router-dom';
@@ -14,6 +14,18 @@ import { ListingsPage } from '../src/routes/listings-page';
 import { BulkIdentifyPartsBar } from '../src/features/listings/bulk-identify-parts-bar';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+beforeAll(() => {
+  // Radix's popover (each column header's filter) positions its content
+  // with floating-ui, which needs a ResizeObserver jsdom doesn't ship.
+  if (!('ResizeObserver' in globalThis)) {
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+  }
+});
 
 const fetchListingsMock = vi.fn();
 const fetchListingIdsMock = vi.fn();
@@ -191,6 +203,28 @@ describe('BulkIdentifyPartsBar (Req 8/9)', () => {
   });
 });
 
+// Opens a column header's filter popover (T4/T5: the funnel button next to
+// the sort label) and ticks one of its checkbox options by label. Radix
+// portals the popover to document.body, so the option is looked up there
+// rather than inside the mount container.
+async function checkColumnFilterOption(el: HTMLElement, column: string, option: string): Promise<void> {
+  const trigger = el.querySelector(`thead button[aria-label^="Filter by ${column}"]`) as HTMLButtonElement | null;
+  if (!trigger) {
+    throw new Error(`No filter trigger found for column "${column}"`);
+  }
+  await act(async () => {
+    trigger.click();
+  });
+  const label = Array.from(document.body.querySelectorAll('[role="dialog"] label')).find((l) => l.textContent?.trim() === option);
+  const input = label?.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+  if (!input) {
+    throw new Error(`No "${option}" option found in the ${column} filter`);
+  }
+  await act(async () => {
+    input.click();
+  });
+}
+
 describe('ListingsPage selection wiring (Req 2/4/12)', () => {
   it('keeps a selection made on page 1 while the user pages away and back', async () => {
     const listings = Array.from({ length: 21 }, (_, i) => makeListing(i));
@@ -259,11 +293,7 @@ describe('ListingsPage selection wiring (Req 2/4/12)', () => {
     expect(el.textContent).toContain('2 selected');
     expect(queryBulkIdentifyPartsButton(el)).not.toBeNull();
 
-    const statusSelect = el.querySelector('select') as HTMLSelectElement;
-    await act(async () => {
-      statusSelect.value = 'open';
-      statusSelect.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    await checkColumnFilterOption(el, 'Status', 'Open');
     await waitFor(() => fetchListingIdsMock.mock.calls.length === 2);
 
     // Req 4: the filter change refetched the id set and reset to page 1,
@@ -295,13 +325,9 @@ describe('ListingsPage selection wiring (Req 2/4/12)', () => {
     await waitFor(() => el.querySelectorAll('tbody tr').length === 1);
     expect(fetchListingIdsMock).toHaveBeenCalledTimes(1);
 
-    const statusSelect = el.querySelector('select') as HTMLSelectElement;
-    await act(async () => {
-      statusSelect.value = 'open';
-      statusSelect.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    await checkColumnFilterOption(el, 'Status', 'Open');
     await waitFor(() => fetchListingIdsMock.mock.calls.length === 2);
-    expect(fetchListingIdsMock).toHaveBeenLastCalledWith({ status: 'open', sourceId: undefined });
+    expect(fetchListingIdsMock).toHaveBeenLastCalledWith({ statuses: ['open'] });
   });
 
   it('selects every filtered id across all pages from the header checkbox (Req 2/3)', async () => {
