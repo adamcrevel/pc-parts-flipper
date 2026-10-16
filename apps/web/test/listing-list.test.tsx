@@ -561,4 +561,26 @@ describe('ListingList loading state (Req 6-8)', () => {
     expect(findListingRow(el, 'Stale Listing')).toBeDefined();
     expect(el.querySelectorAll('tbody tr').length).toBe(1);
   });
+
+  it('keeps the thead positioned above the loading overlay via relative/z-20/bg-card, unconditionally (both while loading and while idle)', async () => {
+    const loading = await mount([makeListing()], { isLoading: true });
+    const loadingThead = loading.querySelector('thead');
+    expect(loadingThead?.className).toContain('relative');
+    expect(loadingThead?.className).toContain('z-20');
+    expect(loadingThead?.className).toContain('bg-card');
+
+    const overlay = loading.querySelector('[role="status"]')?.parentElement;
+    expect(overlay?.className).toContain('z-10');
+
+    act(() => {
+      root?.unmount();
+    });
+    container?.remove();
+
+    const idle = await mount([makeListing()], { isLoading: false });
+    const idleThead = idle.querySelector('thead');
+    expect(idleThead?.className).toContain('relative');
+    expect(idleThead?.className).toContain('z-20');
+    expect(idleThead?.className).toContain('bg-card');
+  });
 });
