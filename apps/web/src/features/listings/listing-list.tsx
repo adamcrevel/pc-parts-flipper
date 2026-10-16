@@ -307,11 +307,11 @@ export function ListingList({
   return (
     <div className="relative overflow-x-auto">
       {isLoading && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80">
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-background/80">
           <LoadingSpinner />
         </div>
       )}
-      <table className={cn('w-full border-collapse text-left text-sm', isLoading && 'pointer-events-none opacity-60')}>
+      <table className="w-full border-collapse text-left text-sm">
         <thead>
           <tr className="border-b border-border text-muted-foreground">
             <th className="w-8 px-4 py-2 font-medium">
@@ -340,7 +340,7 @@ export function ListingList({
             <th className="px-4 py-2 font-medium" />
           </tr>
         </thead>
-        <tbody>
+        <tbody className={cn(isLoading && 'pointer-events-none opacity-60')}>
           {listings.length === 0 && (
             <tr>
               <td colSpan={COLUMN_COUNT} className="px-4 py-6 text-center text-muted-foreground">
