@@ -508,6 +508,54 @@ describe('ListingList loading state (Req 6-8)', () => {
     expect(notLoading.querySelector('[role="status"]')).toBeNull();
   });
 
+  it('makes the loading-spinner overlay div itself pointer-events-none so it never blocks clicks on the table beneath it', async () => {
+    const el = await mount([makeListing()], { isLoading: true });
+
+    const status = el.querySelector('[role="status"]');
+    expect(status).not.toBeNull();
+    const overlay = status?.parentElement;
+    expect(overlay).not.toBeNull();
+    expect(overlay?.tagName).not.toBe('TABLE');
+    expect(overlay?.closest('thead')).toBeNull();
+    expect(overlay?.closest('tbody')).toBeNull();
+    expect(overlay?.className).toContain('pointer-events-none');
+  });
+
+  it('dims and blocks pointer events on only the tbody while isLoading is true, leaving the header row undimmed and click-through', async () => {
+    const el = await mount([makeListing()], { isLoading: true });
+
+    const tbody = el.querySelector('tbody');
+    expect(tbody?.className).toContain('pointer-events-none');
+    expect(tbody?.className).toContain('opacity-60');
+
+    const headerRow = el.querySelector('thead tr');
+    expect(headerRow?.className).not.toContain('pointer-events-none');
+    expect(headerRow?.className).not.toContain('opacity-60');
+  });
+
+  it('leaves the select-all checkbox and a filter trigger free of any pointer-events-none ancestor while isLoading is true', async () => {
+    const el = await mount([makeListing()], { isLoading: true });
+
+    const checkbox = el.querySelector('[aria-label="Select all filtered listings"]');
+    const filterTrigger = el.querySelector('[aria-label^="Filter by"]');
+    expect(checkbox).not.toBeNull();
+    expect(filterTrigger).not.toBeNull();
+
+    // Walk every ancestor up to (but not including) the document for each
+    // header control: neither the table-level pointer-events-none (now
+    // removed, Req 8 fix) nor the loading-spinner overlay div (which still
+    // renders, but must itself carry pointer-events-none) may be among
+    // them. The only element in the whole tree still carrying the class is
+    // the sibling <tbody>, which contains neither control.
+    for (const target of [checkbox, filterTrigger] as HTMLElement[]) {
+      let node: HTMLElement | null = target;
+      while (node !== null) {
+        expect(node.classList.contains('pointer-events-none')).toBe(false);
+        node = node.parentElement;
+      }
+    }
+  });
+
   it('keeps the existing row mounted in the table (not unmounted/replaced) while isLoading is true', async () => {
     const el = await mount([makeListing({ title: 'Stale Listing' })], { isLoading: true });
     expect(findListingRow(el, 'Stale Listing')).toBeDefined();
