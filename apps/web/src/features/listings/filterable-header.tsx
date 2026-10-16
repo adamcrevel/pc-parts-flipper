@@ -88,7 +88,7 @@ export function FilterableHeader({
       <div className="inline-flex items-center gap-1">
         <button
           type="button"
-          className="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium transition-colors hover:text-foreground disabled:cursor-not-allowed"
           onClick={() => onSortChange(field)}
           disabled={isLoading}
         >
