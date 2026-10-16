@@ -126,11 +126,25 @@ describe('FilterableHeader sort behaviour (unchanged from SortableHeader)', () =
 
     expect(sortButton(el).disabled).toBe(true);
     expect(filterTrigger(el).disabled).toBe(false);
+    // Disabled stays unclickable (cursor-not-allowed) but must not visibly
+    // dim — opacity-50 was the bug; cursor-not-allowed is the kept affordance.
+    expect(sortButton(el).className).not.toContain('disabled:opacity-50');
+    expect(sortButton(el).className).toContain('disabled:cursor-not-allowed');
 
     await act(async () => {
       sortButton(el).click();
     });
     expect(onSortChange).not.toHaveBeenCalled();
+  });
+
+  it('leaves the sort button undimmed regardless of isLoading, while disabled still tracks it exactly', async () => {
+    const loadingEl = await mountHeader(renderHeader({ isLoading: true }));
+    expect(sortButton(loadingEl).disabled).toBe(true);
+    expect(sortButton(loadingEl).className).not.toContain('disabled:opacity-50');
+
+    const idleEl = await mountHeader(renderHeader({ isLoading: false }));
+    expect(sortButton(idleEl).disabled).toBe(false);
+    expect(sortButton(idleEl).className).not.toContain('disabled:opacity-50');
   });
 });
 
