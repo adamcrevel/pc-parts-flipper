@@ -312,7 +312,7 @@ export function ListingList({
         </div>
       )}
       <table className="w-full border-collapse text-left text-sm">
-        <thead>
+        <thead className="relative z-20 bg-card">
           <tr className="border-b border-border text-muted-foreground">
             <th className="w-8 px-4 py-2 font-medium">
               <input
