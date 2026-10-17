@@ -203,7 +203,7 @@ describe('POST /api/sources/:id/scan (T7, Req 2, 7)', () => {
   it('returns 400 for a non-ebay platformType Source', async () => {
     const source = await db.createSource({
       name: 'Facebook Marketplace Source',
-      platformType: 'facebook_marketplace',
+      platformType: 'other',
       url: null,
       notes: null,
       connectorConfig: JSON.stringify({ queries: ['rtx 3080'] }),

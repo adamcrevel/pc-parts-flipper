@@ -8,7 +8,7 @@
 import type { EbayConnectorConfig } from '@pc-parts-flipper/shared';
 import { AppError } from '../error-handler.js';
 import { logger } from '../logger.js';
-import type { CandidateListing, MarketplaceConnector } from './types.js';
+import type { CandidateListing, DescriptionFetcher, MarketplaceConnector } from './types.js';
 
 // eBay OAuth2 app-token scope for Browse API read access. Fixed per eBay's
 // docs — not configurable per Source.
@@ -353,11 +353,32 @@ async function search(config: unknown): Promise<CandidateListing[]> {
   return results;
 }
 
+/**
+ * Builds the lazily-initialized description fetcher the scan service calls
+ * once per scan pass. `createEbayItemDetailClient()` performs its own OAuth
+ * app-token call, so it must not run on a scan that imports zero new
+ * candidates; this defers that call to the returned function's own first
+ * invocation, memoizes the in-flight/resolved client promise, and reuses it
+ * for every later candidate in the same scan — one shared OAuth token per
+ * scan rather than one per candidate.
+ */
+function createDescriptionFetcher(): DescriptionFetcher {
+  let clientPromise: Promise<EbayItemDetailClient> | undefined;
+  return async (externalItemId: string): Promise<string | null> => {
+    if (clientPromise === undefined) {
+      clientPromise = createEbayItemDetailClient();
+    }
+    const client = await clientPromise;
+    return client.fetchItemDescription(externalItemId);
+  };
+}
+
 // The eBay MarketplaceConnector instance registered under 'ebay' in
 // registry.ts.
 export const ebayConnector: MarketplaceConnector = {
   platformType: 'ebay',
   search,
+  createDescriptionFetcher,
 };
 
 /**

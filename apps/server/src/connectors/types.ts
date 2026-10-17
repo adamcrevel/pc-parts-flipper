@@ -37,6 +37,14 @@ export interface CandidateListing {
 }
 
 /**
+ * Fetches one marketplace item's long-form description/specifics text,
+ * given that platform's own external item id. Resolves to `null` when the
+ * platform simply has no description text for the item — that is an
+ * ordinary outcome, not a failure; a genuine failure rejects.
+ */
+export type DescriptionFetcher = (externalItemId: string) => Promise<string | null>;
+
+/**
  * A single marketplace's automated-scan implementation. `platformType`
  * identifies which Source.platformType this connector serves (used as the
  * registry key in registry.ts); `search` takes that Source's parsed
@@ -46,4 +54,18 @@ export interface CandidateListing {
 export interface MarketplaceConnector {
   platformType: PlatformType;
   search(config: unknown): Promise<CandidateListing[]>;
+  /**
+   * Optional hook a connector implements when its platform can supply
+   * per-item description text beyond what `search` returns. The scan
+   * service calls this at most once per scan pass and reuses the returned
+   * function for every newly-imported candidate in that pass, so a
+   * connector can set up a shared, lazily-created resource (an OAuth
+   * token, a browser session) inside the returned closure and pay for it
+   * only on a scan that actually imports something.
+   *
+   * Omitting it means "this platform has no description fetch" — the scan
+   * service then skips the step entirely rather than branching on
+   * `platformType`.
+   */
+  createDescriptionFetcher?(): DescriptionFetcher;
 }

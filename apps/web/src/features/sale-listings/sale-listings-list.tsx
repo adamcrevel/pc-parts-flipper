@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 // Listings reuse the same fixed enum (Req 8).
 const PLATFORM_LABELS: Record<PlatformType, string> = {
   ebay: 'eBay',
+  mercari: 'Mercari',
   facebook_marketplace: 'Facebook Marketplace',
   other: 'Other',
 };

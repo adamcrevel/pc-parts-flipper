@@ -10,7 +10,10 @@
 // out-of-range value is rejected by the database itself, not just by the API
 // layer built in later tasks.
 export const ENUM_STATEMENTS: readonly string[] = [
-  `CREATE TYPE IF NOT EXISTS platform_type AS ENUM ('ebay', 'facebook_marketplace', 'other')`,
+  // 'mercari' added by the marketplace-sources feature; see migrate.ts's
+  // migratePlatformTypeAddMercari for how an already-existing database
+  // (where this CREATE TYPE is a no-op) picks the value up too.
+  `CREATE TYPE IF NOT EXISTS platform_type AS ENUM ('ebay', 'facebook_marketplace', 'other', 'mercari')`,
   `CREATE TYPE IF NOT EXISTS listing_status AS ENUM ('open', 'accepted', 'rejected')`,
   `CREATE TYPE IF NOT EXISTS purchase_status AS ENUM ('ordered', 'shipped', 'received', 'torn_down', 'closed')`,
   `CREATE TYPE IF NOT EXISTS component_category AS ENUM

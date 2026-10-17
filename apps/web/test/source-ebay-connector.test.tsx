@@ -214,7 +214,7 @@ describe('SourceForm eBay connector-config submission (c)', () => {
     expect(input.connectorConfig).toEqual({ queries: ['rtx 3080'], maxPrice: 250 });
   });
 
-  it('omits connectorConfig entirely for a non-ebay platformType', async () => {
+  it('omits connectorConfig entirely for a platformType with no connector editor', async () => {
     const onSubmit = vi.fn(async () => {});
     const el = await mount(<SourceForm onSubmit={onSubmit} onCancel={() => {}} />);
 
@@ -222,9 +222,9 @@ describe('SourceForm eBay connector-config submission (c)', () => {
     const urlInput = el.querySelector('#source-url') as HTMLInputElement;
     const select = el.querySelector('#source-platform') as HTMLSelectElement;
     await act(async () => {
-      setValue(nameInput, 'My Facebook Source');
-      setValue(urlInput, 'https://facebook.com/marketplace');
-      setValue(select, 'facebook_marketplace');
+      setValue(nameInput, 'My Other Source');
+      setValue(urlInput, 'https://example.com/listings');
+      setValue(select, 'other');
     });
 
     await act(async () => {
@@ -294,9 +294,9 @@ describe('SourceRow Scan now button (d)', () => {
     expect(el.textContent).not.toContain('Scan now');
   });
 
-  it('does NOT render Scan now for a non-ebay platformType even with connectorConfig set', async () => {
+  it('does NOT render Scan now for a non-scannable platformType even with connectorConfig set', async () => {
     const source = makeSource({
-      platformType: 'facebook_marketplace',
+      platformType: 'other',
       connectorConfig: JSON.stringify({ queries: ['rtx 3080'] }),
     });
     const el = await mount(

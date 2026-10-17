@@ -171,6 +171,47 @@ describe('scanSourceWithConnector', () => {
     expect(listing).not.toBeNull();
     expect(listing!.nonWorking).toBe(false);
   });
+
+  it('builds createDescriptionFetcher exactly once per scan pass and reuses the same function for every new candidate', async () => {
+    const source = await createScannableSource('Description Fetcher Reuse Source');
+    const candidates = [candidate('reuse-item-1'), candidate('reuse-item-2'), candidate('reuse-item-3')];
+
+    // Each call to createDescriptionFetcher gets its own call-counter closure, so
+    // "built once, reused" is distinguishable from "built once per candidate but
+    // each build happens to behave the same way": buildCount tells us how many
+    // times the hook itself ran, and callsForBuild[N] tells us how many
+    // candidates the Nth build's returned function was actually invoked for.
+    let buildCount = 0;
+    const callsForBuild: number[] = [];
+    const connector: MarketplaceConnector = {
+      platformType: 'ebay',
+      search: async () => candidates,
+      createDescriptionFetcher: () => {
+        buildCount += 1;
+        const builtAs = buildCount;
+        callsForBuild[builtAs] = 0;
+        return async (externalItemId: string) => {
+          callsForBuild[builtAs] += 1;
+          return `description for ${externalItemId}`;
+        };
+      },
+    };
+
+    const result = await scanService.scanSourceWithConnector(source, connector);
+    expect(result).toEqual({ foundCount: 3, newCount: 3 });
+
+    // The design contract this refactor exists to generalize: the hook runs
+    // exactly once for the whole scan pass, not once per new candidate.
+    expect(buildCount).toBe(1);
+    // And that single built function — not a fresh one — is what every one of
+    // the 3 new candidates was actually routed through.
+    expect(callsForBuild[1]).toBe(3);
+
+    for (const c of candidates) {
+      const listing = await db.findListingByExternalId(source.id, c.externalItemId);
+      expect(listing!.description).toBe(`description for ${c.externalItemId}`);
+    }
+  });
 });
 
 // Photo capture on import (Req 2): a scanned candidate's marketplace images
@@ -386,6 +427,57 @@ describe('scanSource photo download call budget (Req 2)', () => {
     const listing = await db.findListingByExternalId(source.id, 'v1|budget-item|0');
     expect(listing!.photoPaths).toHaveLength(3);
     expect(listing!.description).toBe('Great condition\n\nItem Specifics (per eBay):\nRAM: 16GB');
+  });
+
+  it('shares one eBay item-detail client (one OAuth token call) across multiple new candidates in the same scan pass', async () => {
+    const source = await createScannableSource('Call Budget Source Multi Candidate');
+    const item1 = {
+      itemId: 'v1|multi-budget-item|1',
+      title: 'Gaming PC One',
+      itemWebUrl: 'https://www.ebay.com/itm/multi-budget-item-1',
+      price: { value: '299.00', currency: 'USD' },
+      itemCreationDate: '2026-02-02T00:00:00.000Z',
+    };
+    const item2 = {
+      itemId: 'v1|multi-budget-item|2',
+      title: 'Gaming PC Two',
+      itemWebUrl: 'https://www.ebay.com/itm/multi-budget-item-2',
+      price: { value: '399.00', currency: 'USD' },
+      itemCreationDate: '2026-02-03T00:00:00.000Z',
+    };
+    fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes('/oauth2/token')) {
+        return new Response(JSON.stringify({ access_token: 'fake-app-token' }), { status: 200 });
+      }
+      if (String(url).includes('/buy/browse/v1/item/')) {
+        return new Response(JSON.stringify({ description: '<p>Great condition</p>', localizedAspects: [] }), { status: 200 });
+      }
+      if (String(url).includes('/buy/browse/')) {
+        return new Response(JSON.stringify({ itemSummaries: [item1, item2] }), { status: 200 });
+      }
+      return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await scanService.scanSource(source.id);
+    expect(result).toEqual({ foundCount: 2, newCount: 2 });
+
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    // ebayConnector's createDescriptionFetcher() wraps createEbayItemDetailClient(),
+    // which performs its own OAuth app-token call. scanSourceWithConnector calls
+    // createDescriptionFetcher at most once per scan pass (not once per candidate),
+    // so with 2 new candidates there must still be exactly 2 token calls total: one
+    // for search()'s own token, one for the shared item-detail client — not 3, which
+    // is what a regression rebuilding the client per candidate would produce.
+    expect(urls.filter((u) => u.includes('/oauth2/token'))).toHaveLength(2);
+    // One detail GET per new candidate — the shared client is reused per call, it
+    // isn't that detail fetching stopped happening for the second candidate.
+    expect(urls.filter((u) => u.includes('/buy/browse/v1/item/'))).toHaveLength(2);
+
+    const listing1 = await db.findListingByExternalId(source.id, item1.itemId);
+    const listing2 = await db.findListingByExternalId(source.id, item2.itemId);
+    expect(listing1!.description).not.toBeNull();
+    expect(listing2!.description).not.toBeNull();
   });
 
   it('still imports the Listing and counts it as new when the eBay item-detail fetch fails (Req 5)', async () => {

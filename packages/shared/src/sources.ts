@@ -3,10 +3,10 @@
 // shape instead of each redefining it. Mirrors the DuckDB row shape in
 // apps/server/src/db/types.ts, but lives here because HTTP callers (apps/web)
 // may never import apps/server directly (standing check).
-import type { EbayConnectorConfig } from './connectors.js';
+import type { EbayConnectorConfig, MercariConnectorConfig, FacebookMarketplaceConnectorConfig } from './connectors.js';
 
 /** Marketplace a Source lives on. Fixed set (Req 1). */
-export type PlatformType = 'ebay' | 'facebook_marketplace' | 'other';
+export type PlatformType = 'ebay' | 'mercari' | 'facebook_marketplace' | 'other';
 
 /** A purchase source: a place listings are found (Req 1). */
 export interface Source {
@@ -37,17 +37,18 @@ export interface Source {
  * up with apps/server/src/db/queries/sources.ts's CreateSourceInput without
  * a cast at the route boundary — callers pass `null` explicitly for "no notes".
  *
- * `connectorConfig` is optional and only meaningful for platformType 'ebay'
- * (T8/T9): a plain EbayConnectorConfig object, NOT pre-stringified — the
- * server (sourceValidation.ts) validates and JSON.stringifies it before
- * storing. Omit it (or pass `null`) for "no automated scan configured".
+ * `connectorConfig` is optional and shape depends on platformType ('ebay' /
+ * 'mercari' / 'facebook_marketplace'; T9): a plain config object, NOT
+ * pre-stringified — the server (sourceValidation.ts) validates and
+ * JSON.stringifies it before storing. Omit it (or pass `null`) for "no
+ * automated scan configured".
  */
 export interface CreateSourceInput {
   name: string;
   platformType: PlatformType;
   url: string;
   notes: string | null;
-  connectorConfig?: EbayConnectorConfig | null;
+  connectorConfig?: EbayConnectorConfig | MercariConnectorConfig | FacebookMarketplaceConnectorConfig | null;
 }
 
 /** Request body for `PUT /api/sources/:id`. Same required fields as create. */

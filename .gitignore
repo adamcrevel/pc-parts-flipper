@@ -9,6 +9,7 @@ build/
 **/data/photos/
 **/data/reference-photos/
 **/data/backups/
+**/data/facebook-marketplace-session.json
 .DS_Store
 .worktrees/
 *.tsbuildinfo
