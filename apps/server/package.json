@@ -14,7 +14,8 @@
     "test": "vitest run",
     "backfill-photos": "tsx --env-file-if-exists=.env src/scripts/backfill-photos.ts",
     "backfill-descriptions": "tsx --env-file-if-exists=.env src/scripts/backfill-descriptions.ts",
-    "seed-reference-photos": "tsx --env-file-if-exists=.env src/scripts/seed-reference-photos.ts"
+    "seed-reference-photos": "tsx --env-file-if-exists=.env src/scripts/seed-reference-photos.ts",
+    "login-facebook-marketplace": "tsx --env-file-if-exists=.env src/scripts/facebook-marketplace-login.ts"
   },
   "dependencies": {
     "@duckdb/node-api": "^1.4.4-r.4",
@@ -24,7 +25,8 @@
     "@pc-parts-flipper/shared": "*",
     "fastify": "^5.2.0",
     "node-cron": "^4.6.0",
-    "pino": "^10.4.0"
+    "pino": "^10.4.0",
+    "playwright": "^1.64.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

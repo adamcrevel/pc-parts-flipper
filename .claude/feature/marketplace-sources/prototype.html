@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sources — PC Parts Flipper (prototype)</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='2'%3E%3Crect x='3' y='4' width='18' height='14' rx='2'/%3E%3Cpath d='M3 10h18'/%3E%3C/svg%3E" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // Mirrors apps/web/tailwind.config.js's color/radius extension exactly,
+  // so every class used below (bg-card, text-muted-foreground, border-border,
+  // bg-save, bg-cancel, text-destructive, ...) resolves to the real app's
+  // actual colors, not an invented palette.
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          border: 'hsl(var(--border))',
+          input: 'hsl(var(--input))',
+          ring: 'hsl(var(--ring))',
+          background: 'hsl(var(--background))',
+          foreground: 'hsl(var(--foreground))',
+          primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
+          secondary: { DEFAULT: 'hsl(var(--secondary))', foreground: 'hsl(var(--secondary-foreground))' },
+          save: { DEFAULT: 'hsl(var(--save))', foreground: 'hsl(var(--save-foreground))' },
+          cancel: 'hsl(var(--cancel))',
+          destructive: { DEFAULT: 'hsl(var(--destructive))', foreground: 'hsl(var(--destructive-foreground))' },
+          muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
+          accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
+          card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
+        },
+        borderRadius: {
+          lg: 'var(--radius)',
+          md: 'calc(var(--radius) - 2px)',
+          sm: 'calc(var(--radius) - 4px)',
+        },
+      },
+    },
+  };
+</script>
+<style>
+  /* Exact copy of src/index.css's :root block (light mode only — the real
+     app's own default) so every hsl(var(--x)) above matches production. */
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --save: 222.2 47.4% 11.2%;
+    --save-foreground: 210 40% 98%;
+    --cancel: 0 0% 100%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+  }
+  body { background: hsl(var(--background)); color: hsl(var(--foreground)); }
+  /* Banner so a reader never mistakes this for the shipped app. */
+  .proto-banner { background: #fef3c7; color: #92400e; border-bottom: 1px solid #fcd34d; }
+</style>
+</head>
+<body class="font-sans antialiased">
+  <div class="proto-banner px-4 py-2 text-center text-xs font-medium">
+    PROTOTYPE — click-through of source-form.tsx / source-row.tsx / connector-config-editor.tsx with Mercari + Facebook Marketplace added. Not the shipped app.
+  </div>
+
+  <div class="mx-auto max-w-5xl p-6">
+    <div class="space-y-4">
+
+      <!-- Toolbar (sources-page.tsx) -->
+      <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-semibold">Sources</h1>
+        <div class="flex items-center gap-4">
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" id="show-inactive" checked />
+            Show inactive
+          </label>
+          <button id="add-source-btn" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors h-9 px-4 py-2 bg-save text-save-foreground shadow hover:bg-save/90">
+            Add Source
+          </button>
+        </div>
+      </div>
+
+      <!-- Create/Edit form (source-form.tsx) -->
+      <form id="source-form" class="space-y-4 rounded-lg border border-border p-4 hidden" onsubmit="return false;">
+        <input type="hidden" id="editing-id" value="" />
+
+        <div class="space-y-1">
+          <label for="source-name" class="text-sm font-medium">Name</label>
+          <input id="source-name" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm" />
+          <p id="err-name" class="text-sm text-destructive hidden"></p>
+        </div>
+
+        <div class="space-y-1">
+          <label for="source-platform" class="text-sm font-medium">Platform</label>
+          <select id="source-platform" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+            <option value="">Select a platform…</option>
+            <option value="ebay">eBay</option>
+            <option value="mercari">Mercari</option>
+            <option value="facebook_marketplace">Facebook Marketplace</option>
+            <option value="other">Other</option>
+          </select>
+          <p id="err-platform" class="text-sm text-destructive hidden"></p>
+        </div>
+
+        <!-- ConnectorConfigEditor: queries + optional max price. Shared,
+             unchanged markup for eBay and Mercari (T11: "rename/generalize
+             the existing queries+maxPrice editor so Mercari reuses it
+             unchanged"). Title text is the only thing that varies. -->
+        <div id="queries-editor" class="space-y-3 rounded-md border border-border p-3 hidden">
+          <div class="flex items-center justify-between">
+            <h3 id="queries-editor-title" class="text-sm font-medium">eBay Search Queries</h3>
+            <button type="button" id="add-query-btn" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-xs font-medium transition-colors h-8 rounded-md px-3 border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground">
+              Add Query
+            </button>
+          </div>
+          <p id="err-queries" class="text-xs text-destructive hidden"></p>
+          <div id="query-rows" class="space-y-2"></div>
+
+          <div class="space-y-1">
+            <label for="connector-max-price" class="text-sm font-medium">Max Price (optional)</label>
+            <input id="connector-max-price" type="number" step="0.01" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm" />
+            <p id="err-max-price" class="text-xs text-destructive hidden"></p>
+          </div>
+
+          <!-- Facebook-only extra fields (T11: "second editor variant for
+               Facebook's extra location/radiusMiles fields") — same editor,
+               two more fields appended underneath. -->
+          <div id="fb-extra-fields" class="space-y-3 border-t border-border pt-3 hidden">
+            <div class="space-y-1">
+              <label for="fb-location" class="text-sm font-medium">Location (optional)</label>
+              <input id="fb-location" placeholder="e.g. Seattle, WA" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm" />
+            </div>
+            <div class="space-y-1">
+              <label for="fb-radius" class="text-sm font-medium">Radius (miles, optional)</label>
+              <input id="fb-radius" type="number" step="1" min="0" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm" />
+              <p id="err-radius" class="text-xs text-destructive hidden"></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-1">
+          <label for="source-url" class="text-sm font-medium">URL</label>
+          <input id="source-url" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm" />
+          <p id="err-url" class="text-sm text-destructive hidden"></p>
+        </div>
+
+        <div class="space-y-1">
+          <label for="source-notes" class="text-sm font-medium">Notes</label>
+          <textarea id="source-notes" rows="2" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"></textarea>
+        </div>
+
+        <div id="submit-error" class="hidden rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert"></div>
+
+        <div class="flex gap-2">
+          <button type="button" id="save-btn" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors h-9 px-4 py-2 bg-save text-save-foreground shadow hover:bg-save/90">
+            Save
+          </button>
+          <button type="button" id="cancel-btn" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors h-9 px-4 py-2 border border-input bg-cancel shadow-sm hover:bg-accent hover:text-accent-foreground">
+            Cancel
+          </button>
+        </div>
+      </form>
+
+      <!-- Card (sources-page.tsx) -->
+      <div class="rounded-xl border bg-card text-card-foreground shadow">
+        <div class="flex flex-col space-y-1.5 p-6">
+          <div class="font-semibold leading-none tracking-tight">Purchase Sources</div>
+        </div>
+        <div class="p-6 pt-0">
+          <div id="scan-error" class="hidden mb-3 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert"></div>
+
+          <!-- SourceList / SourceRow -->
+          <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-left text-sm">
+              <thead>
+                <tr class="border-b border-border text-muted-foreground">
+                  <th class="px-4 py-2 font-medium">Name</th>
+                  <th class="px-4 py-2 font-medium">Platform</th>
+                  <th class="px-4 py-2 font-medium">URL</th>
+                  <th class="px-4 py-2 font-medium">Notes</th>
+                  <th class="px-4 py-2 font-medium">Status</th>
+                  <th class="px-4 py-2 font-medium">Last Scanned</th>
+                  <th class="px-4 py-2 font-medium"></th>
+                </tr>
+              </thead>
+              <tbody id="source-rows"></tbody>
+            </table>
+          </div>
+          <p id="empty-state" class="hidden text-sm text-muted-foreground">No sources yet. Add one to get started.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+// ---- Platform display labels (source-row.tsx's PLATFORM_LABELS, generalized) ----
+const PLATFORM_LABELS = {
+  ebay: 'eBay',
+  mercari: 'Mercari',
+  facebook_marketplace: 'Facebook Marketplace',
+  other: 'Other',
+};
+
+// source-row.tsx's canScan check, generalized per T11: a small client-side
+// constant array of scannable platform types, replacing the old
+// `source.platformType === 'ebay'` hardcode.
+const SCANNABLE_PLATFORM_TYPES = ['ebay', 'mercari', 'facebook_marketplace'];
+
+// ---- In-memory "sources" data (stands in for the /api/sources round trip) ----
+let sources = [
+  {
+    id: 's1', name: 'eBay — GPU Listings', platformType: 'ebay',
+    url: 'https://www.ebay.com', notes: 'Core GPU search set',
+    active: true, lastScannedAt: new Date(Date.now() - 3 * 3600 * 1000).toISOString(), lastScanFoundCount: 4,
+    connectorConfig: JSON.stringify({ queries: ['rtx 3080', 'rtx 3090'], maxPrice: 450 }),
+  },
+  {
+    id: 's2', name: 'Mercari — CPUs', platformType: 'mercari',
+    url: 'https://www.mercari.com', notes: 'Budget CPU sweep',
+    active: true, lastScannedAt: null, lastScanFoundCount: null,
+    connectorConfig: JSON.stringify({ queries: ['ryzen 5800x'] }),
+  },
+  {
+    id: 's3', name: 'FB Marketplace — Local PSUs', platformType: 'facebook_marketplace',
+    url: 'https://www.facebook.com/marketplace', notes: 'Local pickup only',
+    active: true, lastScannedAt: new Date(Date.now() - 20 * 3600 * 1000).toISOString(), lastScanFoundCount: 1,
+    connectorConfig: JSON.stringify({ queries: ['750w psu', 'gold psu'], maxPrice: 80, location: 'Seattle, WA', radiusMiles: 25 }),
+  },
+  {
+    id: 's4', name: 'Local Classifieds', platformType: 'other',
+    url: 'https://example-classifieds.test', notes: 'Manual checks only',
+    active: false, lastScannedAt: null, lastScanFoundCount: null,
+    connectorConfig: null,
+  },
+];
+
+let scanningSourceId = null;
+
+// ---- Rendering: table ----
+function formatLastScanned(lastScannedAt, lastScanFoundCount) {
+  if (lastScannedAt === null) return 'Never scanned';
+  const elapsedMs = Date.now() - new Date(lastScannedAt).getTime();
+  const hours = Math.max(0, Math.round(elapsedMs / (60 * 60 * 1000)));
+  return `Last scanned ${hours}h ago — ${lastScanFoundCount ?? 0} new`;
+}
+
+function renderRows() {
+  const showInactive = document.getElementById('show-inactive').checked;
+  const visible = showInactive ? sources : sources.filter((s) => s.active);
+  const tbody = document.getElementById('source-rows');
+  const emptyState = document.getElementById('empty-state');
+  tbody.innerHTML = '';
+
+  if (visible.length === 0) {
+    emptyState.classList.remove('hidden');
+    return;
+  }
+  emptyState.classList.add('hidden');
+
+  for (const source of visible) {
+    const canScan = SCANNABLE_PLATFORM_TYPES.includes(source.platformType) && source.connectorConfig !== null;
+    const isScanning = scanningSourceId === source.id;
+    const tr = document.createElement('tr');
+    tr.className = 'border-b border-border last:border-0';
+    tr.innerHTML = `
+      <td class="px-4 py-3 font-medium">${escapeHtml(source.name)}</td>
+      <td class="px-4 py-3">${PLATFORM_LABELS[source.platformType]}</td>
+      <td class="max-w-xs truncate px-4 py-3">
+        <a href="${escapeHtml(source.url ?? '')}" target="_blank" rel="noreferrer" class="text-primary underline-offset-4 hover:underline">${escapeHtml(source.url ?? '')}</a>
+      </td>
+      <td class="max-w-xs truncate px-4 py-3 text-muted-foreground">${escapeHtml(source.notes ?? '')}</td>
+      <td class="px-4 py-3">
+        <span class="rounded-full px-2 py-0.5 text-xs font-medium ${source.active ? 'bg-secondary text-secondary-foreground' : 'bg-muted text-muted-foreground'}">
+          ${source.active ? 'Active' : 'Inactive'}
+        </span>
+      </td>
+      <td class="whitespace-nowrap px-4 py-3 text-muted-foreground">${formatLastScanned(source.lastScannedAt, source.lastScanFoundCount)}</td>
+      <td class="whitespace-nowrap px-4 py-3 text-right"></td>
+    `;
+    const actionsTd = tr.lastElementChild;
+
+    if (canScan) {
+      const scanBtn = document.createElement('button');
+      scanBtn.className = 'inline-flex items-center justify-center whitespace-nowrap rounded-md text-xs font-medium transition-colors h-8 rounded-md px-3 hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50';
+      scanBtn.textContent = isScanning ? 'Scanning…' : 'Scan now';
+      scanBtn.disabled = isScanning;
+      scanBtn.addEventListener('click', () => handleScan(source.id));
+      actionsTd.appendChild(scanBtn);
+    }
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'inline-flex items-center justify-center whitespace-nowrap rounded-md text-xs font-medium transition-colors h-8 rounded-md px-3 hover:bg-accent hover:text-accent-foreground';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => openEditForm(source.id));
+    actionsTd.appendChild(editBtn);
+
+    if (source.active) {
+      const deactivateBtn = document.createElement('button');
+      deactivateBtn.className = 'inline-flex items-center justify-center whitespace-nowrap rounded-md text-xs font-medium transition-colors h-8 rounded-md px-3 text-destructive hover:bg-accent hover:text-accent-foreground';
+      deactivateBtn.textContent = 'Deactivate';
+      deactivateBtn.addEventListener('click', () => handleDeactivate(source.id));
+      actionsTd.appendChild(deactivateBtn);
+    }
+
+    tbody.appendChild(tr);
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function handleScan(id) {
+  document.getElementById('scan-error').classList.add('hidden');
+  scanningSourceId = id;
+  renderRows();
+  setTimeout(() => {
+    const source = sources.find((s) => s.id === id);
+    if (source) {
+      source.lastScannedAt = new Date().toISOString();
+      source.lastScanFoundCount = Math.floor(Math.random() * 4) + 1;
+    }
+    scanningSourceId = null;
+    renderRows();
+  }, 1100);
+}
+
+function handleDeactivate(id) {
+  const source = sources.find((s) => s.id === id);
+  if (!source) return;
+  if (!window.confirm(`Deactivate "${source.name}"? It will no longer appear as active, but its history is kept.`)) return;
+  source.active = false;
+  renderRows();
+}
+
+// ---- Connector-config editor (shared eBay/Mercari queries+maxPrice; FB adds location/radius) ----
+let connectorDraft = { queries: [''], maxPrice: '' };
+let fbDraft = { location: '', radiusMiles: '' };
+
+const QUERIES_EDITOR_TITLES = {
+  ebay: 'eBay Search Queries',
+  mercari: 'Mercari Search Queries',
+  facebook_marketplace: 'Facebook Marketplace Search Queries',
+};
+
+function renderQueryRows() {
+  const container = document.getElementById('query-rows');
+  container.innerHTML = '';
+  connectorDraft.queries.forEach((query, index) => {
+    const row = document.createElement('div');
+    row.className = 'flex items-start gap-2';
+    row.innerHTML = `
+      <div class="flex-1 space-y-1">
+        <input value="${escapeHtml(query)}" placeholder="Search query" aria-label="search query ${index + 1}"
+          class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm" />
+      </div>
+    `;
+    const input = row.querySelector('input');
+    input.addEventListener('input', (e) => { connectorDraft.queries[index] = e.target.value; });
+    if (connectorDraft.queries.length > 1) {
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'inline-flex items-center justify-center whitespace-nowrap rounded-md text-xs font-medium transition-colors h-8 rounded-md px-3 text-destructive hover:bg-accent hover:text-accent-foreground';
+      removeBtn.textContent = 'Remove';
+      removeBtn.addEventListener('click', () => {
+        connectorDraft.queries = connectorDraft.queries.filter((_, i) => i !== index);
+        renderQueryRows();
+      });
+      row.appendChild(removeBtn);
+    }
+    container.appendChild(row);
+  });
+}
+
+document.getElementById('add-query-btn').addEventListener('click', () => {
+  connectorDraft.queries.push('');
+  renderQueryRows();
+});
+document.getElementById('connector-max-price').addEventListener('input', (e) => {
+  connectorDraft.maxPrice = e.target.value;
+});
+document.getElementById('fb-location').addEventListener('input', (e) => { fbDraft.location = e.target.value; });
+document.getElementById('fb-radius').addEventListener('input', (e) => { fbDraft.radiusMiles = e.target.value; });
+
+function syncEditorForPlatform(platformType) {
+  const editor = document.getElementById('queries-editor');
+  const fbExtra = document.getElementById('fb-extra-fields');
+  if (['ebay', 'mercari', 'facebook_marketplace'].includes(platformType)) {
+    editor.classList.remove('hidden');
+    document.getElementById('queries-editor-title').textContent = QUERIES_EDITOR_TITLES[platformType];
+    fbExtra.classList.toggle('hidden', platformType !== 'facebook_marketplace');
+  } else {
+    editor.classList.add('hidden');
+  }
+}
+
+document.getElementById('source-platform').addEventListener('change', (e) => {
+  syncEditorForPlatform(e.target.value);
+});
+
+// ---- Form open/close/populate ----
+const form = document.getElementById('source-form');
+
+function resetForm() {
+  document.getElementById('editing-id').value = '';
+  document.getElementById('source-name').value = '';
+  document.getElementById('source-platform').value = '';
+  document.getElementById('source-url').value = '';
+  document.getElementById('source-notes').value = '';
+  connectorDraft = { queries: [''], maxPrice: '' };
+  fbDraft = { location: '', radiusMiles: '' };
+  document.getElementById('fb-location').value = '';
+  document.getElementById('fb-radius').value = '';
+  renderQueryRows();
+  syncEditorForPlatform('');
+  clearErrors();
+}
+
+function clearErrors() {
+  ['err-name', 'err-platform', 'err-url', 'err-queries', 'err-max-price', 'err-radius'].forEach((id) => {
+    const el = document.getElementById(id);
+    el.classList.add('hidden');
+    el.textContent = '';
+  });
+  const submitError = document.getElementById('submit-error');
+  submitError.classList.add('hidden');
+  submitError.textContent = '';
+}
+
+document.getElementById('add-source-btn').addEventListener('click', () => {
+  resetForm();
+  form.classList.remove('hidden');
+  document.getElementById('source-platform').focus();
+});
+
+document.getElementById('cancel-btn').addEventListener('click', () => {
+  form.classList.add('hidden');
+  resetForm();
+});
+
+function openEditForm(id) {
+  const source = sources.find((s) => s.id === id);
+  if (!source) return;
+  resetForm();
+  document.getElementById('editing-id').value = id;
+  document.getElementById('source-name').value = source.name;
+  document.getElementById('source-platform').value = source.platformType;
+  document.getElementById('source-url').value = source.url ?? '';
+  document.getElementById('source-notes').value = source.notes ?? '';
+
+  if (source.connectorConfig) {
+    try {
+      const parsed = JSON.parse(source.connectorConfig);
+      connectorDraft = {
+        queries: Array.isArray(parsed.queries) && parsed.queries.length > 0 ? parsed.queries : [''],
+        maxPrice: parsed.maxPrice !== undefined ? String(parsed.maxPrice) : '',
+      };
+      fbDraft = {
+        location: parsed.location ?? '',
+        radiusMiles: parsed.radiusMiles !== undefined ? String(parsed.radiusMiles) : '',
+      };
+    } catch {
+      connectorDraft = { queries: [''], maxPrice: '' };
+    }
+  }
+  document.getElementById('connector-max-price').value = connectorDraft.maxPrice;
+  document.getElementById('fb-location').value = fbDraft.location;
+  document.getElementById('fb-radius').value = fbDraft.radiusMiles;
+  renderQueryRows();
+  syncEditorForPlatform(source.platformType);
+
+  form.classList.remove('hidden');
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ---- Validation + save (mirrors source-form.tsx's validate()) ----
+function validateConnectorConfig(queries, maxPrice) {
+  const errors = {};
+  if (queries.length === 0) {
+    errors.queries = 'At least one search query is required.';
+  } else if (queries.some((q) => q.trim().length === 0)) {
+    errors.queries = 'Each search query must be filled in.';
+  }
+  if (maxPrice.trim().length > 0) {
+    const num = Number(maxPrice);
+    if (!Number.isFinite(num) || num < 0) {
+      errors.maxPrice = 'Max price must be a non-negative number.';
+    }
+  }
+  return errors;
+}
+
+document.getElementById('save-btn').addEventListener('click', () => {
+  clearErrors();
+  const name = document.getElementById('source-name').value;
+  const platformType = document.getElementById('source-platform').value;
+  const url = document.getElementById('source-url').value;
+  const notes = document.getElementById('source-notes').value;
+
+  let hasError = false;
+  if (name.trim().length === 0) {
+    document.getElementById('err-name').textContent = 'Name is required.';
+    document.getElementById('err-name').classList.remove('hidden');
+    hasError = true;
+  }
+  if (platformType.trim().length === 0) {
+    document.getElementById('err-platform').textContent = 'Platform is required.';
+    document.getElementById('err-platform').classList.remove('hidden');
+    hasError = true;
+  }
+  if (url.trim().length === 0) {
+    document.getElementById('err-url').textContent = 'URL is required.';
+    document.getElementById('err-url').classList.remove('hidden');
+    hasError = true;
+  }
+
+  let connectorConfig = null;
+  if (['ebay', 'mercari', 'facebook_marketplace'].includes(platformType)) {
+    const connectorErrors = validateConnectorConfig(connectorDraft.queries, connectorDraft.maxPrice);
+    if (connectorErrors.queries) {
+      document.getElementById('err-queries').textContent = connectorErrors.queries;
+      document.getElementById('err-queries').classList.remove('hidden');
+      hasError = true;
+    }
+    if (connectorErrors.maxPrice) {
+      document.getElementById('err-max-price').textContent = connectorErrors.maxPrice;
+      document.getElementById('err-max-price').classList.remove('hidden');
+      hasError = true;
+    }
+    if (platformType === 'facebook_marketplace' && fbDraft.radiusMiles.trim().length > 0) {
+      const radiusNum = Number(fbDraft.radiusMiles);
+      if (!Number.isFinite(radiusNum) || radiusNum < 0) {
+        document.getElementById('err-radius').textContent = 'Radius must be a non-negative number.';
+        document.getElementById('err-radius').classList.remove('hidden');
+        hasError = true;
+      }
+    }
+
+    if (!hasError) {
+      const trimmedQueries = connectorDraft.queries.map((q) => q.trim());
+      const maxPriceNum = connectorDraft.maxPrice.trim().length > 0 ? Number(connectorDraft.maxPrice) : undefined;
+      connectorConfig = { queries: trimmedQueries };
+      if (maxPriceNum !== undefined) connectorConfig.maxPrice = maxPriceNum;
+      if (platformType === 'facebook_marketplace') {
+        if (fbDraft.location.trim().length > 0) connectorConfig.location = fbDraft.location.trim();
+        if (fbDraft.radiusMiles.trim().length > 0) connectorConfig.radiusMiles = Number(fbDraft.radiusMiles);
+      }
+    }
+  }
+
+  if (hasError) return;
+
+  const editingId = document.getElementById('editing-id').value;
+  if (editingId) {
+    const source = sources.find((s) => s.id === editingId);
+    source.name = name.trim();
+    source.platformType = platformType;
+    source.url = url.trim();
+    source.notes = notes.trim() || null;
+    source.connectorConfig = connectorConfig !== null ? JSON.stringify(connectorConfig) : null;
+  } else {
+    sources.push({
+      id: 's' + (sources.length + 1) + '-' + Date.now(),
+      name: name.trim(),
+      platformType,
+      url: url.trim(),
+      notes: notes.trim() || null,
+      active: true,
+      lastScannedAt: null,
+      lastScanFoundCount: null,
+      connectorConfig: connectorConfig !== null ? JSON.stringify(connectorConfig) : null,
+    });
+  }
+
+  form.classList.add('hidden');
+  resetForm();
+  renderRows();
+});
+
+document.getElementById('show-inactive').addEventListener('change', renderRows);
+
+// ---- Initial render ----
+renderQueryRows();
+renderRows();
+</script>
+</body>
+</html>

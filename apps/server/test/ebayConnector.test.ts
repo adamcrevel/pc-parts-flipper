@@ -525,7 +525,7 @@ describe('createEbayItemDetailClient', () => {
 
 describe('getConnectorForPlatform (T5, Req 7)', () => {
   it('rejects an unregistered platform type with a clear AppError', () => {
-    expect(() => getConnectorForPlatform('facebook_marketplace')).toThrow(AppError);
+    expect(() => getConnectorForPlatform('other')).toThrow(AppError);
     expect(() => getConnectorForPlatform('other')).toThrow(/no automated-scan connector/i);
   });
 });

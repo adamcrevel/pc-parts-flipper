@@ -6,9 +6,17 @@ import { cn } from '@/lib/utils';
 // since display copy is a UI-only concern the API layer has no stake in.
 const PLATFORM_LABELS: Record<Source['platformType'], string> = {
   ebay: 'eBay',
+  mercari: 'Mercari',
   facebook_marketplace: 'Facebook Marketplace',
   other: 'Other',
 };
+
+// Platform types an automated "Scan now" is available for — must be kept
+// in sync BY HAND with apps/server/src/connectors/registry.ts's
+// CONNECTOR_REGISTRY, since apps/web may never import apps/server directly
+// (existing import boundary, apps/web/test/eslint-import-boundary.test.ts)
+// and so cannot read the registry's keys at runtime (T11).
+const SCANNABLE_PLATFORM_TYPES: ReadonlyArray<Source['platformType']> = ['ebay', 'mercari', 'facebook_marketplace'];
 
 interface SourceRowProps {
   source: Source;
@@ -43,11 +51,12 @@ function formatLastScanned(lastScannedAt: string | null, lastScanFoundCount: num
 // One row of the Sources table: the Source's fields, an active/inactive
 // badge, and row actions. Deactivate only ever renders for active rows —
 // once inactive, the only path back is editing the row directly (soft
-// deactivate is one-way through this UI). Req 7/T9: Scan now only renders
-// for an eBay Source with a configured connectorConfig — every other
-// Source is ineligible for an automated scan and shows no button at all.
+// deactivate is one-way through this UI). Req 7/T9/T11: Scan now only
+// renders for a Source on a SCANNABLE_PLATFORM_TYPES platform with a
+// configured connectorConfig — every other Source is ineligible for an
+// automated scan and shows no button at all.
 export function SourceRow({ source, onEdit, onDeactivate, onScan, scanningSourceId }: SourceRowProps) {
-  const canScan = source.platformType === 'ebay' && source.connectorConfig !== null;
+  const canScan = SCANNABLE_PLATFORM_TYPES.includes(source.platformType) && source.connectorConfig !== null;
   const isScanning = scanningSourceId === source.id;
   return (
     <tr className="border-b border-border last:border-0">

@@ -6,19 +6,24 @@
 import type { PlatformType } from '@pc-parts-flipper/shared';
 import { AppError } from '../error-handler.js';
 import { ebayConnector } from './ebayConnector.js';
+import { facebookMarketplaceConnector } from './facebookMarketplaceConnector.js';
+import { mercariConnector } from './mercariConnector.js';
 import type { MarketplaceConnector } from './types.js';
 
-// Only 'ebay' is registered for now — facebook_marketplace and other have no
-// automated-scan connector yet (Req 6 scopes this batch to eBay only).
+// Three platforms are registered: 'ebay', 'mercari', and 'facebook_marketplace'.
+// Other platforms have no automated-scan connector yet.
 const CONNECTOR_REGISTRY: Partial<Record<PlatformType, MarketplaceConnector>> = {
   ebay: ebayConnector,
+  mercari: mercariConnector,
+  facebook_marketplace: facebookMarketplaceConnector,
 };
 
 /**
  * Looks up the registered MarketplaceConnector for a Source's platformType.
  * Throws AppError(400) when no connector is registered for that platform
- * (currently every type except 'ebay') so callers get a clear, actionable
- * error instead of an undefined connector reaching a `.search()` call.
+ * (currently all types except 'ebay', 'mercari', and 'facebook_marketplace')
+ * so callers get a clear, actionable error instead of an undefined connector
+ * reaching a `.search()` call.
  */
 export function getConnectorForPlatform(platformType: PlatformType): MarketplaceConnector {
   const connector = CONNECTOR_REGISTRY[platformType];

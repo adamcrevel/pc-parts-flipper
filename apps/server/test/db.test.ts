@@ -13,7 +13,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DuckDBInstance } from '@duckdb/node-api';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type * as DbModule from '../src/db/index.js';
 import type * as ClientModule from '../src/db/client.js';
 import { runMigrations } from '../src/db/migrate.js';
@@ -1283,3 +1283,306 @@ describe('Expected Part notes (T2)', () => {
     expect(untouched?.notes).toBe('fan rattles on startup');
   });
 });
+
+// T2 proof (marketplace-sources feature): migratePlatformTypeAddMercari
+// (migrate.ts, private/unexported) rebuilds the full ten-table FK subtree
+// rooted at `sources` to add 'mercari' to the platform_type enum. Proves,
+// against the realistic upgrade scenario (a database that already applied
+// every statement in schema.ts except this feature's own enum literal —
+// built by hand below, the same way the T1 upgrade scenario above does,
+// since the rebuild helper itself is private), that every row across that
+// subtree survives the backup/drop/recreate/restore cycle byte-for-byte,
+// and that a second run is a true no-op (not just one that happens to
+// preserve the same data a second time) via a console.log spy on the
+// rebuild's own completion message.
+describe('migratePlatformTypeAddMercari preserves and no-ops across the full sources FK subtree (T2)', () => {
+  it('rebuilds platform_type with mercari, preserves every row byte-for-byte, and a second run never re-executes the rebuild', async () => {
+    const upgradeDir = await mkdtemp(path.join(tmpdir(), 'pc-parts-flipper-db-test-mercari-'));
+    try {
+      const instance = await DuckDBInstance.create(path.join(upgradeDir, 'pc-parts-flipper.duckdb'));
+      const connection = await instance.connect();
+
+      // Replicates the exact pre-feature schema end-state: every statement
+      // runMigrations runs today, except platform_type is built without
+      // 'mercari' — the real-world shape of a production database that
+      // already applied every past migration, immediately before this one
+      // ships.
+      await connection.run(`CREATE TYPE platform_type AS ENUM ('ebay', 'facebook_marketplace', 'other')`);
+      for (const statement of [...ENUM_STATEMENTS.slice(1), ...TABLE_STATEMENTS, ...ALTER_STATEMENTS]) {
+        await connection.run(statement);
+      }
+      // Hand-reproduces migrateExpectedPartsNullablePrice's rebuild (private,
+      // unexported) so expected_parts already carries its post-rebuild
+      // nullable column and every later ALTER_STATEMENTS column, matching a
+      // real already-migrated production database rather than a brand-new
+      // one.
+      await connection.run(`CREATE TABLE expected_parts_new (
+        id UUID PRIMARY KEY, listing_id UUID NOT NULL REFERENCES listings(id), component_category component_category NOT NULL,
+        description VARCHAR NOT NULL, estimated_resale_value DECIMAL(10, 2) CHECK (estimated_resale_value >= 0),
+        created_at TIMESTAMP NOT NULL DEFAULT current_timestamp, updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+        brand VARCHAR, part_number VARCHAR, identity_candidates VARCHAR DEFAULT '[]', ai_confidence VARCHAR, ai_source VARCHAR, price_source VARCHAR,
+        working_status VARCHAR DEFAULT 'working', notes VARCHAR
+      )`);
+      await connection.run(`INSERT INTO expected_parts_new (id, listing_id, component_category, description, estimated_resale_value, created_at, updated_at, brand, part_number, identity_candidates, ai_confidence, ai_source, price_source, working_status, notes)
+        SELECT id, listing_id, component_category, description, estimated_resale_value, created_at, updated_at, brand, part_number, identity_candidates, ai_confidence, ai_source, price_source, working_status, notes FROM expected_parts`);
+      await connection.run(`CREATE TABLE teardown_results_backup (id UUID, purchase_id UUID, expected_part_id UUID, result VARCHAR, note VARCHAR, created_at TIMESTAMP, updated_at TIMESTAMP)`);
+      await connection.run(`INSERT INTO teardown_results_backup SELECT id, purchase_id, expected_part_id, result, note, created_at, updated_at FROM teardown_results`);
+      await connection.run(`DROP TABLE teardown_results`);
+      await connection.run(`DROP TABLE expected_parts`);
+      await connection.run(`ALTER TABLE expected_parts_new RENAME TO expected_parts`);
+      await connection.run(`CREATE TABLE teardown_results (
+        id UUID PRIMARY KEY, purchase_id UUID NOT NULL REFERENCES purchases(id), expected_part_id UUID REFERENCES expected_parts(id),
+        result teardown_result_type NOT NULL, note VARCHAR, created_at TIMESTAMP NOT NULL DEFAULT current_timestamp, updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+        UNIQUE (purchase_id, expected_part_id))`);
+      await connection.run(`INSERT INTO teardown_results SELECT id, purchase_id, expected_part_id, result, note, created_at, updated_at FROM teardown_results_backup`);
+      await connection.run(`DROP TABLE teardown_results_backup`);
+      for (const statement of INDEX_STATEMENTS) {
+        await connection.run(statement);
+      }
+
+      // Seeds one row per table across the full FK subtree rooted at
+      // `sources` (sources, listings, part_reference_photos, expected_parts,
+      // purchases, teardown_results, parts, sale_listings, sales,
+      // identify_parts_jobs) — every table migratePlatformTypeAddMercari
+      // backs up and restores. Every column, including timestamps, is an
+      // explicit fixed literal so the before/after comparison below is
+      // deterministic rather than racing DEFAULT current_timestamp.
+      await connection.run(`INSERT INTO sources (id, name, platform_type, url, notes, active, created_at, updated_at, connector_config, last_scanned_at, last_scan_found_count)
+        VALUES ('11111111-1111-1111-1111-111111111111', 'eBay store', 'ebay', 'https://example.com', 'a note', true, '2024-01-01 00:00:00', '2024-01-02 00:00:00', '{"queries":["gpu"]}', '2024-01-03 00:00:00', 5)`);
+      await connection.run(`INSERT INTO listings (id, source_id, title, description, listing_url, asking_price, listing_date, status, acquisition_fees, photo_paths, created_at, updated_at, external_source, external_item_id, non_working)
+        VALUES ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'RTX 3060', 'a gpu', 'https://example.com/item', 150.00, '2024-01-01', 'open', 5.00, '["a.jpg"]', '2024-01-01 00:00:00', '2024-01-02 00:00:00', 'ebay', 'EB123', false)`);
+      await connection.run(`INSERT INTO part_reference_photos (id, category, brand, part_number, photo_path, source, listing_id, created_at)
+        VALUES ('33333333-3333-3333-3333-333333333333', 'GPU', 'NVIDIA', 'RTX 3060', '/ref/photo.jpg', 'manual', '22222222-2222-2222-2222-222222222222', '2024-01-01 00:00:00')`);
+      await connection.run(`INSERT INTO expected_parts (id, listing_id, component_category, description, estimated_resale_value, created_at, updated_at, brand, part_number, identity_candidates, ai_confidence, ai_source, price_source, working_status, notes)
+        VALUES ('44444444-4444-4444-4444-444444444444', '22222222-2222-2222-2222-222222222222', 'GPU', 'a gpu card', 220.00, '2024-01-01 00:00:00', '2024-01-02 00:00:00', 'NVIDIA', 'RTX 3060', '[{"brand":"NVIDIA","partNumber":"RTX 3060 Ti"}]', 'high', 'image', 'manual', 'working', 'a note')`);
+      await connection.run(`INSERT INTO purchases (id, listing_id, status, price_paid, purchase_date, created_at, updated_at)
+        VALUES ('55555555-5555-5555-5555-555555555555', '22222222-2222-2222-2222-222222222222', 'received', 150.00, '2024-01-03', '2024-01-01 00:00:00', '2024-01-02 00:00:00')`);
+      await connection.run(`INSERT INTO teardown_results (id, purchase_id, expected_part_id, result, note, created_at, updated_at)
+        VALUES ('66666666-6666-6666-6666-666666666666', '55555555-5555-5555-5555-555555555555', '44444444-4444-4444-4444-444444444444', 'present_as_expected', 'matches listing', '2024-01-01 00:00:00', '2024-01-02 00:00:00')`);
+      await connection.run(`INSERT INTO parts (id, purchase_id, category, description, status, unsellable_reason, created_at, updated_at, brand, part_number, identity_candidates)
+        VALUES ('77777777-7777-7777-7777-777777777777', '55555555-5555-5555-5555-555555555555', 'GPU', 'a gpu part', 'listed', NULL, '2024-01-01 00:00:00', '2024-01-02 00:00:00', 'NVIDIA', 'RTX 3060', '[]')`);
+      await connection.run(`INSERT INTO sale_listings (id, part_id, platform, title, description, asking_price, listed_at, created_at, updated_at)
+        VALUES ('88888888-8888-8888-8888-888888888888', '77777777-7777-7777-7777-777777777777', 'ebay', 'RTX 3060 for sale', 'a gpu', 250.00, '2024-01-04 00:00:00', '2024-01-01 00:00:00', '2024-01-02 00:00:00')`);
+      await connection.run(`INSERT INTO sales (id, part_id, sold_price, sold_date, platform_fee, shipping_cost, buyer_note, created_at, updated_at)
+        VALUES ('99999999-9999-9999-9999-999999999999', '77777777-7777-7777-7777-777777777777', 240.00, '2024-01-05', 10.00, 8.00, 'thanks', '2024-01-01 00:00:00', '2024-01-02 00:00:00')`);
+      await connection.run(`INSERT INTO identify_parts_jobs (id, listing_id, stage, result, error_message, delivered, created_at, started_at, completed_at, updated_at)
+        VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '22222222-2222-2222-2222-222222222222', 'completed', '{"parts":[]}', NULL, true, '2024-01-01 00:00:00', '2024-01-01 00:01:00', '2024-01-01 00:02:00', '2024-01-02 00:00:00')`);
+
+      const SUBTREE_TABLES = [
+        'sources', 'listings', 'part_reference_photos', 'expected_parts', 'purchases',
+        'teardown_results', 'parts', 'sale_listings', 'sales', 'identify_parts_jobs',
+      ];
+      const snapshot = async () => {
+        const tables: Record<string, unknown> = {};
+        for (const table of SUBTREE_TABLES) {
+          const reader = await connection.runAndReadAll(`SELECT * FROM ${table} ORDER BY id`);
+          tables[table] = reader.getRowObjectsJson();
+        }
+        return tables;
+      };
+
+      const beforeFirstRun = await snapshot();
+      expect(beforeFirstRun.sources, 'the seed row must actually be present before the migration runs').toHaveLength(1);
+
+      // The real upgrade path a live server performs on its next boot after
+      // this feature ships — never a direct call to the private
+      // migratePlatformTypeAddMercari function.
+      await runMigrations(connection);
+
+      const hasMercariAfterFirstRun = await connection.runAndReadAll(
+        `SELECT list_contains(enum_range(NULL::platform_type), 'mercari') AS has_mercari`,
+      );
+      expect(hasMercariAfterFirstRun.getRowObjectsJson()).toEqual([{ has_mercari: true }]);
+
+      const afterFirstRun = await snapshot();
+      expect(afterFirstRun, 'every row across the ten-table FK subtree must survive the rebuild byte-for-byte').toEqual(beforeFirstRun);
+
+      // Second run: enum_range already contains 'mercari', so the guard at
+      // the top of migratePlatformTypeAddMercari must skip the rebuild
+      // entirely — proven by its own completion log never firing a second
+      // time (identical data alone wouldn't distinguish a skipped rebuild
+      // from one that ran again and happened to preserve the same rows).
+      const logSpy = vi.spyOn(console, 'log');
+      await runMigrations(connection);
+      const rebuildLogCalls = logSpy.mock.calls.filter(
+        ([message]) => typeof message === 'string' && message.includes('platform_type mercari migration complete'),
+      );
+      expect(rebuildLogCalls, 'a second run must not re-execute the rebuild — the guard must make it a true no-op').toHaveLength(0);
+      logSpy.mockRestore();
+
+      const afterSecondRun = await snapshot();
+      expect(afterSecondRun, 'the no-op second run must leave every row exactly as the first run left it').toEqual(afterFirstRun);
+
+      connection.closeSync();
+      instance.closeSync();
+    } finally {
+      await rm(upgradeDir, { recursive: true, force: true });
+    }
+  }, 30000);
+});
+
+// MUST FIX (cycle 0 retry 1) independent repro: the describe block above
+// hand-reproduces migrateExpectedPartsNullablePrice's rebuild SQL BEFORE
+// seeding data, so its own INSERT ... SELECT never actually copies real
+// pre-existing rows through itself — it only proves the later rebuild
+// against data already shaped the post-rebuild way. This block seeds the
+// full FK subtree into the genuinely pre-rebuild schema first, runs the
+// real nullable-price rebuild's own SQL (verbatim match of migrate.ts's
+// migrateExpectedPartsNullablePrice) against those real seeded rows so its
+// copy step is actually exercised, closes and reopens the on-disk file (a
+// real server reboot) to produce a genuinely "already-migrated" file, then
+// runs the real migratePlatformTypeAddMercari (via the real, exported
+// runMigrations) three consecutive times against that file and confirms:
+// no Catalog Error crash, the full ten-table subtree survives byte-for-byte
+// every run, and the guard is still a true no-op by the third run, not just
+// the second.
+describe('MUST FIX (cycle 0 retry 1): migratePlatformTypeAddMercari against a file that already ran migrateExpectedPartsNullablePrice on real seeded data (T2)', () => {
+  it('does not crash with a Catalog Error, preserves the full FK subtree across three consecutive runs, and stays a true no-op by the third run', async () => {
+    const upgradeDir = await mkdtemp(path.join(tmpdir(), 'pc-parts-flipper-db-test-mercari-mustfix-'));
+    const dbFilePath = path.join(upgradeDir, 'pc-parts-flipper.duckdb');
+    try {
+      let instance = await DuckDBInstance.create(dbFilePath);
+      let connection = await instance.connect();
+
+      // Pre-feature schema: platform_type without 'mercari', every other
+      // statement exactly as schema.ts defines it today.
+      await connection.run(`CREATE TYPE platform_type AS ENUM ('ebay', 'facebook_marketplace', 'other')`);
+      for (const statement of [...ENUM_STATEMENTS.slice(1), ...TABLE_STATEMENTS, ...ALTER_STATEMENTS]) {
+        await connection.run(statement);
+      }
+
+      // Seeds one row per table across the full FK subtree BEFORE any
+      // rebuild runs — directly into the genuinely-fresh, pre-rebuild
+      // expected_parts/teardown_results shape, so the nullable-price
+      // rebuild below must carry these exact rows through its own
+      // INSERT ... SELECT, not just preserve rows already shaped the way
+      // its own output table expects.
+      await connection.run(`INSERT INTO sources (id, name, platform_type, url, notes, active, created_at, updated_at, connector_config, last_scanned_at, last_scan_found_count)
+        VALUES ('11111111-1111-1111-1111-111111111111', 'eBay store', 'ebay', 'https://example.com', 'a note', true, '2024-01-01 00:00:00', '2024-01-02 00:00:00', '{"queries":["gpu"]}', '2024-01-03 00:00:00', 5)`);
+      await connection.run(`INSERT INTO listings (id, source_id, title, description, listing_url, asking_price, listing_date, status, acquisition_fees, photo_paths, created_at, updated_at, external_source, external_item_id, non_working)
+        VALUES ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'RTX 3060', 'a gpu', 'https://example.com/item', 150.00, '2024-01-01', 'open', 5.00, '["a.jpg"]', '2024-01-01 00:00:00', '2024-01-02 00:00:00', 'ebay', 'EB123', false)`);
+      await connection.run(`INSERT INTO part_reference_photos (id, category, brand, part_number, photo_path, source, listing_id, created_at)
+        VALUES ('33333333-3333-3333-3333-333333333333', 'GPU', 'NVIDIA', 'RTX 3060', '/ref/photo.jpg', 'manual', '22222222-2222-2222-2222-222222222222', '2024-01-01 00:00:00')`);
+      await connection.run(`INSERT INTO expected_parts (id, listing_id, component_category, description, estimated_resale_value, created_at, updated_at, brand, part_number, identity_candidates, ai_confidence, ai_source, price_source, working_status, notes)
+        VALUES ('44444444-4444-4444-4444-444444444444', '22222222-2222-2222-2222-222222222222', 'GPU', 'a gpu card', 220.00, '2024-01-01 00:00:00', '2024-01-02 00:00:00', 'NVIDIA', 'RTX 3060', '[{"brand":"NVIDIA","partNumber":"RTX 3060 Ti"}]', 'high', 'image', 'manual', 'working', 'a note')`);
+      await connection.run(`INSERT INTO purchases (id, listing_id, status, price_paid, purchase_date, created_at, updated_at)
+        VALUES ('55555555-5555-5555-5555-555555555555', '22222222-2222-2222-2222-222222222222', 'received', 150.00, '2024-01-03', '2024-01-01 00:00:00', '2024-01-02 00:00:00')`);
+      await connection.run(`INSERT INTO teardown_results (id, purchase_id, expected_part_id, result, note, created_at, updated_at)
+        VALUES ('66666666-6666-6666-6666-666666666666', '55555555-5555-5555-5555-555555555555', '44444444-4444-4444-4444-444444444444', 'present_as_expected', 'matches listing', '2024-01-01 00:00:00', '2024-01-02 00:00:00')`);
+      await connection.run(`INSERT INTO parts (id, purchase_id, category, description, status, unsellable_reason, created_at, updated_at, brand, part_number, identity_candidates)
+        VALUES ('77777777-7777-7777-7777-777777777777', '55555555-5555-5555-5555-555555555555', 'GPU', 'a gpu part', 'listed', NULL, '2024-01-01 00:00:00', '2024-01-02 00:00:00', 'NVIDIA', 'RTX 3060', '[]')`);
+      await connection.run(`INSERT INTO sale_listings (id, part_id, platform, title, description, asking_price, listed_at, created_at, updated_at)
+        VALUES ('88888888-8888-8888-8888-888888888888', '77777777-7777-7777-7777-777777777777', 'ebay', 'RTX 3060 for sale', 'a gpu', 250.00, '2024-01-04 00:00:00', '2024-01-01 00:00:00', '2024-01-02 00:00:00')`);
+      await connection.run(`INSERT INTO sales (id, part_id, sold_price, sold_date, platform_fee, shipping_cost, buyer_note, created_at, updated_at)
+        VALUES ('99999999-9999-9999-9999-999999999999', '77777777-7777-7777-7777-777777777777', 240.00, '2024-01-05', 10.00, 8.00, 'thanks', '2024-01-01 00:00:00', '2024-01-02 00:00:00')`);
+      await connection.run(`INSERT INTO identify_parts_jobs (id, listing_id, stage, result, error_message, delivered, created_at, started_at, completed_at, updated_at)
+        VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '22222222-2222-2222-2222-222222222222', 'completed', '{"parts":[]}', NULL, true, '2024-01-01 00:00:00', '2024-01-01 00:01:00', '2024-01-01 00:02:00', '2024-01-02 00:00:00')`);
+
+      const SUBTREE_TABLES = [
+        'sources', 'listings', 'part_reference_photos', 'expected_parts', 'purchases',
+        'teardown_results', 'parts', 'sale_listings', 'sales', 'identify_parts_jobs',
+      ];
+      const snapshot = async () => {
+        const tables: Record<string, unknown> = {};
+        for (const table of SUBTREE_TABLES) {
+          const reader = await connection.runAndReadAll(`SELECT * FROM ${table} ORDER BY id`);
+          tables[table] = reader.getRowObjectsJson();
+        }
+        return tables;
+      };
+
+      const seeded = await snapshot();
+      expect(seeded.sources, 'the seed row must actually be present before any migration runs').toHaveLength(1);
+
+      // Runs the real migrateExpectedPartsNullablePrice's own SQL verbatim
+      // (migrate.ts lines 88-139) against the seeded rows above — its own
+      // INSERT ... SELECT now actually carries this test's real
+      // pre-existing data across, not data inserted straight into the
+      // post-rebuild shape.
+      await connection.run(`CREATE TABLE expected_parts_new (
+        id UUID PRIMARY KEY, listing_id UUID NOT NULL REFERENCES listings(id), component_category component_category NOT NULL,
+        description VARCHAR NOT NULL, estimated_resale_value DECIMAL(10, 2) CHECK (estimated_resale_value >= 0),
+        created_at TIMESTAMP NOT NULL DEFAULT current_timestamp, updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+        brand VARCHAR, part_number VARCHAR, identity_candidates VARCHAR DEFAULT '[]', ai_confidence VARCHAR, ai_source VARCHAR, price_source VARCHAR,
+        working_status VARCHAR DEFAULT 'working', notes VARCHAR
+      )`);
+      await connection.run(`INSERT INTO expected_parts_new (id, listing_id, component_category, description, estimated_resale_value, created_at, updated_at, brand, part_number, identity_candidates, ai_confidence, ai_source, price_source, working_status, notes)
+        SELECT id, listing_id, component_category, description, estimated_resale_value, created_at, updated_at, brand, part_number, identity_candidates, ai_confidence, ai_source, price_source, working_status, notes FROM expected_parts`);
+      await connection.run(`CREATE TABLE teardown_results_backup (id UUID, purchase_id UUID, expected_part_id UUID, result VARCHAR, note VARCHAR, created_at TIMESTAMP, updated_at TIMESTAMP)`);
+      await connection.run(`INSERT INTO teardown_results_backup SELECT id, purchase_id, expected_part_id, result, note, created_at, updated_at FROM teardown_results`);
+      await connection.run(`DROP TABLE teardown_results`);
+      await connection.run(`DROP TABLE expected_parts`);
+      await connection.run(`ALTER TABLE expected_parts_new RENAME TO expected_parts`);
+      await connection.run(`CREATE TABLE teardown_results (
+        id UUID PRIMARY KEY, purchase_id UUID NOT NULL REFERENCES purchases(id), expected_part_id UUID REFERENCES expected_parts(id),
+        result teardown_result_type NOT NULL, note VARCHAR, created_at TIMESTAMP NOT NULL DEFAULT current_timestamp, updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+        UNIQUE (purchase_id, expected_part_id))`);
+      await connection.run(`INSERT INTO teardown_results SELECT id, purchase_id, expected_part_id, result, note, created_at, updated_at FROM teardown_results_backup`);
+      await connection.run(`DROP TABLE teardown_results_backup`);
+      for (const statement of INDEX_STATEMENTS) {
+        await connection.run(statement);
+      }
+
+      const afterNullableRebuild = await snapshot();
+      expect(afterNullableRebuild, 'the real nullable-price rebuild must carry every seeded row across its own copy step byte-for-byte').toEqual(seeded);
+
+      // A real server reboot: close this connection/instance and reopen a
+      // fresh one against the exact same on-disk file — the realistic
+      // shape of "an already-migrated database" the must_fix crash was
+      // filed against, not a hand-rolled approximation on a still-open
+      // connection.
+      connection.closeSync();
+      instance.closeSync();
+      instance = await DuckDBInstance.create(dbFilePath);
+      connection = await instance.connect();
+
+      const beforeMercariRuns = await snapshot();
+      expect(beforeMercariRuns, 'data must still be present immediately after reopening the file').toEqual(afterNullableRebuild);
+
+      // Run 1: the real migratePlatformTypeAddMercari (via the real,
+      // exported runMigrations) against this already-migrated on-disk
+      // file. The must_fix crash threw "Catalog Error: Could not drop the
+      // table because this table is main key table of the table
+      // 'expected_parts_new'" from exactly this scenario — not throwing is
+      // the must_fix's own central claim.
+      await expect(runMigrations(connection)).resolves.toBeUndefined();
+
+      const hasMercari = await connection.runAndReadAll(
+        `SELECT list_contains(enum_range(NULL::platform_type), 'mercari') AS has_mercari`,
+      );
+      expect(hasMercari.getRowObjectsJson()).toEqual([{ has_mercari: true }]);
+
+      const afterRun1 = await snapshot();
+      expect(afterRun1, 'every row across the ten-table FK subtree must survive run 1 byte-for-byte').toEqual(beforeMercariRuns);
+
+      // Run 2.
+      const logSpy = vi.spyOn(console, 'log');
+      await expect(runMigrations(connection)).resolves.toBeUndefined();
+      const rebuildLogCallsRun2 = logSpy.mock.calls.filter(
+        ([message]) => typeof message === 'string' && message.includes('platform_type mercari migration complete'),
+      );
+      expect(rebuildLogCallsRun2, 'run 2 must not re-execute the rebuild').toHaveLength(0);
+      const afterRun2 = await snapshot();
+      expect(afterRun2, 'run 2 must leave every row exactly as run 1 left it').toEqual(afterRun1);
+
+      // Run 3: proves the no-op guard holds beyond just "one more run" — a
+      // guard keyed on transient state (rather than the enum's real
+      // contents) could pass run 2 and still misfire on run 3.
+      logSpy.mockClear();
+      await expect(runMigrations(connection)).resolves.toBeUndefined();
+      const rebuildLogCallsRun3 = logSpy.mock.calls.filter(
+        ([message]) => typeof message === 'string' && message.includes('platform_type mercari migration complete'),
+      );
+      expect(rebuildLogCallsRun3, 'run 3 must still not re-execute the rebuild').toHaveLength(0);
+      logSpy.mockRestore();
+      const afterRun3 = await snapshot();
+      expect(afterRun3, 'run 3 must leave every row exactly as run 2 left it').toEqual(afterRun2);
+
+      connection.closeSync();
+      instance.closeSync();
+    } finally {
+      await rm(upgradeDir, { recursive: true, force: true });
+    }
+  }, 30000);
+});
+
