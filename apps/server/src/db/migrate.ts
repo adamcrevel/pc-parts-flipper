@@ -22,6 +22,7 @@ export async function runMigrations(connection: DuckDBConnection): Promise<void>
   }
   await migrateExpectedPartsNullablePrice(connection);
   await migratePlatformTypeAddMercari(connection);
+  await migrateListingStatusAddRemoved(connection);
   for (const statement of INDEX_STATEMENTS) {
     await connection.run(statement);
   }
@@ -363,4 +364,124 @@ async function migratePlatformTypeAddMercari(connection: DuckDBConnection): Prom
   }
 
   console.log('[db] platform_type mercari migration complete');
+}
+
+/**
+ * One-off structural migration: adds 'removed' to the listing_status enum
+ * (Requirement 1) using the exact same technique as
+ * migratePlatformTypeAddMercari above — DuckDB has no
+ * `ALTER TYPE ... ADD VALUE` statement at all, so the enum can only grow by
+ * dropping and recreating it, which first requires dropping every table
+ * that depends on it (directly or transitively via FOREIGN KEY) and
+ * recreating them from schema.ts's own statements afterward.
+ *
+ * listing_status is used by exactly one column, listings.status — but
+ * dropping `listings` itself still requires first dropping every table
+ * that references it, directly (expected_parts, purchases,
+ * identify_parts_jobs, part_reference_photos) or transitively
+ * (teardown_results references purchases and expected_parts, parts
+ * references purchases, sale_listings and sales both reference parts).
+ * `sources` (listings' own parent, unaffected since nothing about it is
+ * listing_status-typed) and the four tables with no FK path to listings at
+ * all (part_price_cache, price_parts_jobs,
+ * part_reference_sourcing_attempts, part_catalog_sourcing_attempts) are
+ * left untouched — a narrower subtree than migratePlatformTypeAddMercari's
+ * own rebuild, which also had to touch sources/sale_listings because
+ * platform_type is used by columns on both of those.
+ *
+ * Runs after migratePlatformTypeAddMercari (so a database needing both
+ * migrations does the platform_type rebuild first, then this one against
+ * the now-current schema) and before INDEX_STATEMENTS, same ordering
+ * rationale as that function.
+ */
+async function migrateListingStatusAddRemoved(connection: DuckDBConnection): Promise<void> {
+  const reader = await connection.runAndReadAll(
+    `SELECT list_contains(enum_range(NULL::listing_status), 'removed') AS has_removed`,
+  );
+  const rows = reader.getRowObjectsJson() as { has_removed: boolean }[];
+  if (rows.length > 0 && rows[0].has_removed) {
+    return;
+  }
+
+  console.log('[db] migrating listing_status enum to add removed (one-time rebuild of listings and its FK subtree)');
+
+  // Clears any phantom FOREIGN KEY catalog entry left behind by an earlier
+  // rebuild (e.g. migrateExpectedPartsNullablePrice's own RENAME dance, or
+  // migratePlatformTypeAddMercari's own DROP/ATTACH dance if it already ran)
+  // before this function's own DROP TABLE sequence below can run into it.
+  // See rebuildCorruptedCatalog's own doc comment above.
+  await rebuildCorruptedCatalog(connection);
+
+  // Backup: nothing is dropped yet, so order doesn't matter here — only
+  // listings.status is listing_status-typed.
+  await connection.run(`CREATE TABLE listings_status_backup AS SELECT * EXCLUDE (status), status::VARCHAR AS status FROM listings`);
+  await connection.run(`CREATE TABLE part_reference_photos_status_backup AS SELECT * FROM part_reference_photos`);
+  await connection.run(`CREATE TABLE expected_parts_status_backup AS SELECT * FROM expected_parts`);
+  await connection.run(`CREATE TABLE purchases_status_backup AS SELECT * FROM purchases`);
+  await connection.run(`CREATE TABLE teardown_results_status_backup AS SELECT * FROM teardown_results`);
+  await connection.run(`CREATE TABLE parts_status_backup AS SELECT * FROM parts`);
+  await connection.run(`CREATE TABLE sale_listings_status_backup AS SELECT * FROM sale_listings`);
+  await connection.run(`CREATE TABLE sales_status_backup AS SELECT * FROM sales`);
+  await connection.run(`CREATE TABLE identify_parts_jobs_status_backup AS SELECT * FROM identify_parts_jobs`);
+
+  // Drop children before the parent they reference via FOREIGN KEY, ending
+  // with the old listing_status type itself (now unreferenced by any
+  // column). sources and the four tables with no FK path to listings are
+  // left in place.
+  for (const table of [
+    'sales',
+    'sale_listings',
+    'teardown_results',
+    'identify_parts_jobs',
+    'part_reference_photos',
+    'parts',
+    'expected_parts',
+    'purchases',
+    'listings',
+  ]) {
+    await connection.run(`DROP TABLE ${table}`);
+  }
+  await connection.run(`DROP TYPE listing_status`);
+
+  // Recreate everything via this file's own single source of truth. The
+  // TABLE_STATEMENTS/ALTER_STATEMENTS entries for tables never dropped
+  // above (sources, part_price_cache, price_parts_jobs,
+  // part_reference_sourcing_attempts, part_catalog_sourcing_attempts) are
+  // IF NOT EXISTS/ADD COLUMN IF NOT EXISTS no-ops.
+  await connection.run(ENUM_STATEMENTS[1]);
+  for (const statement of TABLE_STATEMENTS) {
+    await connection.run(statement);
+  }
+  for (const statement of ALTER_STATEMENTS) {
+    await connection.run(statement);
+  }
+  await migrateExpectedPartsNullablePrice(connection);
+
+  // Restore data, parents before children.
+  await connection.run(`INSERT INTO listings BY NAME SELECT * EXCLUDE (status), status::listing_status AS status FROM listings_status_backup`);
+  await connection.run(`INSERT INTO part_reference_photos BY NAME SELECT * FROM part_reference_photos_status_backup`);
+  await connection.run(`INSERT INTO expected_parts BY NAME SELECT * FROM expected_parts_status_backup`);
+  await connection.run(`INSERT INTO purchases BY NAME SELECT * FROM purchases_status_backup`);
+  await connection.run(`INSERT INTO teardown_results BY NAME SELECT * FROM teardown_results_status_backup`);
+  await connection.run(`INSERT INTO parts BY NAME SELECT * FROM parts_status_backup`);
+  await connection.run(`INSERT INTO sale_listings BY NAME SELECT * FROM sale_listings_status_backup`);
+  await connection.run(`INSERT INTO sales BY NAME SELECT * FROM sales_status_backup`);
+  await connection.run(`INSERT INTO identify_parts_jobs BY NAME SELECT * FROM identify_parts_jobs_status_backup`);
+
+  // Drop the nine holding tables now that every row has been restored.
+  for (const table of [
+    'listings_status_backup',
+    'part_reference_photos_status_backup',
+    'expected_parts_status_backup',
+    'purchases_status_backup',
+    'teardown_results_status_backup',
+    'parts_status_backup',
+    'sale_listings_status_backup',
+    'sales_status_backup',
+    'identify_parts_jobs_status_backup',
+  ]) {
+    await connection.run(`DROP TABLE ${table}`);
+  }
+
+  console.log('[db] listing_status removed migration complete');
 }

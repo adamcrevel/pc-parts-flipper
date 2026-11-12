@@ -14,7 +14,10 @@ export const ENUM_STATEMENTS: readonly string[] = [
   // migratePlatformTypeAddMercari for how an already-existing database
   // (where this CREATE TYPE is a no-op) picks the value up too.
   `CREATE TYPE IF NOT EXISTS platform_type AS ENUM ('ebay', 'facebook_marketplace', 'other', 'mercari')`,
-  `CREATE TYPE IF NOT EXISTS listing_status AS ENUM ('open', 'accepted', 'rejected')`,
+  // 'removed' added by the stale-listing-detection feature; see migrate.ts's
+  // migrateListingStatusAddRemoved for how an already-existing database
+  // (where this CREATE TYPE is a no-op) picks the value up too.
+  `CREATE TYPE IF NOT EXISTS listing_status AS ENUM ('open', 'accepted', 'rejected', 'removed')`,
   `CREATE TYPE IF NOT EXISTS purchase_status AS ENUM ('ordered', 'shipped', 'received', 'torn_down', 'closed')`,
   `CREATE TYPE IF NOT EXISTS component_category AS ENUM
     ('CPU', 'GPU', 'Motherboard', 'RAM', 'Storage', 'PSU', 'Case', 'Cooler', 'Other')`,
@@ -313,6 +316,14 @@ export const ALTER_STATEMENTS: readonly string[] = [
   `ALTER TABLE identify_parts_jobs ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMP`,
   `ALTER TABLE price_parts_jobs ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0`,
   `ALTER TABLE price_parts_jobs ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMP`,
+  // stale-listing-detection feature (Req 1): why a 'removed'-status Listing
+  // is gone (sold vs. simply no longer listed) and when the scan pipeline's
+  // per-item recheck last set it. Both nullable with no default — every
+  // existing and newly-created Listing starts with both null until the scan
+  // pipeline's guarded write (apps/server/src/db/queries/listings.ts's
+  // transitionListingMarketplaceStatus) sets or clears them.
+  `ALTER TABLE listings ADD COLUMN IF NOT EXISTS marketplace_status VARCHAR`,
+  `ALTER TABLE listings ADD COLUMN IF NOT EXISTS marketplace_status_detected_at TIMESTAMP`,
 ];
 
 // -- Phase 4: indexes ------------------------------------------------------

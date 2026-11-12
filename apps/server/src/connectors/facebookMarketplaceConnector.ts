@@ -13,6 +13,8 @@
 //                                     and the expired-session guard
 //   - facebookMarketplaceListing.ts — search URL + JSON response parsing
 //   - facebookMarketplaceDom.ts     — DOM fallback + description scraping
+//   - facebookMarketplaceStatus.ts  — per-item live-status classification
+//   - facebookMarketplaceStatusDom.ts — per-item live-status page reading
 //
 // *** THIS IS THE CONNECTOR MOST LIKELY TO NEED REWORK. *** No real,
 // dedicated Facebook account/session file is available in this sandbox, so
@@ -35,7 +37,9 @@ import {
   createAuthenticatedContext,
   ensureSessionFileExists,
 } from './facebookMarketplaceSession.js';
-import type { CandidateListing, DescriptionFetcher, MarketplaceConnector } from './types.js';
+import { assertListingPageAuthenticated, classifyListingPageSignals } from './facebookMarketplaceStatus.js';
+import { collectListingPageSignals } from './facebookMarketplaceStatusDom.js';
+import type { CandidateListing, DescriptionFetcher, ListingLiveStatus, MarketplaceConnector, StatusChecker } from './types.js';
 
 const LISTING_URL_BASE = 'https://www.facebook.com/marketplace/item/';
 
@@ -146,6 +150,52 @@ function createDescriptionFetcher(): DescriptionFetcher {
   };
 }
 
+/**
+ * Builds a StatusChecker that visits one listing's own detail page in a
+ * short-lived authenticated context — the same per-call browser lifecycle
+ * createDescriptionFetcher above uses, and for the same reason: nothing in
+ * the connector contract says "this scan pass is over", so a browser held
+ * open across calls would leak a Chromium process. The page's own signals
+ * are read and classified by facebookMarketplaceStatus.ts.
+ *
+ * *** THIS RECHECK IS BEST-EFFORT AND UNCONFIRMED. *** No real, dedicated
+ * Facebook account/session file exists in this sandbox, so neither the
+ * sold pill selector nor the "no longer available" text this leans on has
+ * ever been seen against a live logged-in listing page — they are
+ * best-evidenced guesses, exactly like the search/description selectors
+ * facebookMarketplaceListing.ts and facebookMarketplaceDom.ts already flag
+ * in their own top comments. Treat its `sold`/`removed` answers as less
+ * reliable than eBay's or Mercari's, which were confirmed live.
+ *
+ * Unlike the description fetcher, a failure here is **thrown, never
+ * swallowed into a status**: a missing/expired session, a refused
+ * navigation or a browser launch failure says nothing about the item, and
+ * resolving any ListingLiveStatus from one would hand the scan service a
+ * confident answer it would act on — retiring a perfectly live Listing.
+ * An unrecognized but healthy page resolves 'active' for the same reason.
+ */
+function createStatusChecker(): StatusChecker {
+  return async (externalItemId: string): Promise<ListingLiveStatus> => {
+    await ensureSessionFileExists();
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const context = await createAuthenticatedContext(browser);
+      try {
+        const page = await context.newPage();
+        const navigation = await page.goto(`${LISTING_URL_BASE}${encodeURIComponent(externalItemId)}/`, { waitUntil: 'networkidle' });
+        await assertListingPageAuthenticated(page, navigation ?? null);
+        const status = classifyListingPageSignals(await collectListingPageSignals(page, navigation ?? null));
+        logger.info({ externalItemId, status }, 'Checked Facebook Marketplace item live status');
+        return status;
+      } finally {
+        await context.close();
+      }
+    } finally {
+      await browser.close();
+    }
+  };
+}
+
 // The Facebook Marketplace MarketplaceConnector instance. Not registered in
 // registry.ts yet — a later task (not T8) wires platformType
 // 'facebook_marketplace' to this.
@@ -153,4 +203,5 @@ export const facebookMarketplaceConnector: MarketplaceConnector = {
   platformType: 'facebook_marketplace',
   search,
   createDescriptionFetcher,
+  createStatusChecker,
 };

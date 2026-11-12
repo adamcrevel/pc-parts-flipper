@@ -3,7 +3,7 @@ import type { DuckDBValue } from '@duckdb/node-api';
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
 import { buildSetClause, toNumber } from '../sqlHelpers.js';
-import type { Listing, ListingStatus } from '@pc-parts-flipper/shared';
+import type { Listing, ListingStatus, MarketplaceListingStatus } from '@pc-parts-flipper/shared';
 
 /** Fields the caller supplies when creating a Listing; id/status/timestamps are server-assigned. */
 export interface CreateListingInput {
@@ -33,6 +33,10 @@ export interface UpdateListingInput {
   status?: ListingStatus;
   acquisitionFees?: number;
   photoPaths?: string[];
+  /** Why a `'removed'`-status Listing is gone, or null to clear it (Req 1). Only ever written by the scan pipeline's guarded transitions below, never by the public request body (listingValidation.ts has no field for this). */
+  marketplaceStatus?: MarketplaceListingStatus | null;
+  /** When `marketplaceStatus` was last set, or null to clear it (Req 1). Only ever written by the scan pipeline's guarded transitions below. */
+  marketplaceStatusDetectedAt?: string | null;
 }
 
 /** Filter/pagination options for the Listings queue screen (Req 12, 15). */
@@ -61,6 +65,8 @@ function mapRow(row: Record<string, unknown>): Listing {
     externalSource: row.external_source as string | null,
     externalItemId: row.external_item_id as string | null,
     nonWorking: row.non_working as boolean,
+    marketplaceStatus: row.marketplace_status as MarketplaceListingStatus | null,
+    marketplaceStatusDetectedAt: row.marketplace_status_detected_at as string | null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -232,6 +238,38 @@ export async function transitionOpenListing(id: string, status: ListingStatus): 
 }
 
 /**
+ * Atomically transitions a Listing from `fromStatus` to `toStatus`, setting
+ * `marketplaceStatus`/`marketplaceStatusDetectedAt` in that same guarded
+ * write (Req 3, 4) — the scan pipeline's per-item recheck calls this in
+ * both directions: `open` -> `removed` once a direct recheck confirms a
+ * Listing is genuinely gone (`marketplaceStatus` set to the recheck's
+ * result, `marketplaceStatusDetectedAt` to the detection time), and
+ * `removed` -> `open` when a later scan finds the same `externalItemId`
+ * again (`marketplaceStatus`/`marketplaceStatusDetectedAt` both passed as
+ * `null` to clear them). Uses the exact same CAS guard as
+ * `transitionOpenListing` above — the UPDATE's WHERE clause is guarded on
+ * `status = $fromStatus`, so a concurrent user Accept/Reject request and
+ * this scan-driven transition can never both win: whichever write actually
+ * flips the row (DuckDB's reported `Count` > 0) is the sole winner, the
+ * loser sees `Count = 0` and must not proceed.
+ */
+export async function transitionListingMarketplaceStatus(
+  id: string,
+  fromStatus: ListingStatus,
+  toStatus: ListingStatus,
+  marketplaceStatus: MarketplaceListingStatus | null,
+  marketplaceStatusDetectedAt: string | null,
+): Promise<boolean> {
+  const connection = await getConnection();
+  const reader = await connection.runAndReadAll(
+    `UPDATE listings SET status = $toStatus, marketplace_status = $marketplaceStatus, marketplace_status_detected_at = $marketplaceStatusDetectedAt WHERE id = $id AND status = $fromStatus`,
+    { toStatus, marketplaceStatus, marketplaceStatusDetectedAt, id, fromStatus },
+  );
+  const [{ Count: rowsAffected }] = reader.getRowObjectsJson() as Array<{ Count: string }>;
+  return Number(rowsAffected) > 0;
+}
+
+/**
  * Applies a partial edit to a Listing, including status transitions (Req 4).
  * Runs the UPDATE without `RETURNING` and re-fetches by id instead: DuckDB
  * rejects `UPDATE ... RETURNING` on a row another table's FOREIGN KEY
@@ -252,6 +290,8 @@ export async function updateListing(
     status: patch.status,
     acquisition_fees: patch.acquisitionFees,
     photo_paths: patch.photoPaths !== undefined ? JSON.stringify(patch.photoPaths) : undefined,
+    marketplace_status: patch.marketplaceStatus,
+    marketplace_status_detected_at: patch.marketplaceStatusDetectedAt,
   });
   await connection.run(`UPDATE listings SET ${setSql} WHERE id = $id`, { ...params, id });
   return getListingById(id);

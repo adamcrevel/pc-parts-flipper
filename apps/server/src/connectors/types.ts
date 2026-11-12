@@ -45,6 +45,18 @@ export interface CandidateListing {
 export type DescriptionFetcher = (externalItemId: string) => Promise<string | null>;
 
 /**
+ * The three states a marketplace can report for a previously-seen listing:
+ * still for sale, sold, or removed/deleted by the seller or platform.
+ */
+export type ListingLiveStatus = 'active' | 'sold' | 'removed';
+
+/**
+ * Checks one marketplace item's current live status, given that platform's
+ * own external item id.
+ */
+export type StatusChecker = (externalItemId: string) => Promise<ListingLiveStatus>;
+
+/**
  * A single marketplace's automated-scan implementation. `platformType`
  * identifies which Source.platformType this connector serves (used as the
  * registry key in registry.ts); `search` takes that Source's parsed
@@ -68,4 +80,18 @@ export interface MarketplaceConnector {
    * `platformType`.
    */
   createDescriptionFetcher?(): DescriptionFetcher;
+  /**
+   * Optional hook a connector implements when its platform can supply a
+   * per-item live-status recheck beyond what `search` returns. The scan
+   * service calls this at most once per scan pass and reuses the returned
+   * function for every missing-candidate lookup in that pass, so a
+   * connector can set up a shared, lazily-created resource (an OAuth
+   * token, a browser session) inside the returned closure and pay for it
+   * only on a scan that actually needs a recheck.
+   *
+   * Omitting it means "this platform has no per-item status recheck" — a
+   * later scan-service task then skips the recheck entirely rather than
+   * branching on `platformType`.
+   */
+  createStatusChecker?(): StatusChecker;
 }

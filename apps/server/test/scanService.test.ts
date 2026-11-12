@@ -7,9 +7,9 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CandidateListing, MarketplaceConnector } from '../src/connectors/types.js';
+import type { CandidateListing, ListingLiveStatus, MarketplaceConnector } from '../src/connectors/types.js';
 import type * as DbModule from '../src/db/index.js';
-import type { Source } from '../src/db/index.js';
+import type { PlatformType, Source } from '../src/db/index.js';
 import type { AppError as AppErrorClass } from '../src/error-handler.js';
 import { logger } from '../src/logger.js';
 import type * as ScanServiceModule from '../src/scan/scanService.js';
@@ -659,5 +659,355 @@ describe('scanAllEligibleSources', () => {
     );
 
     errorSpy.mockRestore();
+  });
+});
+
+// Stale-listing reconciliation (Req 3, 4, 5): after importing, a scan pass
+// rechecks every still-open Listing on the Source the connector no longer
+// returned, and restores any removed Listing that reappeared. Every checker
+// here is in-memory — no real per-item marketplace call is ever made.
+describe('scanSourceWithConnector stale-listing reconciliation', () => {
+  // A fake connector that implements createStatusChecker, recording every
+  // externalItemId the built checker was called with (so "called once for
+  // exactly the missing rows" and "never called at all" are both directly
+  // observable) and how many times the hook itself was built (so
+  // build-once-per-pass is distinguishable from build-per-row).
+  function connectorWithStatusChecker(
+    candidates: CandidateListing[],
+    check: (externalItemId: string) => Promise<ListingLiveStatus>,
+    platformType: PlatformType = 'ebay',
+  ): { connector: MarketplaceConnector; calls: string[]; buildCount: () => number } {
+    const calls: string[] = [];
+    let buildCount = 0;
+    return {
+      calls,
+      buildCount: () => buildCount,
+      connector: {
+        platformType,
+        search: async () => candidates,
+        createStatusChecker: () => {
+          buildCount += 1;
+          return async (externalItemId: string) => {
+            calls.push(externalItemId);
+            return check(externalItemId);
+          };
+        },
+      },
+    };
+  }
+
+  // Re-reads the Source after a pass, since scanSourceWithConnector takes
+  // the Source row itself and each pass writes scan stats onto it.
+  async function refetch(sourceId: string): Promise<Source> {
+    const source = await db.getSourceById(sourceId);
+    expect(source).not.toBeNull();
+    return source!;
+  }
+
+  // DuckDB stores marketplace_status_detected_at as a naive TIMESTAMP, so
+  // the string read back may have lost the UTC designator scanService
+  // wrote. Production always writes `new Date().toISOString()`, i.e. UTC,
+  // so a value with no explicit zone is UTC and must be parsed as such —
+  // without this, a test machine on any non-UTC zone (this one runs on
+  // PST) would shift it by its own offset and compare nonsense.
+  function parseDetectedAt(raw: string): Date {
+    const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/.test(raw) ? raw : `${raw.replace(' ', 'T')}Z`;
+    const parsed = new Date(normalized);
+    expect(Number.isNaN(parsed.getTime()), `marketplaceStatusDetectedAt must parse, got ${raw}`).toBe(false);
+    return parsed;
+  }
+
+  it('transitions a missing open Listing to removed, recording marketplaceStatus removed and a detection time', async () => {
+    const source = await createScannableSource('Stale Source Removed');
+    const first = await scanService.scanSourceWithConnector(source, fakeConnector([candidate('gone-item'), candidate('kept-item')]));
+    expect(first).toEqual({ foundCount: 2, newCount: 2 });
+
+    const spy = connectorWithStatusChecker([candidate('kept-item')], async () => 'removed');
+    const result = await scanService.scanSourceWithConnector(await refetch(source.id), spy.connector);
+    expect(result).toEqual({ foundCount: 1, newCount: 0 });
+
+    // Only the row absent from this pass is rechecked — the one the
+    // connector still returned costs no per-item call at all — and the hook
+    // was built exactly once for the whole pass.
+    expect(spy.calls).toEqual(['gone-item']);
+    expect(spy.buildCount()).toBe(1);
+
+    const gone = await db.findListingByExternalId(source.id, 'gone-item');
+    expect(gone!.status).toBe('removed');
+    expect(gone!.marketplaceStatus).toBe('removed');
+    expect(gone!.marketplaceStatusDetectedAt).not.toBeNull();
+    expect(Number.isNaN(Date.parse(gone!.marketplaceStatusDetectedAt!))).toBe(false);
+
+    const kept = await db.findListingByExternalId(source.id, 'kept-item');
+    expect(kept!.status).toBe('open');
+    expect(kept!.marketplaceStatus).toBeNull();
+    expect(kept!.marketplaceStatusDetectedAt).toBeNull();
+  });
+
+  it('builds the status checker exactly once for a pass with several missing Listings, not once per missing row', async () => {
+    const source = await createScannableSource('Stale Source Shared Checker');
+    const seeded = [candidate('multi-gone-1'), candidate('multi-gone-2'), candidate('multi-gone-3'), candidate('multi-kept')];
+    expect(await scanService.scanSourceWithConnector(source, fakeConnector(seeded))).toEqual({ foundCount: 4, newCount: 4 });
+
+    const spy = connectorWithStatusChecker([candidate('multi-kept')], async () => 'removed');
+    await scanService.scanSourceWithConnector(await refetch(source.id), spy.connector);
+
+    // Three separate rows were each individually rechecked through the one
+    // checker this pass built. With a single missing row "built once per
+    // pass" and "built once per row" produce the identical count of 1, so
+    // only a pass with several missing rows can tell them apart.
+    expect([...spy.calls].sort()).toEqual(['multi-gone-1', 'multi-gone-2', 'multi-gone-3']);
+    expect(spy.buildCount()).toBe(1);
+  });
+
+  it('stamps marketplaceStatusDetectedAt with the wall-clock time of the pass that detected the removal', async () => {
+    const source = await createScannableSource('Stale Source Detection Time');
+    await scanService.scanSourceWithConnector(source, fakeConnector([candidate('timed-item')]));
+
+    const spy = connectorWithStatusChecker([], async () => 'removed');
+    // Bracket the pass: any stamp from outside this window — a hardcoded
+    // constant, the Listing's own created_at, the earlier import pass's
+    // time — falls outside it and fails, which "not null and parseable"
+    // never would.
+    const beforeCall = new Date();
+    await scanService.scanSourceWithConnector(await refetch(source.id), spy.connector);
+    const afterCall = new Date();
+
+    const listing = await db.findListingByExternalId(source.id, 'timed-item');
+    expect(listing!.marketplaceStatusDetectedAt).not.toBeNull();
+    const detectedAt = parseDetectedAt(listing!.marketplaceStatusDetectedAt!);
+    expect(detectedAt.getTime()).toBeGreaterThanOrEqual(beforeCall.getTime());
+    expect(detectedAt.getTime()).toBeLessThanOrEqual(afterCall.getTime());
+  });
+
+  it('records marketplaceStatus sold when a missing open Listing\'s recheck resolves sold', async () => {
+    const source = await createScannableSource('Stale Source Sold');
+    await scanService.scanSourceWithConnector(source, fakeConnector([candidate('sold-item')]));
+
+    const spy = connectorWithStatusChecker([], async () => 'sold');
+    await scanService.scanSourceWithConnector(await refetch(source.id), spy.connector);
+
+    expect(spy.calls).toEqual(['sold-item']);
+    const listing = await db.findListingByExternalId(source.id, 'sold-item');
+    // Same terminal workflow status as a delisted item, but the separate
+    // marketplaceStatus field is what carries *why* (sold vs. delisted).
+    expect(listing!.status).toBe('removed');
+    expect(listing!.marketplaceStatus).toBe('sold');
+    expect(listing!.marketplaceStatusDetectedAt).not.toBeNull();
+  });
+
+  it('writes nothing when a missing open Listing\'s recheck resolves active (false-positive guard)', async () => {
+    const source = await createScannableSource('Stale Source Active');
+    await scanService.scanSourceWithConnector(source, fakeConnector([candidate('still-live-item')]));
+
+    const spy = connectorWithStatusChecker([], async () => 'active');
+    await scanService.scanSourceWithConnector(await refetch(source.id), spy.connector);
+
+    // The recheck did run — absence alone is what triggers it — but an
+    // `active` answer must leave the Listing completely untouched.
+    expect(spy.calls).toEqual(['still-live-item']);
+    const listing = await db.findListingByExternalId(source.id, 'still-live-item');
+    expect(listing!.status).toBe('open');
+    expect(listing!.marketplaceStatus).toBeNull();
+    expect(listing!.marketplaceStatusDetectedAt).toBeNull();
+  });
+
+  it('skips a missing open Listing entirely when the connector has no createStatusChecker', async () => {
+    const source = await createScannableSource('Stale Source No Checker');
+    await scanService.scanSourceWithConnector(source, fakeConnector([candidate('unchecked-item')]));
+
+    const connector = fakeConnector([]);
+    // The whole point of this case: no hook at all means no per-item
+    // recheck exists for this platform, so nothing may be inferred from the
+    // row's absence.
+    expect(connector.createStatusChecker).toBeUndefined();
+    const result = await scanService.scanSourceWithConnector(await refetch(source.id), connector);
+    expect(result).toEqual({ foundCount: 0, newCount: 0 });
+
+    const listing = await db.findListingByExternalId(source.id, 'unchecked-item');
+    expect(listing!.status).toBe('open');
+    expect(listing!.marketplaceStatus).toBeNull();
+    expect(listing!.marketplaceStatusDetectedAt).toBeNull();
+  });
+
+  it('never re-checks a Listing that is already removed and still missing (one recheck per transition)', async () => {
+    const source = await createScannableSource('Stale Source Bounded Recheck');
+    await scanService.scanSourceWithConnector(source, fakeConnector([candidate('stays-gone-item')]));
+
+    const removalSpy = connectorWithStatusChecker([], async () => 'removed');
+    await scanService.scanSourceWithConnector(await refetch(source.id), removalSpy.connector);
+    expect(removalSpy.calls).toEqual(['stays-gone-item']);
+    const afterRemoval = await db.findListingByExternalId(source.id, 'stays-gone-item');
+    expect(afterRemoval!.marketplaceStatusDetectedAt).not.toBeNull();
+
+    // Same situation as the pass before — still absent from the results,
+    // connector still offering a checker — but the row is `removed` now, so
+    // its per-item network cost is already paid and must not recur. Two
+    // consecutive further passes, not one: "rechecked every pass from now
+    // on" and "rechecked once more, then never again" are different bugs
+    // with the same first-pass symptom, and only a second still-missing
+    // pass tells them apart.
+    const laterSpy = connectorWithStatusChecker([], async () => 'removed');
+    await scanService.scanSourceWithConnector(await refetch(source.id), laterSpy.connector);
+    expect(laterSpy.calls).toEqual([]);
+
+    const evenLaterSpy = connectorWithStatusChecker([], async () => 'removed');
+    await scanService.scanSourceWithConnector(await refetch(source.id), evenLaterSpy.connector);
+    expect(evenLaterSpy.calls).toEqual([]);
+
+    const listing = await db.findListingByExternalId(source.id, 'stays-gone-item');
+    expect(listing!.status).toBe('removed');
+    expect(listing!.marketplaceStatus).toBe('removed');
+    // Nothing was rewritten either: the detection time still names the pass
+    // that actually confirmed the removal, not the latest pass to run.
+    expect(listing!.marketplaceStatusDetectedAt).toBe(afterRemoval!.marketplaceStatusDetectedAt);
+  });
+
+  it('never rechecks a Listing imported from a different platform than the connector being scanned', async () => {
+    const source = await createScannableSource('Stale Source Other Platform');
+    // Same Source, but this row was imported by a different platform's
+    // connector, so its externalSource is 'mercari'. An eBay pass that does
+    // not return it says nothing whatsoever about a Mercari item's liveness,
+    // and eBay's own checker could not look it up even if it tried.
+    const mercariConnector: MarketplaceConnector = {
+      platformType: 'mercari',
+      search: async () => [candidate('mercari-only-item')],
+    };
+    await scanService.scanSourceWithConnector(source, mercariConnector);
+    expect((await db.findListingByExternalId(source.id, 'mercari-only-item'))!.externalSource).toBe('mercari');
+
+    const spy = connectorWithStatusChecker([], async () => 'removed');
+    await scanService.scanSourceWithConnector(await refetch(source.id), spy.connector);
+
+    // Not checked, and the checker was never even built: this row is not a
+    // missing candidate for the platform being scanned at all.
+    expect(spy.calls).toEqual([]);
+    expect(spy.buildCount()).toBe(0);
+    const listing = await db.findListingByExternalId(source.id, 'mercari-only-item');
+    expect(listing!.status).toBe('open');
+    expect(listing!.marketplaceStatus).toBeNull();
+    expect(listing!.marketplaceStatusDetectedAt).toBeNull();
+  });
+
+  it('restores a removed Listing to open when it reappears, clearing both marketplace fields without any recheck call', async () => {
+    const source = await createScannableSource('Stale Source Reappearing');
+    await scanService.scanSourceWithConnector(source, fakeConnector([candidate('comeback-item')]));
+
+    const removalSpy = connectorWithStatusChecker([], async () => 'removed');
+    await scanService.scanSourceWithConnector(await refetch(source.id), removalSpy.connector);
+    const removed = await db.findListingByExternalId(source.id, 'comeback-item');
+    expect(removed!.status).toBe('removed');
+    expect(removed!.marketplaceStatus).toBe('removed');
+
+    // Same connector shape as the removal pass (status checker present), so
+    // zero calls here is a real "never consulted", not "had nothing to call".
+    const returnSpy = connectorWithStatusChecker([candidate('comeback-item')], async () => 'removed');
+    const result = await scanService.scanSourceWithConnector(await refetch(source.id), returnSpy.connector);
+    // It is already imported, so reappearing is a restore, not a new import.
+    expect(result).toEqual({ foundCount: 1, newCount: 0 });
+    expect(returnSpy.calls).toEqual([]);
+
+    const restored = await db.findListingByExternalId(source.id, 'comeback-item');
+    expect(restored!.status).toBe('open');
+    expect(restored!.marketplaceStatus).toBeNull();
+    expect(restored!.marketplaceStatusDetectedAt).toBeNull();
+  });
+
+  it('never restores a removed Listing imported from a different platform, even when the scanned connector returns that same externalItemId', async () => {
+    const source = await createScannableSource('Stale Source Cross Platform Reappearance');
+    // Seed the row through a Mercari pass so its externalSource is
+    // 'mercari', then let Mercari's own recheck mark it removed.
+    const mercariImport = connectorWithStatusChecker([candidate('shared-item-id')], async () => 'removed', 'mercari');
+    expect(await scanService.scanSourceWithConnector(source, mercariImport.connector)).toEqual({ foundCount: 1, newCount: 1 });
+    const mercariRemoval = connectorWithStatusChecker([], async () => 'removed', 'mercari');
+    await scanService.scanSourceWithConnector(await refetch(source.id), mercariRemoval.connector);
+
+    const removed = await db.findListingByExternalId(source.id, 'shared-item-id');
+    expect(removed!.externalSource).toBe('mercari');
+    expect(removed!.status).toBe('removed');
+    expect(removed!.marketplaceStatus).toBe('removed');
+    const detectedAt = removed!.marketplaceStatusDetectedAt;
+    expect(detectedAt).not.toBeNull();
+
+    // Now an eBay pass returns an item carrying the very same
+    // externalItemId. Item ids are only unique within a platform, so this
+    // is eBay's item, not Mercari's reappearing: the Mercari row must not
+    // be resurrected by it.
+    const ebaySpy = connectorWithStatusChecker([candidate('shared-item-id')], async () => 'removed');
+    expect(await scanService.scanSourceWithConnector(await refetch(source.id), ebaySpy.connector)).toEqual({ foundCount: 1, newCount: 0 });
+
+    const untouched = await db.findListingByExternalId(source.id, 'shared-item-id');
+    expect(untouched!.externalSource).toBe('mercari');
+    expect(untouched!.status).toBe('removed');
+    expect(untouched!.marketplaceStatus).toBe('removed');
+    // Not even rewritten with the same values: the restore skipped it
+    // entirely rather than clearing and re-setting the fields.
+    expect(untouched!.marketplaceStatusDetectedAt).toBe(detectedAt);
+  });
+
+  it('logs and continues the rest of the pass when one Listing\'s recheck throws', async () => {
+    const source = await createScannableSource('Stale Source Checker Failure');
+    // The failing row carries a later listingDate so listListings's
+    // `listing_date DESC` ordering puts it first — making "the rest of the
+    // pass still ran" the thing this test actually proves, rather than
+    // depending on which row happened to be processed first.
+    const throwing = { ...candidate('throwing-item'), listingDate: '2026-02-01' };
+    await scanService.scanSourceWithConnector(source, fakeConnector([throwing, candidate('second-gone-item')]));
+
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+    const spy = connectorWithStatusChecker([candidate('brand-new-item')], async (externalItemId) => {
+      if (externalItemId === 'throwing-item') {
+        throw new Error('ECONNRESET');
+      }
+      return 'removed';
+    });
+
+    const result = await scanService.scanSourceWithConnector(await refetch(source.id), spy.connector);
+
+    // The pass finished: the new candidate imported, counts returned, and
+    // scan stats written — none of which happens if the throw propagates.
+    expect(result).toEqual({ foundCount: 1, newCount: 1 });
+    expect(await db.findListingByExternalId(source.id, 'brand-new-item')).not.toBeNull();
+    expect((await refetch(source.id)).lastScanFoundCount).toBe(1);
+
+    expect(spy.calls).toEqual(['throwing-item', 'second-gone-item']);
+    // The row whose recheck threw is left exactly as it was — a failed
+    // recheck never confirms anything.
+    const unchanged = await db.findListingByExternalId(source.id, 'throwing-item');
+    expect(unchanged!.status).toBe('open');
+    expect(unchanged!.marketplaceStatus).toBeNull();
+    // ...while the row rechecked after it still transitioned.
+    const after = await db.findListingByExternalId(source.id, 'second-gone-item');
+    expect(after!.status).toBe('removed');
+    expect(after!.marketplaceStatus).toBe('removed');
+
+    // Failure must be diagnosable, not silently swallowed.
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ externalItemId: 'throwing-item', err: expect.anything() }),
+      expect.stringContaining('Failed to recheck'),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('reconciles every row on the Source, not just the first page listListings returns by default', async () => {
+    const source = await createScannableSource('Stale Source Beyond One Page');
+    // listListings caps a page at 50 rows unless given an explicit limit, so
+    // 51 is the smallest count that tells "reads the whole Source" apart
+    // from "reads the default page".
+    const many = Array.from({ length: 51 }, (_, index) => candidate(`paged-item-${index}`));
+    expect(await scanService.scanSourceWithConnector(source, fakeConnector(many))).toEqual({ foundCount: 51, newCount: 51 });
+
+    const removalSpy = connectorWithStatusChecker([], async () => 'removed');
+    await scanService.scanSourceWithConnector(await refetch(source.id), removalSpy.connector);
+    expect(removalSpy.calls).toHaveLength(51);
+    expect(new Set(removalSpy.calls).size).toBe(51);
+    expect(await db.countListings({ sourceId: source.id, status: 'removed' })).toBe(51);
+
+    // Same for the reappearance side: every removed row is considered, not
+    // only a default-sized page of them.
+    const returnSpy = connectorWithStatusChecker(many, async () => 'removed');
+    await scanService.scanSourceWithConnector(await refetch(source.id), returnSpy.connector);
+    expect(returnSpy.calls).toEqual([]);
+    expect(await db.countListings({ sourceId: source.id, status: 'open' })).toBe(51);
   });
 });

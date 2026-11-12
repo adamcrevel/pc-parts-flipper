@@ -24,7 +24,7 @@ const VALID_AI_SOURCES: readonly AiPartSource[] = ['text', 'image', 'both'];
 // — still eligible for the route's auto-claim — while 'auto' and 'manual'
 // are both explicit claims the route stores verbatim.
 const VALID_PRICE_SOURCES: readonly ('auto' | 'manual')[] = ['auto', 'manual'];
-export const VALID_STATUSES: readonly ListingStatus[] = ['open', 'accepted', 'rejected'];
+export const VALID_STATUSES: readonly ListingStatus[] = ['open', 'accepted', 'rejected', 'removed'];
 // Two-state: 'working' is the default for any component not explicitly marked otherwise.
 const VALID_WORKING_STATUSES: readonly ('working' | 'non_working')[] = ['working', 'non_working'];
 // The accepted values of the two computed-column filters on GET

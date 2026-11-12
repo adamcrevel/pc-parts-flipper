@@ -8,7 +8,12 @@
 // ever made, and no real eBay credentials are required.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppError } from '../src/error-handler.js';
-import { createEbayItemDetailClient, formatEbayItemDetails } from '../src/connectors/ebayConnector.js';
+import {
+  classifyEbayItemStatus,
+  createEbayItemDetailClient,
+  ebayConnector,
+  formatEbayItemDetails,
+} from '../src/connectors/ebayConnector.js';
 import { getConnectorForPlatform } from '../src/connectors/registry.js';
 
 // Fixture token response, shaped like eBay's real OAuth2 client-credentials
@@ -520,6 +525,227 @@ describe('createEbayItemDetailClient', () => {
 
     const client = await createEbayItemDetailClient();
     await expect(client.fetchItemDescription('v1|1|0')).resolves.toBeNull();
+  });
+});
+
+// checkItemStatus / createStatusChecker (T3/T10, Req 6): eBay's Browse API
+// does NOT 404 for a sold or ended item -- observed live against the
+// production API during feature UAT, a gone item still answers HTTP 200
+// with real `estimatedAvailabilities[0]` and `itemEndDate` fields, so the
+// status is classified from that body (see checkItemStatus's own doc
+// comment and classifyEbayItemStatus in ebayConnector.ts). The fixtures
+// below are the four real shapes UAT observed across 166 production
+// listings, plus the 404 branch. These also prove a genuine failure
+// response rethrows rather than silently resolving to a status, the same
+// lesson this project already learned from the Mercari connector's own
+// auth-bypass bug (an unexpected failure response read as a mundane
+// outcome instead of a real failure).
+
+// Fixed dates either side of the real "now" so the itemEndDate comparison
+// is unambiguous no matter when this suite runs.
+const PAST_END_DATE = '2026-10-16T17:03:12.000Z';
+const FUTURE_END_DATE = '2099-01-01T00:00:00.000Z';
+
+// Item-detail body shaped like eBay's real `GET /buy/browse/v1/item/{id}`
+// response. `sold`/`quantity`/`endDate` are omitted from the body entirely
+// when not given, mirroring eBay leaving those fields out.
+function itemDetailFixture(fields: { status: string; quantity?: number; sold?: number; endDate?: string }) {
+  const availability: Record<string, unknown> = { estimatedAvailabilityStatus: fields.status };
+  if (fields.quantity !== undefined) availability.estimatedAvailableQuantity = fields.quantity;
+  if (fields.sold !== undefined) availability.estimatedSoldQuantity = fields.sold;
+  return {
+    itemId: 'v1|1|0',
+    title: 'Dell OptiPlex 7090 Desktop i7',
+    estimatedAvailabilities: [availability],
+    ...(fields.endDate === undefined ? {} : { itemEndDate: fields.endDate }),
+  };
+}
+
+describe('EbayItemDetailClient.checkItemStatus (T3/T10, Req 6)', () => {
+  let fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function checkStatusFor(body: unknown, httpStatus = 200) {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
+      }
+      return new Response(JSON.stringify(body), { status: httpStatus });
+    });
+    const client = await createEbayItemDetailClient();
+    return client.checkItemStatus('v1|1|0');
+  }
+
+  it('resolves \'sold\' for OUT_OF_STOCK + past itemEndDate + estimatedSoldQuantity > 0 (the common real sold shape, 118 of 166 in UAT)', async () => {
+    expect(await checkStatusFor(itemDetailFixture({ status: 'OUT_OF_STOCK', quantity: 0, sold: 1, endDate: PAST_END_DATE }))).toBe('sold');
+  });
+
+  it('resolves \'sold\' for OUT_OF_STOCK + no itemEndDate + quantity 0 + estimatedSoldQuantity > 0 (19 of 166 in UAT)', async () => {
+    expect(await checkStatusFor(itemDetailFixture({ status: 'OUT_OF_STOCK', quantity: 0, sold: 3 }))).toBe('sold');
+  });
+
+  it('resolves \'removed\' for OUT_OF_STOCK + past itemEndDate with estimatedSoldQuantity 0', async () => {
+    expect(await checkStatusFor(itemDetailFixture({ status: 'OUT_OF_STOCK', quantity: 0, sold: 0, endDate: PAST_END_DATE }))).toBe('removed');
+  });
+
+  it('resolves \'removed\' for OUT_OF_STOCK + past itemEndDate with estimatedSoldQuantity absent', async () => {
+    expect(await checkStatusFor(itemDetailFixture({ status: 'OUT_OF_STOCK', quantity: 0, endDate: PAST_END_DATE }))).toBe('removed');
+  });
+
+  it('resolves \'removed\' for IN_STOCK + past itemEndDate with estimatedSoldQuantity 0 (ended unsold, 6 of the 8 ended-IN_STOCK rows in UAT)', async () => {
+    expect(await checkStatusFor(itemDetailFixture({ status: 'IN_STOCK', quantity: 1, sold: 0, endDate: PAST_END_DATE }))).toBe('removed');
+  });
+
+  it('resolves \'sold\' for IN_STOCK + past itemEndDate with estimatedSoldQuantity > 0 (a multi-quantity listing that sold some, then ended -- the other 2 ended-IN_STOCK rows in UAT)', async () => {
+    expect(await checkStatusFor(itemDetailFixture({ status: 'IN_STOCK', quantity: 2, sold: 1, endDate: PAST_END_DATE }))).toBe('sold');
+  });
+
+  it('resolves \'active\' for IN_STOCK with a future itemEndDate (genuinely live, ~20 of 166 in UAT)', async () => {
+    expect(await checkStatusFor(itemDetailFixture({ status: 'IN_STOCK', quantity: 1, sold: 0, endDate: FUTURE_END_DATE }))).toBe('active');
+  });
+
+  it('resolves \'active\' for IN_STOCK with no itemEndDate, even with prior sales (a live multi-quantity listing)', async () => {
+    expect(await checkStatusFor(itemDetailFixture({ status: 'IN_STOCK', quantity: 4, sold: 2 }))).toBe('active');
+  });
+
+  it('resolves \'active\' for a 2xx body carrying no availability block or end date at all -- absence of data never retires an item', async () => {
+    expect(await checkStatusFor({ itemId: 'v1|1|0' })).toBe('active');
+  });
+
+  it('resolves \'removed\' for a 404 response', async () => {
+    expect(await checkStatusFor({ errors: [{ message: 'The specified item ID was not found.' }] }, 404)).toBe('removed');
+  });
+
+  it('rethrows an AppError carrying eBay\'s own error message for a genuine non-2xx/non-404 failure, rather than resolving to any status', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
+      }
+      return new Response(JSON.stringify({ errors: [{ message: 'Internal server error.' }] }), { status: 500 });
+    });
+
+    const client = await createEbayItemDetailClient();
+
+    // Asserted on the message, not just the AppError type: checkItemStatus
+    // has its own single throw site distinct from fetchItemImageUrls'/
+    // fetchItemDescription's, so this proves it's that branch specifically,
+    // not merely that *some* AppError surfaced.
+    await expect(client.checkItemStatus('v1|1|0')).rejects.toThrow('Internal server error.');
+    await expect(client.checkItemStatus('v1|1|0')).rejects.toBeInstanceOf(AppError);
+  });
+});
+
+// classifyEbayItemStatus's end-date comparison, pinned against an injected
+// clock so the boundary itself is proven, not just dates far either side.
+describe('classifyEbayItemStatus (T10, Req 6)', () => {
+  const now = new Date('2026-11-11T12:00:00.000Z');
+
+  it('treats an itemEndDate one second before now as ended, and one second after as still live', () => {
+    const live = { estimatedAvailabilities: [{ estimatedAvailabilityStatus: 'IN_STOCK', estimatedSoldQuantity: 0 }] };
+    expect(classifyEbayItemStatus({ ...live, itemEndDate: '2026-11-11T11:59:59.000Z' }, now)).toBe('removed');
+    expect(classifyEbayItemStatus({ ...live, itemEndDate: '2026-11-11T12:00:01.000Z' }, now)).toBe('active');
+  });
+
+  it('ignores an unparseable itemEndDate rather than reading it as ended', () => {
+    const live = { estimatedAvailabilities: [{ estimatedAvailabilityStatus: 'IN_STOCK' }] };
+    expect(classifyEbayItemStatus({ ...live, itemEndDate: 'not-a-date' }, now)).toBe('active');
+  });
+
+  it('does not read LIMITED_STOCK as gone', () => {
+    expect(classifyEbayItemStatus({ estimatedAvailabilities: [{ estimatedAvailabilityStatus: 'LIMITED_STOCK', estimatedSoldQuantity: 9 }] }, now)).toBe('active');
+  });
+});
+
+describe('ebayConnector.createStatusChecker (T3/T10, Req 6)', () => {
+  let fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('builds one shared client/OAuth token and reuses it across every missing-candidate lookup in the pass, mirroring createDescriptionFetcher', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
+      }
+      if (url.includes('v1%7C1%7C0')) {
+        return new Response(JSON.stringify({ itemId: 'v1|1|0' }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ errors: [{ message: 'not found' }] }), { status: 404 });
+    });
+
+    const checkStatus = ebayConnector.createStatusChecker!();
+    const first = await checkStatus('v1|1|0');
+    const second = await checkStatus('v1|2|0');
+
+    expect(first).toBe('active');
+    expect(second).toBe('removed');
+
+    // One OAuth token for the whole pass, not one per lookup -- the same
+    // shared-resource proof scanService.test.ts already runs against
+    // createDescriptionFetcher.
+    const tokenCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/oauth2/token'));
+    expect(tokenCalls).toHaveLength(1);
+  });
+
+  it('resolves \'sold\' through the full factory for a real OUT_OF_STOCK + past-itemEndDate + estimatedSoldQuantity > 0 body', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
+      }
+      return new Response(JSON.stringify(itemDetailFixture({ status: 'OUT_OF_STOCK', sold: 1, endDate: PAST_END_DATE })), {
+        status: 200,
+      });
+    });
+
+    const checkStatus = ebayConnector.createStatusChecker!();
+    expect(await checkStatus('v1|1|0')).toBe('sold');
+  });
+
+  it('resolves \'removed\' through the full factory for a real IN_STOCK + past-itemEndDate body (ended unsold)', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
+      }
+      return new Response(JSON.stringify(itemDetailFixture({ status: 'IN_STOCK', quantity: 1, sold: 0, endDate: PAST_END_DATE })), {
+        status: 200,
+      });
+    });
+
+    const checkStatus = ebayConnector.createStatusChecker!();
+    expect(await checkStatus('v1|1|0')).toBe('removed');
+  });
+
+  it('rethrows an AppError for a genuine non-2xx/non-404 failure via the full createStatusChecker factory, rather than resolving to any status', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify(TOKEN_FIXTURE), { status: 200 });
+      }
+      return new Response(JSON.stringify({ errors: [{ message: 'Internal server error.' }] }), { status: 500 });
+    });
+
+    const checkStatus = ebayConnector.createStatusChecker!();
+
+    // Asserted on the message, not just the AppError type, for the same
+    // reason as checkItemStatus's own equivalent case directly above: proves
+    // this is the genuine-failure branch specifically, not merely that
+    // *some* AppError surfaced from somewhere else in the factory's
+    // delegation to the shared client.
+    await expect(checkStatus('v1|1|0')).rejects.toThrow('Internal server error.');
+    await expect(checkStatus('v1|1|0')).rejects.toBeInstanceOf(AppError);
   });
 });
 
