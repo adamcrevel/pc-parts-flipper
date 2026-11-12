@@ -27,6 +27,7 @@ import { logger } from '../logger.js';
 import { launchScanBrowser, SCAN_BROWSER_INIT_SCRIPT, SCAN_BROWSER_USER_AGENT } from './browserSession.js';
 import { createDescriptionFetcher } from './mercariItemDetail.js';
 import { mapSearchItem, validateMercariConnectorConfig, type MercariSearchFacetResponse } from './mercariSearchMapping.js';
+import { createStatusChecker } from './mercariStatusChecker.js';
 import type { CandidateListing, MarketplaceConnector } from './types.js';
 
 /**
@@ -111,4 +112,5 @@ export const mercariConnector: MarketplaceConnector = {
   platformType: 'mercari',
   search,
   createDescriptionFetcher,
+  createStatusChecker,
 };

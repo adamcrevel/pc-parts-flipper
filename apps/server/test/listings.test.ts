@@ -1064,9 +1064,37 @@ describe('Reference photo promotion hook — DB-verified (T2)', () => {
       await expectFiltered(`sourceIds=${sourceTwoId}&sourceIds=${sourceOneId}`, Object.values(seedTitles));
     });
 
-    it('statuses matches any of the listed statuses (Req 4)', async () => {
+    it("statuses matches any of the listed statuses (Req 4), including 'removed' — a terminal status only the scan pipeline (never POST/accept/reject) ever sets (Req 1, 3)", async () => {
       await expectFiltered('statuses=accepted,rejected', [seedTitles.hpElitedesk, seedTitles.lenovoThinkcentre]);
       await expectFiltered('statuses=open', [seedTitles.dellOptiplex, seedTitles.dellPrecision]);
+
+      // MUST FIX (cycle 0 retry 1): VALID_STATUSES omitted 'removed', so
+      // parseEnumListParam silently dropped it, the surviving list came
+      // back empty, and parseListingColumnFilters treated that as "no
+      // filter on this column" — statuses=removed then returned every
+      // Listing instead of none/one. Deliberately kept outside this
+      // block's own seedTitles/seedIdsByTitle fixture and expectFiltered
+      // helper (both built around the four Listings reachable through the
+      // public create/accept/reject routes): 'removed' is never settable
+      // through those routes, so this seed is created via the db layer
+      // directly, the same direct-db technique insertQueuedJobIfNoneActive
+      // /updateJobStage above use to reach states the HTTP surface can't.
+      // Named without the 'Filter ' prefix so it doesn't inflate the
+      // 'reports the filtered count as total' test's unscoped title=Filter
+      // count below.
+      const removedListing = await postJson<ListingDetail>(
+        `${HOOK_BASE_URL}/api/listings`,
+        listingBody(sourceOneId, { title: 'Removed Status Probe', askingPrice: 50, acquisitionFees: 0, listingDate: '2026-08-01', expectedParts: [] }),
+      );
+      expect(removedListing.status, `removed-status probe creation failed: ${JSON.stringify(removedListing.body)}`).toBe(201);
+      await hookDb.updateListing(removedListing.body.id, { status: 'removed' });
+
+      const pageRes = await getJson<ListListingsResponse>(`${HOOK_BASE_URL}/api/listings?limit=500&statuses=removed`);
+      expect(pageRes.status).toBe(200);
+      expect(pageRes.body.listings.map((listing) => listing.id)).toEqual([removedListing.body.id]);
+      const idsRes = await getJson<ListListingIdsResponse>(`${HOOK_BASE_URL}/api/listings/ids?statuses=removed`);
+      expect(idsRes.status).toBe(200);
+      expect(idsRes.body.ids).toEqual([removedListing.body.id]);
     });
 
     it('askingPriceMin/askingPriceMax are inclusive, each side independently optional, and equal bounds express an exact value (Req 7)', async () => {

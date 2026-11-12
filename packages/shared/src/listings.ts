@@ -19,8 +19,11 @@ export type ComponentCategory =
   | 'Cooler'
   | 'Other';
 
-/** Listing lifecycle (Req 4). Accepting one creates a linked Purchase (T7+). */
-export type ListingStatus = 'open' | 'accepted' | 'rejected';
+/** Listing lifecycle (Req 4). Accepting one creates a linked Purchase (T7+). `'removed'` is a terminal status the scan pipeline (never a user action) auto-transitions a Listing to once a direct per-item recheck confirms it's genuinely gone from its own marketplace (Req 1, 3). */
+export type ListingStatus = 'open' | 'accepted' | 'rejected' | 'removed';
+
+/** Why a `'removed'`-status Listing is gone — `status` alone can't distinguish sold from simply delisted (Req 1). Never settable through the public `POST /api/listings`/`PUT /api/listings/:id` request body; only the scan pipeline writes it. */
+export type MarketplaceListingStatus = 'sold' | 'removed';
 
 /**
  * Pricing coverage of a Listing's Expected Parts, derived from their
@@ -98,6 +101,10 @@ export interface Listing {
   externalItemId: string | null;
   /** Whether this listing's computer cannot be powered on or has non-functional components (server-only field, never from request body). */
   nonWorking: boolean;
+  /** Why this Listing is `'removed'` (sold vs. simply no longer listed), or null when `status !== 'removed'` or not yet determined (Req 1). Server-only field, never settable from the public request body. */
+  marketplaceStatus: MarketplaceListingStatus | null;
+  /** When `marketplaceStatus` was last set by the scan pipeline's per-item recheck, or null when `marketplaceStatus` is null (Req 1). Server-only field, never settable from the public request body. */
+  marketplaceStatusDetectedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

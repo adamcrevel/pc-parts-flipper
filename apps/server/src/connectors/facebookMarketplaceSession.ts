@@ -93,7 +93,10 @@ function parseFacebookUrl(url: string): URL | null {
 // and a `name="pass"` password input or a form posting to /login is the
 // structural signature of that wall regardless of what the ids are
 // renamed to.
-const LOGIN_WALL_SELECTOR = [
+// Exported so the sibling per-item status check
+// (facebookMarketplaceStatus.ts) probes for the exact same wall rather
+// than keeping a second, drifting copy of these signatures.
+export const LOGIN_WALL_SELECTOR = [
   'form[action*="/login"]',
   'input[name="pass"]',
   '[data-testid="royal_login_form"]',

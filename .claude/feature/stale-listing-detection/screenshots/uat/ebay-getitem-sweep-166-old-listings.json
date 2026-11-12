@@ -1,0 +1,2408 @@
+[
+ {
+  "id": "0fbac246-5ae7-4b06-82ad-74a7fab3e522",
+  "ext": "v1|307233666281|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-16T20:07:19.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 5 3600 6-Core 3.6 GHz 4.2 GHz "
+ },
+ {
+  "id": "4f74901d-90c4-4239-88cd-296617e2c950",
+  "ext": "v1|840025267009|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T20:18:12.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "EVGA GeForce RTX 3080 10GB GDDR6X Graphi"
+ },
+ {
+  "id": "58bac0fc-551d-4c5a-9896-0d27bb775f17",
+  "ext": "v1|257800450301|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-16T16:07:12.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 5 9600X - Granite Ridge (Zen 5"
+ },
+ {
+  "id": "5bae2388-7ced-4bf5-befb-45767e0172e3",
+  "ext": "v1|880020659296|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-19T15:04:45.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "EVGA GeForce RTX 2080 Super XC 08G-P4-31"
+ },
+ {
+  "id": "893ca07f-81ed-4a32-a48c-120a3475238e",
+  "ext": "v1|267814941018|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-16T21:05:54.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 5 3600X Processor (3.8 GHz, 6 "
+ },
+ {
+  "id": "bc72afa7-b6d6-408d-acf2-6c28f4799c8d",
+  "ext": "v1|128137875155|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 2,
+  "end": "2026-10-16T20:44:25.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 5 3600 3.60GHz 6 Core 100-0000"
+ },
+ {
+  "id": "c8f9dd8d-3f46-4644-bb25-1d17c46ea362",
+  "ext": "v1|880020453609|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 6,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD RYZEN 5 PRO 4650GE - 100-000000153 -"
+ },
+ {
+  "id": "dc51d0cd-21d9-4d0a-80b4-0fa1f0f90df3",
+  "ext": "v1|377573694597|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T02:05:51.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 5 4600G 3.70GHz 6 Core 100-000"
+ },
+ {
+  "id": "ea323e7e-f343-4321-ac46-62a0dbe200d0",
+  "ext": "v1|366737168019|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T02:49:54.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 7 7800X3D 8-Cores 4.2GHz Socke"
+ },
+ {
+  "id": "eb74d696-058a-4ac8-bf9b-44a9b80e7641",
+  "ext": "v1|307233736050|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-25T17:54:12.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 7 2700 4.1 GHz Octa-Core Proce"
+ },
+ {
+  "id": "fc170dae-db45-473a-8497-e3239de27999",
+  "ext": "v1|880020688673|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-16T11:07:57.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "Gigabyte Eagle RTX 3060 Ti 8Gb GDDR6 Gra"
+ },
+ {
+  "id": "054313a5-0f9d-4b8b-b38f-fc3d8ca2486b",
+  "ext": "v1|206627833030|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T13:52:03.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 9 7900x Processor (5.6 GHz, 12"
+ },
+ {
+  "id": "0d0faaef-3758-4d71-a8bc-8c2d0dbb69ea",
+  "ext": "v1|257800314893|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-23T16:01:51.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "NVIDIA Quadro RTX 4000 8GB GDDR6 Worksta"
+ },
+ {
+  "id": "12248ceb-406f-40a0-b02e-bfa1fdccd05e",
+  "ext": "v1|840022873310|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T08:30:59.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 5 7600X AM5 Processor 4.7 GHz,"
+ },
+ {
+  "id": "1412af78-0470-4bf7-9bc4-97dae38bb66e",
+  "ext": "v1|377571974012|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-19T16:48:15.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "NVIDIA Quadro RTX 4000 8GB GDDR6 PCIe GP"
+ },
+ {
+  "id": "1f6df32b-e332-499e-afe3-899228eccf9b",
+  "ext": "v1|336846117846|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T00:47:12.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "Gigabyte GeForce RTX\u2122 4060 OC 8GB Low-Pr"
+ },
+ {
+  "id": "295d3374-9d56-4368-87c6-c5d938307140",
+  "ext": "v1|128136002936|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 1,
+  "sold": 0,
+  "end": "2026-10-16T11:48:53.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "NVIDIA GeForce RTX 2080 8GB Founders Edi"
+ },
+ {
+  "id": "367b6518-4c2b-4d66-836c-915dc11544dc",
+  "ext": "v1|198717452233|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-19T07:29:49.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "Galak GeForce RTX 4070 12GB GDDR6X Graph"
+ },
+ {
+  "id": "3bec1c57-1925-4bf4-adff-76cdb3cbf6c9",
+  "ext": "v1|366736157720|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T10:40:32.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 5 3600 6-Core 12-Thread 3.60GH"
+ },
+ {
+  "id": "3d913331-dbc0-476b-9ba5-82b1e83be8c5",
+  "ext": "v1|227569077689|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T17:38:20.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 7 7700 3.80GHz 8 Core 16 Threa"
+ },
+ {
+  "id": "4038a360-c83c-4e78-b562-5d965f56021b",
+  "ext": "v1|880017894068|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T18:07:45.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "Sonnet eGFX Breakaway Box - Thunderbolt "
+ },
+ {
+  "id": "418dd4ca-78c6-4d9c-a95c-bdf4569e1577",
+  "ext": "v1|307233017910|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-18T16:42:59.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 5 5600X3D Processor - Tested /"
+ },
+ {
+  "id": "461b7dd1-33fd-4b8c-ac3c-f5af98a7a5e0",
+  "ext": "v1|920042015279|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-16T20:35:02.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 7 3700X  CPU Processor- #0081"
+ },
+ {
+  "id": "566868c3-a76f-4d31-a892-ce306cbd0eab",
+  "ext": "v1|880019486038|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-19T07:21:39.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 5 5500 3.60GHz 6 Core 100-0000"
+ },
+ {
+  "id": "575fa720-1e5e-4d68-8870-ca10798c9b0d",
+  "ext": "v1|960072119900|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-16T21:48:19.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "NVIDIA GeForce RTX 5070 12GB Founders Ed"
+ },
+ {
+  "id": "59873e64-a342-4559-ae92-1e81e5f6c5be",
+  "ext": "v1|820242011069|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-23T16:33:39.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "DELL NVIDIA QUADRO RTX 4000 8GB GDDR6 PC"
+ },
+ {
+  "id": "5decc3f5-3e62-489c-890d-d2301b5c853b",
+  "ext": "v1|206628963169|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-16T19:55:36.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 9 7900x Processor (5.6 GHz, 12"
+ },
+ {
+  "id": "61a3495a-47da-426b-8cf7-9160cb8b5de7",
+  "ext": "v1|960071588928|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-16T13:42:03.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "Dell NVIDIA GeForce RTX 2060 Super 8GB G"
+ },
+ {
+  "id": "6c4e4e96-93bb-4876-9ab8-084ea68d4de3",
+  "ext": "v1|920040886254|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-27T15:28:40.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "MSI GeForce RTX 3060 Ti Gaming Trio 8GB "
+ },
+ {
+  "id": "7021366c-9f97-4d03-a9a8-83481f480f4f",
+  "ext": "v1|198717805962|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 13,
+  "end": "2026-10-19T14:07:22.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "PNY XLR8 NVIDIA GeForce RTX 3060 TI 8GB "
+ },
+ {
+  "id": "762c5aeb-725a-463e-89bb-b601fc8e050e",
+  "ext": "v1|327406729879|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 2,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "DELL NVIDIA RTX A4500 20GB Graphics Card"
+ },
+ {
+  "id": "9a088b91-dc27-4f99-8f50-09d45553da50",
+  "ext": "v1|237124677006|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-29T19:51:21.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 7 9700X \u2013 9000 Series \u2013 8-Core"
+ },
+ {
+  "id": "9d0db19b-0e9c-4eb3-8807-d4ee53ae57e0",
+  "ext": "v1|840022707012|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-11-07T15:35:25.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "PNY NVIDIA GeForce RTX 3070 8GB GDDR6 Gr"
+ },
+ {
+  "id": "a03a0395-907b-4092-ab19-d50b113c087c",
+  "ext": "v1|377572426718|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T01:49:30.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "ryzen 5500, b550 msi gaming plus, 16gb o"
+ },
+ {
+  "id": "a08bee2d-f82e-4145-ba8b-47dfe4705eaa",
+  "ext": "v1|820243276398|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-19T17:41:33.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 5 3600 3.60GHz 6 Core 100-0000"
+ },
+ {
+  "id": "a7ad7fa1-8ab7-4ab2-ad75-351bd841b2df",
+  "ext": "v1|307233178009|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 1,
+  "sold": 0,
+  "end": "2026-10-22T19:39:47.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "HP NVIDIA GeForce RTX 2060 6GB GDDR6 Gra"
+ },
+ {
+  "id": "a81bd2ed-5448-4ec7-ac32-c651aa3a6042",
+  "ext": "v1|227567854968|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-18T05:02:25.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "Dell NVIDIA GeForce RTX 2080 8GB Super G"
+ },
+ {
+  "id": "a878310c-2235-4f40-88da-372980db7ee5",
+  "ext": "v1|800796331031|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T13:11:32.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 7 7800X3D Processor (4.2 GHz, "
+ },
+ {
+  "id": "acb29f78-73fc-490c-85e4-3d15e7185a79",
+  "ext": "v1|880019128793|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T02:45:02.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 7 3700X  CPU Processor - 8-cor"
+ },
+ {
+  "id": "b5d12052-a770-4325-8b6c-df9830c937ee",
+  "ext": "v1|940014643313|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T11:44:30.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 7 8700G 8-Core 16-Thread AM5 P"
+ },
+ {
+  "id": "bcf5c18b-323d-4b91-9bc7-3b719d03d42f",
+  "ext": "v1|168795622804|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T19:25:04.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "NVIDIA RTX A2000 12GB GDDR6 Workstation "
+ },
+ {
+  "id": "c872546b-5c82-461f-8418-19cb16c719ae",
+  "ext": "v1|128136230299|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T14:37:47.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 5 3600 6-Core 3.6GHz Socket AM"
+ },
+ {
+  "id": "cc45d192-9c3f-47db-abf0-6b47d869423a",
+  "ext": "v1|900015838253|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 2,
+  "end": "2026-10-18T03:47:05.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 5 Pro 2400G 3.6GHz 4C/8T 4MB 6"
+ },
+ {
+  "id": "d309a01c-dc13-499c-9475-354f71e97507",
+  "ext": "v1|800796601372|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T15:05:06.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "MSI NVIDIA GeForce RTX 2060, 6GB GDRR6 G"
+ },
+ {
+  "id": "d6caa0bc-3dc6-4b47-92fd-e09a995614bc",
+  "ext": "v1|960069243090|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 1,
+  "sold": 1,
+  "end": "2026-11-05T12:36:26.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "NVIDIA GeForce RTX 3080 PCI Express Grap"
+ },
+ {
+  "id": "dae447fa-1f91-4a16-b4c8-18cb8c417d59",
+  "ext": "v1|267814712395|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-20T20:48:00.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "MSI NVIDIA GeForce RTX 3050 PCIe Graphic"
+ },
+ {
+  "id": "dff3ca06-2c38-4518-afc6-7abc4fad2630",
+  "ext": "v1|860045854367|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T18:29:52.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 5 5600X 3.7 GHz 6 Cores (100-0"
+ },
+ {
+  "id": "e0e4d274-4f50-4ac8-9163-c97cefd74fed",
+  "ext": "v1|860047987414|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T10:59:10.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "ASUS Dual GeForce RTX 4060 8GB V2 OC Edi"
+ },
+ {
+  "id": "e36e8a26-0a35-498b-af81-f79066e8f904",
+  "ext": "v1|900014193829|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T13:51:08.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "ASUS ROG Strix GeForce RTX 3080 OC 10GB "
+ },
+ {
+  "id": "e9c1529b-ab83-4dff-bf7f-edecef11c31b",
+  "ext": "v1|237124669152|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 2,
+  "end": "2026-10-17T16:39:52.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 5 3600 6-Core 3.6GHz Socket AM"
+ },
+ {
+  "id": "f17a7bdf-513a-4208-845a-c155d279a166",
+  "ext": "v1|840022710302|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T07:14:17.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "EVGA GeForce RTX 3070 Ti XC3 ULTRA GAMIN"
+ },
+ {
+  "id": "fc58e2c1-750b-43c9-b89b-eb2b06abdb7a",
+  "ext": "v1|366736200578|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 4,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "Dell NVIDIA GeForce RTX 3080 10GB GDDR6X"
+ },
+ {
+  "id": "02a1aacf-53d5-43f4-8b4e-ba6e4c051790",
+  "ext": "v1|267813744808|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen Threadripper 2970WX 3.0GHz 24-"
+ },
+ {
+  "id": "173832b8-6bdc-4ce7-9906-ab4fb05871ca",
+  "ext": "v1|800795641062|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-16T17:42:30.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "MSI GeForce RTX 3070 Ventus 3X OC 8GB GD"
+ },
+ {
+  "id": "18d35413-66cc-447e-b2a9-e62bda4f02ad",
+  "ext": "v1|327405353196|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 7,
+  "end": "2026-10-15T22:47:51.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD RYZEN 5 PRO 4650GE WITH RADEON GRAPH"
+ },
+ {
+  "id": "2a80b7a4-b06a-4a56-8e74-4c3d37088947",
+  "ext": "v1|800795121205|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-22T18:59:09.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 7 1700 3.00GHz 8 Core YD1700BB"
+ },
+ {
+  "id": "36f4ac92-0fe7-4333-b895-1be9928d16d3",
+  "ext": "v1|920039754595|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-16T22:03:10.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "MSI GeForce RTX 3050 Aero 8GB GDDR6 Grap"
+ },
+ {
+  "id": "461e7909-6bf3-4988-aa22-4724e383cf8d",
+  "ext": "v1|940014181262|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-19T19:38:42.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "EVGA GeForce RTX 3090 FTW3 GPU \u2013 FOR PAR"
+ },
+ {
+  "id": "4a976d66-c31f-4ec7-99da-a01c2842a1f7",
+  "ext": "v1|800795834629|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T19:01:04.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 5 5500 3.60GHz 6 Core 100-0000"
+ },
+ {
+  "id": "65b4e7fa-a1df-4ced-9bb4-6f6d29eceee6",
+  "ext": "v1|168793104166|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-21T16:51:16.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 7 3700X 8-Core Socket AM4 CPU "
+ },
+ {
+  "id": "70b3bc7d-21ec-4539-bf40-852c9f442fcf",
+  "ext": "v1|206627442956|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T21:52:41.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 7 3700X 3.6GHz Octa-Core Am4 C"
+ },
+ {
+  "id": "72584503-484b-4e95-8f29-9f0477d3ad38",
+  "ext": "v1|800795474904|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 2,
+  "end": "2026-10-22T16:27:06.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "Gigabyte GeForce RTX 4060 Gaming OC 8GB "
+ },
+ {
+  "id": "74f71300-cb58-4eb2-9947-c6320d0bc367",
+  "ext": "v1|900012132303|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-19T17:55:42.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "MSI GeForce RTX 3080 SUPRIM x 10GB GDDR6"
+ },
+ {
+  "id": "929fd7d6-e3aa-410a-8c89-73cbc1ce9776",
+  "ext": "v1|800794257020|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 2,
+  "sold": 0,
+  "end": "2026-10-29T22:32:54.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "NVIDIA Quadro RTX 5000 16GB GDDR6 Graphi"
+ },
+ {
+  "id": "9330a571-9ff1-460e-8ef0-865fc3c89161",
+  "ext": "v1|800795782588|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-19T07:33:49.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "NVIDIA GeForce RTX 2070 Super Founders E"
+ },
+ {
+  "id": "936ea21e-ad21-48d9-8cac-79c12bc6794c",
+  "ext": "v1|287648338759|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T14:43:54.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 7 3700X  CPU Processor- #0054"
+ },
+ {
+  "id": "9f2ea282-2eed-45e1-ad40-f0bc708a2ef9",
+  "ext": "v1|377570143850|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-16T16:10:37.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "NVIDIA GeForce RTX 4060 8GB GDDR6 Graphi"
+ },
+ {
+  "id": "a10cc1ae-ffe9-4f55-bcbc-5bb20dabc01c",
+  "ext": "v1|366734159373|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T16:14:34.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 5 3500 3.60GHz 6 Core 100-0000"
+ },
+ {
+  "id": "a8a3b165-f546-445c-9721-4435ab8e3cff",
+  "ext": "v1|860042395537|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T15:46:57.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "EVGA GeForce RTX 3060 XC 12GB GDDR6 CUDA"
+ },
+ {
+  "id": "b331699b-5a2a-478b-b89e-3125804c1b4a",
+  "ext": "v1|198715412887|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 4,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "NVIDIA GeForce RTX 2080 Ti 11GB GDDR6 PC"
+ },
+ {
+  "id": "cad9a2eb-8138-4537-b3d4-c08e76ce1c81",
+  "ext": "v1|920039418557|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 2,
+  "end": "2026-10-15T16:51:21.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "MSI NVIDIA GeForce RTX 3060 VENTUS 3X 12"
+ },
+ {
+  "id": "d477c5d9-a51f-49f1-bec7-0f8cf94348bc",
+  "ext": "v1|840021586187|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-11-02T02:02:17.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "MSI GeForce RTX 3060 Gaming X 12 12GB GD"
+ },
+ {
+  "id": "d586d4aa-59b3-4ff4-96b0-1c573513b1aa",
+  "ext": "v1|960066968561|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-23T18:32:24.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "MSI NVIDIA GeForce RTX 2070 AERO 8GB GDD"
+ },
+ {
+  "id": "d6adcb50-4a4d-41ea-93eb-6bd2f4f442dd",
+  "ext": "v1|137844333266|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T02:19:42.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "MSI NVIDIA GeForce RTX 2070 8GB GDDR6 Gr"
+ },
+ {
+  "id": "db996c1b-b975-41de-8add-4dfbb260b042",
+  "ext": "v1|820237542123|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T07:00:51.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "EVGA NVIDIA GeForce RTX 2060 Super 8GB G"
+ },
+ {
+  "id": "df7ff3e3-5f93-4d78-b337-8d55e2df77a0",
+  "ext": "v1|327405176479|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T18:17:02.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "NVIDIA GeForce RTX 3060 Ti Founders Edit"
+ },
+ {
+  "id": "e271aaf2-b91a-4bf4-a05e-8a564a05b368",
+  "ext": "v1|336844064774|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T07:49:53.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 9 7950X 16-Core 4.5GHz Socket "
+ },
+ {
+  "id": "10c3d608-169d-475a-b7fe-5e378fbe2b0f",
+  "ext": "v1|128133714077|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-19T23:46:01.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 7 5800X Desktop Processor (4.7"
+ },
+ {
+  "id": "120ecda0-3064-4f7a-b28a-b1ad2635023a",
+  "ext": "v1|257796958905|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 2,
+  "end": "2026-10-28T05:15:55.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "Dell NVIDIA GeForce RTX 2070 8GB GGDR6 P"
+ },
+ {
+  "id": "1a2ba475-b5b8-43be-ae4b-863365ab8ca3",
+  "ext": "v1|880014867917|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-16T01:02:32.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 5 5600X 6-Core Socket AM4 3.7G"
+ },
+ {
+  "id": "2ec4c492-0a93-4db7-873e-22ade13e73b0",
+  "ext": "v1|880014783312|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-20T20:12:32.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 5 2600X 3.60GHz Hexa-Core (YD2"
+ },
+ {
+  "id": "3f7470d5-1b36-405f-8504-213e5fb8d132",
+  "ext": "v1|407288406768|0",
+  "code": 404,
+  "avail": null,
+  "qty": null,
+  "sold": null,
+  "end": null,
+  "ended": false,
+  "buying": null,
+  "title": "AMD Ryzen 9 5900X 12-Core 24-Thread 3.7G"
+ },
+ {
+  "id": "41db7dc7-9363-4632-8a0a-d5ce5fd33ba7",
+  "ext": "v1|147634548071|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-16T04:22:40.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "Gigabyte NVIDIA GeForce RTX 4070 Super E"
+ },
+ {
+  "id": "4255e10d-6575-4082-b794-b82c6749a50b",
+  "ext": "v1|800792231606|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 1,
+  "sold": 0,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "PC4-3200AA 8GB DESKTOP 16GB Kit (8GB x 2"
+ },
+ {
+  "id": "4af7b15a-d2b3-4ea8-bfb6-4558c7c31a7c",
+  "ext": "v1|257797437734|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T13:36:06.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 7 3700X 3.6GHz Octa-Core Am4 C"
+ },
+ {
+  "id": "4cfa180a-554b-4f48-aa78-bf0dad299404",
+  "ext": "v1|287646039782|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T13:58:36.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "Asus GeForce RTX 2080 Gaming 8GB GDDR6 G"
+ },
+ {
+  "id": "5c04a96d-78ce-4365-9bb0-42822c3a7984",
+  "ext": "v1|820235212026|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T18:45:54.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "Asus GeForce RTX 3050 Dual OC 6GB GDDR6 "
+ },
+ {
+  "id": "6042d310-60f5-4a0c-88f3-287b864d2706",
+  "ext": "v1|257797393089|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 7 PRO 5750GE 3.20GHz 8-Core So"
+ },
+ {
+  "id": "74bebb98-7c32-415c-9983-9ca04aaade62",
+  "ext": "v1|366731767708|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 10,
+  "sold": 6,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "NVIDIA Quadro RTX 3000 GDDR6 Graphics ca"
+ },
+ {
+  "id": "7cb7e7b8-b97f-4043-85d6-401ed90778a2",
+  "ext": "v1|198712505712|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 2,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "NVIDIA Quadro RTX 4000 160W 8GB GDDR6 Wo"
+ },
+ {
+  "id": "af3e90cc-0c26-4a46-b14a-672ab0871d36",
+  "ext": "v1|820235948200|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 3,
+  "end": "2026-10-27T02:31:16.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "GIGABYTE GeForce RTX 2060 OC 6GB GDDR6 P"
+ },
+ {
+  "id": "c94e7c53-ad4d-417e-a9cb-94cbebf88a0f",
+  "ext": "v1|960063675644|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-16T15:47:29.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "HP NVIDIA GeForce RTX 2060 6GB GDDR6 Gra"
+ },
+ {
+  "id": "eda8b6d2-ad34-4353-bdde-69b8ac8b22df",
+  "ext": "v1|168790683863|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 4,
+  "end": "2026-10-24T01:07:18.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 7 5800XT 8-Core 16-Thread AM4 "
+ },
+ {
+  "id": "f14f36b8-4b37-44ec-893b-30dde037bdf0",
+  "ext": "v1|840016707520|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T12:00:04.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD RYZEN 7 PRO 3700 8 CORES 16 THREADS "
+ },
+ {
+  "id": "08138dc4-1e57-49cc-b29f-a5d0b27cef11",
+  "ext": "v1|287642667437|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-19T21:38:37.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "MSI NVIDIA GeForce RTX 2080 AERO 8G 8GB "
+ },
+ {
+  "id": "2ff61a64-c63f-4d4f-bc19-31755ffb6a27",
+  "ext": "v1|287642693631|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-21T01:43:11.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "Zotac Gaming NVIDIA GeForce RTX 2080 8GB"
+ },
+ {
+  "id": "34c84f4e-7c85-47b6-b16f-4add207acd4b",
+  "ext": "v1|407285379109|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T17:18:20.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "NVIDIA RTX A2000 12GB GDDR6 Graphics Car"
+ },
+ {
+  "id": "37ba27c1-9523-40b0-aa65-295c9209b1c3",
+  "ext": "v1|237119814322|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-20T18:44:28.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "Dell/HP NVIDIA GeForce RTX 2060 6GB GDDR"
+ },
+ {
+  "id": "6a036180-fab3-42bd-8d94-119c343e773a",
+  "ext": "v1|168788313451|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-21T16:02:36.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "NVIDIA RTX A2000 12GB GDDR6 Graphics Car"
+ },
+ {
+  "id": "6e1b3530-e994-4933-98e6-acd12386ae97",
+  "ext": "v1|840014347821|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 2,
+  "end": "2026-10-26T18:33:09.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "NVIDIA GeForce RTX 3070 Founders Edition"
+ },
+ {
+  "id": "89241a5b-4816-46a2-bf4f-4a45db6538d6",
+  "ext": "v1|128129719249|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": null,
+  "sold": 56,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "Zotac Nvidia RTX 2080 Ti 11 GB Graphics "
+ },
+ {
+  "id": "918611d6-5dd9-4047-84cf-55e1c4ebb159",
+  "ext": "v1|336841331378|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-18T19:41:31.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 9 9900X 4.4GHz Up to 5.6GHz AM"
+ },
+ {
+  "id": "9f69aa3f-8f4e-4afc-ac6e-c49df06970cf",
+  "ext": "v1|860037247160|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T01:16:15.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "GIGABYTE GeForce RTX 3070 VISION OC 8GB "
+ },
+ {
+  "id": "a3a2a0d7-338a-4afe-969b-bb42d144049e",
+  "ext": "v1|227563246292|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": null,
+  "sold": 0,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "Used AMD Ryzen Threadripper 2950X 16C 32"
+ },
+ {
+  "id": "a81c622f-982e-4df8-9993-43ebfd4b344d",
+  "ext": "v1|960059340807|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-26T21:59:36.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "HP NVIDIA GeForce RTX 2080 8GB GDDR6 PCI"
+ },
+ {
+  "id": "ad46fb71-b2f8-44c2-af89-4a8d04f09335",
+  "ext": "v1|168788608201|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-18T03:13:19.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 7 PRO 5750G AM4 CPU Processor "
+ },
+ {
+  "id": "b6e2e20a-411c-412c-8862-87db5d6627f5",
+  "ext": "v1|117461742909|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 8,
+  "end": "2026-10-23T14:22:06.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "PNY Nvidia RTX 2080 Ti 11 GB Graphics Ca"
+ },
+ {
+  "id": "b86e64aa-a911-4d70-b702-45af1cbf9340",
+  "ext": "v1|336841500358|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T17:38:21.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "MSI GeForce RTX 3050 Low Profile 6GB GDD"
+ },
+ {
+  "id": "e6cffce5-306b-4e94-a3da-365839d600d8",
+  "ext": "v1|860034634865|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-20T05:24:42.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 5 2400G Processor with Origina"
+ },
+ {
+  "id": "2d6927e8-5980-4af3-844d-52f911c942bc",
+  "ext": "v1|128129275370|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-19T19:12:00.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "NVIDIA GeForce RTX 3080 FE Founders Edit"
+ },
+ {
+  "id": "7f691383-51b2-48f4-902d-8a92624f687a",
+  "ext": "v1|128129488882|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 1,
+  "sold": 0,
+  "end": "2026-10-23T22:41:24.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 9 7900x Processor (5.6 GHz, 12"
+ },
+ {
+  "id": "1fa98ef9-6df2-4359-b2a4-558c77ac5e24",
+  "ext": "v1|407279881175|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-15T20:33:02.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 7 3800X Processor (3.9GHz, 8 C"
+ },
+ {
+  "id": "23e0dc91-1a3a-4bf3-a041-2070ad92285e",
+  "ext": "v1|920025415920|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-24T17:05:49.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "GIGABYTE NVIDIA GeForce RTX 3050 8GB GAM"
+ },
+ {
+  "id": "3f0787f5-aad8-45a8-8f51-8efb92f8042d",
+  "ext": "v1|960049124979|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 2,
+  "end": "2026-10-16T02:18:41.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 5 5500 6-Core 3.6GHz Socket AM"
+ },
+ {
+  "id": "fba1c611-11a5-4333-87b3-99e20063beb3",
+  "ext": "v1|128125719082|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T18:40:49.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "DELL NVIDIA RTX 3060 12GB GDDR6 Video Gr"
+ },
+ {
+  "id": "f65b08bc-094d-47d0-8b2d-8a1b4fdefa2a",
+  "ext": "v1|860025995528|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-20T19:33:31.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "Asus GeForce RTX 3050 6GB GDDR6 Graphics"
+ },
+ {
+  "id": "03152a21-707e-43f5-9e9e-8f50450f67e5",
+  "ext": "v1|178565088961|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-22T06:36:56.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "ASUS ROG Strix GeForce RTX Triple-Fan Gr"
+ },
+ {
+  "id": "59513f84-3d60-4320-b863-17e43688ff9f",
+  "ext": "v1|128121411469|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": null,
+  "sold": 19,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "OCPC Nvidia GeForce RTX 2060 Super 8GB G"
+ },
+ {
+  "id": "6af1669a-cea5-4fc8-8dfc-5903a2545a76",
+  "ext": "v1|267807202347|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "ASUS TUF Gaming TUF-RTX3080-10G-V2-Gamin"
+ },
+ {
+  "id": "907d2fd8-3fde-43fd-9706-dcdaf96919bc",
+  "ext": "v1|366718722965|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen Threadripper 2950X 3.5 GHz Soc"
+ },
+ {
+  "id": "420eb95b-4599-4237-ac69-546cf65fb3e7",
+  "ext": "v1|178561575734|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 14,
+  "end": "2026-10-29T01:53:08.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 3 1200 3.1GHz 4 Core (YD1200BB"
+ },
+ {
+  "id": "c9a6fc7d-a8b1-496b-8526-52994f689af9",
+  "ext": "v1|257786127533|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 6,
+  "sold": 13,
+  "end": "2026-10-16T20:20:51.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "NVIDIA GeForce RTX 3070 8GB GDDR6 PCI Ex"
+ },
+ {
+  "id": "c60ad50f-f1bd-4db5-8c9d-cea69a5cb4e8",
+  "ext": "v1|820204099321|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 53,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 7 7800X3D Processor (4.2 GHz, "
+ },
+ {
+  "id": "fa42878e-ca64-4c87-91fa-2ba7a5e3ecde",
+  "ext": "v1|117448340888|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "NVIDIA Quadro RTX 4000 8GB GDDR6 PCIe Gr"
+ },
+ {
+  "id": "1b5411c4-8a49-4221-8d0e-a4ff4f1a6bc3",
+  "ext": "v1|128113992723|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 1,
+  "sold": 0,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 7 2700X AM4 Processor- 3.7Ghz/"
+ },
+ {
+  "id": "b47673bf-b6a2-4653-8926-084b8ce5ace5",
+  "ext": "v1|227551290267|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 2,
+  "end": "2026-10-16T14:12:30.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 5 4500 3.60GHz 6 Core 100-0000"
+ },
+ {
+  "id": "c7a0a8e6-f571-49ca-9d5d-a3b94f0c95cd",
+  "ext": "v1|298731520876|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 2,
+  "end": "2026-11-02T18:57:06.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 7 5700 3.70GHz 8 Core 100-0000"
+ },
+ {
+  "id": "7473db8b-b304-4b38-bcae-edd16113687f",
+  "ext": "v1|800754425737|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 5,
+  "end": "2026-10-15T15:08:29.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 7 PRO 2700 8-Core 3.2GHz CPU; "
+ },
+ {
+  "id": "a6b3b434-4038-42c2-ab0f-a943f80b8647",
+  "ext": "v1|117444308731|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-11-06T06:46:38.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "SK Hynix 32GB (2x16GB) DDR5-5600MHz SODI"
+ },
+ {
+  "id": "34b6239a-2ebf-4b7e-878a-5fffed544637",
+  "ext": "v1|820196632290|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-22T17:07:51.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 3 2200GE 3.20GHz Socket AM4 Qu"
+ },
+ {
+  "id": "325d602a-f179-42ca-bf8c-9689d44db801",
+  "ext": "v1|800744445713|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 2,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 9 9900X 4.4GHz Up to 5.6GHz AM"
+ },
+ {
+  "id": "d536cb25-273f-475a-ab48-2d13eaa6d6c3",
+  "ext": "v1|128109521908|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 72,
+  "end": "2026-11-09T14:00:59.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD RYZEN 5 PRO 3400G 3.70GHz AM4 CPU Pr"
+ },
+ {
+  "id": "577f676e-e222-4695-a76e-0329d95c5a8a",
+  "ext": "v1|800729697837|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 3,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 7 5700 Octa-core 3.70 GHz Proc"
+ },
+ {
+  "id": "2507bda5-6d14-435e-836b-1b4d5beaa9bd",
+  "ext": "v1|128100379526|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 33,
+  "end": "2026-10-21T03:06:01.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "Colorful Nvidia RTX 2070 8GB Blower Grap"
+ },
+ {
+  "id": "5cbe7ad3-5e19-47ee-a771-e45bcd809765",
+  "ext": "v1|227540382487|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-16T01:30:46.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "EVGA GeForce RTX 2080 SUPER XC HYBRID GA"
+ },
+ {
+  "id": "cd61970c-448b-4638-a60b-521849a8f9ef",
+  "ext": "v1|168711825801|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 2,
+  "sold": 64,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 7 5800X3D 8-Core 3.4GHz Socket"
+ },
+ {
+  "id": "00cf5c9c-7313-43ee-acdc-0dd0bf91be2d",
+  "ext": "v1|227534599443|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 31,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 5 5600X 6-core, 12-thread proc"
+ },
+ {
+  "id": "8ff3df58-6c1d-400f-8524-936602c5606e",
+  "ext": "v1|800697816020|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": null,
+  "sold": 8,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "Used AMD RYZEN 5 7500F R5 7500F 3.7GHz A"
+ },
+ {
+  "id": "bc13ff05-9a85-4150-9831-237f3feddfb9",
+  "ext": "v1|318904368958|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "NVIDIA RTX 4000 Turing 8GB GDDR6 PCIe 3."
+ },
+ {
+  "id": "f8cb53d9-f7c9-4f04-9489-29ba5fe4db6e",
+  "ext": "v1|800694285033|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": null,
+  "sold": 5,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "Used AMD Ryzen 5 2600X R5 2600X 6-Core 3"
+ },
+ {
+  "id": "188c6f24-0579-4c53-8aa5-01cb2b062a8c",
+  "ext": "v1|800677807585|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 15,
+  "end": "2026-10-18T14:11:23.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 7 PRO 2700 AM4 CPU Processor"
+ },
+ {
+  "id": "97f82978-0872-4b2c-8b52-7ded202559ab",
+  "ext": "v1|398404213501|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 2,
+  "end": "2026-10-17T00:03:11.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "SK hynix 16GB Kit (2x8GB) DDR5 PC5-5600B"
+ },
+ {
+  "id": "c2154d78-451c-4f83-9d4b-9919cd9055ea",
+  "ext": "v1|117417866724|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 1,
+  "sold": 0,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 5 PRO 2400GE 3.2GHz Quad-Core "
+ },
+ {
+  "id": "4bb6eb97-a28a-4e02-b8e8-e2c05eea4d0c",
+  "ext": "v1|227516031882|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 11,
+  "end": "2026-10-23T02:20:02.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "ASUS ROG Strix GeForce RTX 3070 V2 OC Ed"
+ },
+ {
+  "id": "7fe47735-c45f-47ab-9f82-a6d75cef8973",
+  "ext": "v1|128071107621|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": null,
+  "sold": 18,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 5 PRO 3600 6-Core 12-Thread De"
+ },
+ {
+  "id": "90c02034-b6a6-410f-8492-ca92f80d077b",
+  "ext": "v1|117404464577|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 34,
+  "end": "2026-10-29T14:55:04.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 3 2200GE - YD2200C6M4MFB - Qua"
+ },
+ {
+  "id": "e3bf3672-f9a0-484a-84d0-d4fe2f5cbead",
+  "ext": "v1|366646783500|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 20,
+  "end": "2026-10-26T22:40:00.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD RYZEN 5 PRO 5650GE 6-CORE/12-THR 3.4"
+ },
+ {
+  "id": "e0dad363-3ad8-4e3c-94a3-12a2af82e4b7",
+  "ext": "v1|117381270296|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-16T16:14:33.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "EVGA 08G-P4-1171-KR GeForce RTX 2070 XC "
+ },
+ {
+  "id": "0051d5c3-a202-438d-9efd-921e38a6a791",
+  "ext": "v1|178442672542|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-20T23:16:59.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "Gigabyte GeForce RTX 2070 Gaming OC 8GB "
+ },
+ {
+  "id": "008b850d-1ed4-4bd2-8115-fc1591d566e3",
+  "ext": "v1|198567262358|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 5,
+  "end": "2026-10-16T04:41:07.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 7 1700 8-Core Desktop Processo"
+ },
+ {
+  "id": "46055ce9-6198-4f27-b4a9-2f87ace120fe",
+  "ext": "v1|278270344996|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 1,
+  "sold": 0,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 5 PRO 5650GE 6-core 12-Thread "
+ },
+ {
+  "id": "ec774119-11e0-4b69-beea-2cca6dca79f3",
+  "ext": "v1|287515139911|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 1,
+  "sold": 0,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "MSI NVIDIA GeForce RTX 2070 Armor OC 8GB"
+ },
+ {
+  "id": "dffaf01e-66a5-45ed-8c0c-cf647f0069fd",
+  "ext": "v1|236944388581|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 1,
+  "end": "2026-10-17T21:53:18.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "Ryzen 5 1600 1st Gen 6-Core 3.2 GHz CPU "
+ },
+ {
+  "id": "57acd016-c5ca-499b-abad-a27372078005",
+  "ext": "v1|168441138099|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 1,
+  "sold": 0,
+  "end": "2026-10-22T01:52:35.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "Kingston FURY Beast RGB 16GB 1x16GB DDR5"
+ },
+ {
+  "id": "3ea79d7c-8d01-426b-853c-ee18ec5547c2",
+  "ext": "v1|137377288056|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 20,
+  "sold": 11,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 5 PRO 5650GE AM4 Upgrade CPU P"
+ },
+ {
+  "id": "7281a6c0-d940-4500-9cd8-7b580e87537c",
+  "ext": "v1|198162154328|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 1,
+  "sold": 0,
+  "end": "2026-10-15T23:40:16.000Z",
+  "ended": true,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "GIGABYTE RTX 3070 GAMING OC 8GB GDDR6 Gr"
+ },
+ {
+  "id": "18e2888b-395c-456c-a5d1-5c053fcabf76",
+  "ext": "v1|177880047932|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 8,
+  "sold": 68,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD CPU Ryzen 5 3500  3.6GHz Socket AM4"
+ },
+ {
+  "id": "631647e1-8e85-4798-83f3-1e44caf3f8ad",
+  "ext": "v1|136788951775|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 67,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 3 Pro 2200G 3.5GHz 4MB 65W AM4"
+ },
+ {
+  "id": "09a69c4b-767d-48d4-a16b-fbabeaa4bf06",
+  "ext": "v1|116888657401|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 15,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "Dell NVIDIA GeForce RTX 2080 Ti 11GB Gra"
+ },
+ {
+  "id": "fe82a848-5566-4e1e-a054-3cfae3e2a517",
+  "ext": "v1|326869818890|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": null,
+  "sold": 12,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "AMD Ryzen 7 7700 Desktop Processor 3.8GH"
+ },
+ {
+  "id": "5f964e7c-26f3-465e-9d2e-4621213755cb",
+  "ext": "v1|357302267793|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 1,
+  "sold": 18,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 7 5800X CPU 4.7GHz 8 Cores Soc"
+ },
+ {
+  "id": "dd07a3aa-94ca-4eda-96f2-beea81575325",
+  "ext": "v1|157130784580|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 1,
+  "sold": 0,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "ASUS NVIDIA GeForce RTX 2070 8GB GDDR6 G"
+ },
+ {
+  "id": "2f912320-9ff1-44e8-9362-9338dc0c610a",
+  "ext": "v1|267235860204|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 5,
+  "sold": 78,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "(Used) AMD Ryzen 5 7500F 6-Core 12-Threa"
+ },
+ {
+  "id": "697961cd-4ad3-4cd7-919f-6ea9fc45d769",
+  "ext": "v1|236058847454|0",
+  "code": 200,
+  "avail": "IN_STOCK",
+  "qty": 8,
+  "sold": 4,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE",
+   "BEST_OFFER"
+  ],
+  "title": "NVIDIA Quadro RTX 4000 8GB GDDR6 Turing "
+ },
+ {
+  "id": "bf3c272d-0394-4dc8-8dc7-b644b1f505dc",
+  "ext": "v1|126786114405|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 42,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 5 PRO 5650GE AMD 6-core 12-Thr"
+ },
+ {
+  "id": "37c3e2f2-7832-4e04-b643-db7936329883",
+  "ext": "v1|125546635928|0",
+  "code": 200,
+  "avail": "OUT_OF_STOCK",
+  "qty": 0,
+  "sold": 94,
+  "end": null,
+  "ended": false,
+  "buying": [
+   "FIXED_PRICE"
+  ],
+  "title": "AMD Ryzen 5 2600X 3.60GHz Hexa-Core (YD2"
+ }
+]

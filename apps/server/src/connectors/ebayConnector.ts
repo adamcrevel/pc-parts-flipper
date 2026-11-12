@@ -8,7 +8,7 @@
 import type { EbayConnectorConfig } from '@pc-parts-flipper/shared';
 import { AppError } from '../error-handler.js';
 import { logger } from '../logger.js';
-import type { CandidateListing, DescriptionFetcher, MarketplaceConnector } from './types.js';
+import type { CandidateListing, DescriptionFetcher, ListingLiveStatus, MarketplaceConnector, StatusChecker } from './types.js';
 
 // eBay OAuth2 app-token scope for Browse API read access. Fixed per eBay's
 // docs — not configurable per Source.
@@ -35,18 +35,31 @@ interface EbayItemSummary {
   conditionId?: string;
 }
 
+// One entry of a Browse API single-item detail response's
+// `estimatedAvailabilities[]` — eBay's per-item stock signal. The status
+// values eBay documents are IN_STOCK / LIMITED_STOCK / OUT_OF_STOCK; only
+// OUT_OF_STOCK is read as meaning "gone" here (see classifyEbayItemStatus).
+interface EbayItemAvailability {
+  estimatedAvailabilityStatus?: string;
+  estimatedAvailableQuantity?: number;
+  estimatedSoldQuantity?: number;
+}
+
 // Shape of a Browse API single-item detail response
 // (`GET /buy/browse/v1/item/{itemId}`). Its image fields are identical in
 // shape to the search response's, but already served at full resolution —
 // fetchItemImageUrls reads the image fields; fetchItemDescription reads
 // `description` and `localizedAspects` (eBay's per-item specifics list,
 // e.g. 'Brand: ASUS') — only the `name`/`value` pair of each aspect is
-// used, eBay's own `type` field is not read.
+// used, eBay's own `type` field is not read. checkItemStatus reads
+// `estimatedAvailabilities[0]` and `itemEndDate` (an ISO-8601 timestamp).
 interface EbayItemDetail {
   image?: { imageUrl: string };
   additionalImages?: Array<{ imageUrl: string }>;
   description?: string;
   localizedAspects?: Array<{ name: string; value: string }>;
+  estimatedAvailabilities?: EbayItemAvailability[];
+  itemEndDate?: string;
 }
 
 // Shape of a Browse API search response.
@@ -373,12 +386,63 @@ function createDescriptionFetcher(): DescriptionFetcher {
   };
 }
 
+/**
+ * Classifies a 200 item-detail body as `'active'`, `'sold'` or `'removed'`.
+ * The rule is grounded in what eBay's production Browse API was observed
+ * to return for 166 real stale listings (feature UAT, cycle 2) — a gone
+ * item does not 404, it answers 200 with `estimatedAvailabilityStatus:
+ * 'OUT_OF_STOCK'` and/or an `itemEndDate` in the past:
+ *  - OUT_OF_STOCK with a past itemEndDate and estimatedSoldQuantity > 0
+ *    (the common sold case, 118 of 166);
+ *  - OUT_OF_STOCK with no itemEndDate, estimatedAvailableQuantity 0 and
+ *    estimatedSoldQuantity 2-6 (19 of 166);
+ *  - IN_STOCK with a past itemEndDate (8 of 166 — ended; 6 never sold,
+ *    2 multi-quantity listings sold some units before ending);
+ *  - IN_STOCK, not ended (the ~20 genuinely live ones).
+ * So an item is still available only when it is not OUT_OF_STOCK and has
+ * no past itemEndDate; otherwise it is gone, and eBay's own
+ * estimatedSoldQuantity decides `'sold'` vs `'removed'`. A missing
+ * availability block or an unparseable itemEndDate contributes no "gone"
+ * signal — an item is never retired on the absence of data. `now` is
+ * injectable so the end-date comparison is testable against fixed dates.
+ */
+export function classifyEbayItemStatus(detail: EbayItemDetail, now: Date = new Date()): ListingLiveStatus {
+  const availability = detail.estimatedAvailabilities?.[0];
+  const outOfStock = availability?.estimatedAvailabilityStatus === 'OUT_OF_STOCK';
+  const endedAt = detail.itemEndDate === undefined ? Number.NaN : Date.parse(detail.itemEndDate);
+  const ended = endedAt < now.getTime();
+  if (!outOfStock && !ended) {
+    return 'active';
+  }
+  return (availability?.estimatedSoldQuantity ?? 0) > 0 ? 'sold' : 'removed';
+}
+
+/**
+ * Builds the lazily-initialized status checker the scan service calls once
+ * per scan pass, mirroring createDescriptionFetcher's shared-client pattern
+ * above: `createEbayItemDetailClient()` performs its own OAuth app-token
+ * call, so this defers it to the returned function's own first invocation,
+ * memoizes the in-flight/resolved client promise, and reuses it for every
+ * missing-candidate lookup in the same scan pass.
+ */
+function createStatusChecker(): StatusChecker {
+  let clientPromise: Promise<EbayItemDetailClient> | undefined;
+  return async (externalItemId: string): Promise<ListingLiveStatus> => {
+    if (clientPromise === undefined) {
+      clientPromise = createEbayItemDetailClient();
+    }
+    const client = await clientPromise;
+    return client.checkItemStatus(externalItemId);
+  };
+}
+
 // The eBay MarketplaceConnector instance registered under 'ebay' in
 // registry.ts.
 export const ebayConnector: MarketplaceConnector = {
   platformType: 'ebay',
   search,
   createDescriptionFetcher,
+  createStatusChecker,
 };
 
 /**
@@ -404,6 +468,29 @@ export interface EbayItemDetailClient {
    * fails, matching this connector's error convention everywhere else.
    */
   fetchItemDescription(externalItemId: string): Promise<string | null>;
+
+  /**
+   * Checks whether `externalItemId` is still live on eBay (Req 6). Resolves
+   * `'removed'` on a 404, the same reasoning backfillOneListing's own doc
+   * comment already uses for an eBay 404 meaning "a listing since removed"
+   * (apps/server/src/scan/descriptionBackfill.ts). A 404 is NOT, however,
+   * how eBay usually reports a gone item: observed live against the
+   * production Browse API, a sold or ended item still answers HTTP 200 with
+   * a full item body, so a 2xx response is classified from that body's
+   * `estimatedAvailabilities[0]` and `itemEndDate` fields by
+   * classifyEbayItemStatus — `'active'` only while the item is genuinely
+   * still available, otherwise `'sold'` when eBay's own
+   * `estimatedSoldQuantity` is positive and `'removed'` when it is not.
+   * Any other non-2xx/non-404 response throws AppError(502) carrying
+   * eBay's own error message rather than resolving to any status, matching
+   * this connector's error convention everywhere else — never read an
+   * unexpected failure response as a mundane, successful outcome (the
+   * lesson this project already learned the hard way from the Mercari
+   * connector's own auth-bypass bug, where a malformed request's error
+   * body was once silently read as zero results instead of a failure; see
+   * mercariSearchMapping.ts's header comment).
+   */
+  checkItemStatus(externalItemId: string): Promise<ListingLiveStatus>;
 }
 
 /**
@@ -457,6 +544,38 @@ export async function createEbayItemDetailClient(): Promise<EbayItemDetailClient
 
       const body = (await response.json()) as EbayItemDetail;
       return formatEbayItemDetails(body);
+    },
+    async checkItemStatus(externalItemId: string): Promise<ListingLiveStatus> {
+      const response = await fetch(`https://${host}/buy/browse/v1/item/${encodeURIComponent(externalItemId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.status === 404) {
+        logger.debug({ host, externalItemId }, 'eBay item status check: item not found (removed)');
+        return 'removed';
+      }
+
+      if (!response.ok) {
+        const message = await extractEbayErrorMessage(response, 'eBay item status check failed');
+        logger.warn({ host, externalItemId, status: response.status }, 'eBay item status check request failed');
+        throw new AppError(message, 502);
+      }
+
+      const body = (await response.json()) as EbayItemDetail;
+      const status = classifyEbayItemStatus(body);
+      const availability = body.estimatedAvailabilities?.[0];
+      logger.debug(
+        {
+          externalItemId,
+          status,
+          availabilityStatus: availability?.estimatedAvailabilityStatus,
+          availableQuantity: availability?.estimatedAvailableQuantity,
+          soldQuantity: availability?.estimatedSoldQuantity,
+          itemEndDate: body.itemEndDate,
+        },
+        'eBay item status check: classified from item detail body',
+      );
+      return status;
     },
   };
 }

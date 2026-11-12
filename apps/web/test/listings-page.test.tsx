@@ -916,9 +916,10 @@ describe('ListingsPage column filters (T5)', () => {
     await waitForFetchWith((o) => o.sourceIds?.[0] === 'source-2');
     expect(lastFetchOptions().sourceIds).toEqual(['source-2']);
 
-    // Req 4: the three fixed statuses.
+    // Req 4, 1 (stale-listing-detection): the four fixed statuses, now
+    // including the scan pipeline's 'removed' terminal status.
     const statusContent = await openColumnFilter(el, 'Status');
-    expect(Array.from(statusContent.querySelectorAll('label')).map((l) => l.textContent?.trim())).toEqual(['Open', 'Accepted', 'Rejected']);
+    expect(Array.from(statusContent.querySelectorAll('label')).map((l) => l.textContent?.trim())).toEqual(['Open', 'Accepted', 'Rejected', 'Removed']);
     await checkColumnFilterOption(el, 'Status', 'Open');
     await checkColumnFilterOption(el, 'Status', 'Rejected');
     await waitForFetchWith((o) => o.statuses?.length === 2);

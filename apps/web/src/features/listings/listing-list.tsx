@@ -17,6 +17,7 @@ import { LoadingSpinner } from '@/components/loading-spinner';
 import { ListingForm } from '@/features/listings/listing-form';
 import { EbayScanBadge } from '@/features/listings/ebay-scan-badge';
 import { NonWorkingBadge } from '@/features/listings/non-working-badge';
+import { MarketplaceStatusBadge } from '@/features/listings/marketplace-status-badge';
 import { IdentifyPartsStatusBadge } from '@/features/listings/identify-parts-status-badge';
 import { PricingStatusBadge } from '@/features/listings/pricing-status-badge';
 import { FilterableHeader } from '@/features/listings/filterable-header';
@@ -113,6 +114,7 @@ const STATUS_OPTIONS: { value: ListingStatus; label: string }[] = [
   { value: 'open', label: 'Open' },
   { value: 'accepted', label: 'Accepted' },
   { value: 'rejected', label: 'Rejected' },
+  { value: 'removed', label: 'Removed' },
 ];
 
 // Req 5: the six job stages plus the explicit `'none'` sentinel the server
@@ -374,6 +376,7 @@ export function ListingList({
                       {listing.photoPaths.length > 0 && <Image className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Has photos" />}
                       {listing.externalItemId !== null && <EbayScanBadge />}
                       {listing.nonWorking && <NonWorkingBadge />}
+                      {listing.marketplaceStatus !== null && <MarketplaceStatusBadge marketplaceStatus={listing.marketplaceStatus} />}
                     </div>
                   </td>
                   <td className="px-4 py-3">{sourcesById.get(listing.sourceId)?.name ?? 'Unknown source'}</td>

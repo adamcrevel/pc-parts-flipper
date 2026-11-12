@@ -64,7 +64,8 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
   // external_source/external_item_id (ebay-scanning feature, T1) were
   // likewise added via ALTER_STATEMENTS, appended after the original
   // columns; non_working (ebay-condition-filter feature, T1) was appended
-  // later still, so it lands last of all.
+  // later still; marketplace_status/marketplace_status_detected_at
+  // (stale-listing-detection feature, T1) land last of all.
   listings: [
     'id',
     'source_id',
@@ -81,6 +82,8 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'external_source',
     'external_item_id',
     'non_working',
+    'marketplace_status',
+    'marketplace_status_detected_at',
   ],
   // brand/part_number (brand-model feature) and ai_confidence/ai_source
   // (AI-suggestion provenance) were added via ALTER_STATEMENTS after the

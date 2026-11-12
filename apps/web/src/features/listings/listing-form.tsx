@@ -7,6 +7,7 @@ import { ApiError } from '@/lib/api-client';
 import { EbayScanBadge } from '@/features/listings/ebay-scan-badge';
 import { ExpectedPartsEditor, type ExpectedPartRow, type ExpectedPartRowErrors } from '@/features/listings/expected-parts-editor';
 import { NonWorkingBadge } from '@/features/listings/non-working-badge';
+import { MarketplaceStatusBadge } from '@/features/listings/marketplace-status-badge';
 import { ListingComparisonSummary } from '@/features/listings/listing-comparison-summary';
 import { ListingFields } from '@/features/listings/listing-fields';
 import { IdentifyPartsButton } from '@/features/listings/identify-parts-button';
@@ -173,6 +174,9 @@ export function ListingForm({ initialValue, sources, onSubmit, onCancel, onSaved
         <EbayScanBadge listingUrl={initialValue.listingUrl} />
       )}
       {initialValue?.nonWorking && <NonWorkingBadge />}
+      {initialValue?.marketplaceStatus !== null && initialValue?.marketplaceStatus !== undefined && (
+        <MarketplaceStatusBadge marketplaceStatus={initialValue.marketplaceStatus} />
+      )}
 
       <CollapsibleSection
         trigger="Listing Details"
