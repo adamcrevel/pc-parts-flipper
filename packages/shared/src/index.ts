@@ -16,3 +16,4 @@ export * from './connectors.js';
 export * from './aiIdentification.js';
 export * from './identifyPartsJob.js';
 export * from './partIdentity.js';
+export * from './priceComps.js';

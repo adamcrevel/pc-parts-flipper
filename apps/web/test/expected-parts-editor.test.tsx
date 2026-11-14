@@ -9,10 +9,19 @@
 // controlled, so without one `onChange` would go nowhere and the "clears on
 // edit" case could never be observed), following source-ebay-connector
 // .test.tsx's react-dom/client + act() pattern — no RTL in this workspace.
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { act, useState } from 'react';
 import { ExpectedPartsEditor, type ExpectedPartRow, type ExpectedPartRowErrors } from '../src/features/listings/expected-parts-editor';
+
+// price-comps-viewer.tsx (nested under a priced row's trigger) calls
+// fetchPriceComps on expand; mocked here purely so an unrelated assertion
+// in this file never triggers a real network call. Its own fetch/render
+// behavior is covered by price-comps-viewer.test.tsx.
+const fetchPriceCompsMock = vi.fn();
+vi.mock('@/features/listings/listings-api', () => ({
+  fetchPriceComps: (...args: unknown[]) => fetchPriceCompsMock(...args),
+}));
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -413,5 +422,20 @@ describe('ExpectedPartsEditor unpriced-row indicator (Req 13)', () => {
     );
     expect(el.querySelector('[aria-label="Expected part 1 has an error"]')).not.toBeNull();
     expect(unpricedIcon(el, 0)).not.toBeNull();
+  });
+});
+
+describe('ExpectedPartsEditor price-comps affordance (T4, Req 4)', () => {
+  it('renders the "View comps" toggle for a row with brand, part number, and an estimated resale value', async () => {
+    const el = await mount(<EditorHarness initialRows={[manualRow({ brand: 'AMD', partNumber: 'Ryzen 5 5600X', estimatedResaleValue: '90' })]} />);
+    expect(el.textContent).toContain('View comps');
+  });
+
+  it('omits the "View comps" toggle for a row missing brand/part number or with no estimated resale value yet', async () => {
+    const unpriced = await mount(<EditorHarness initialRows={[manualRow({ brand: 'AMD', partNumber: 'Ryzen 5 5600X', estimatedResaleValue: '' })]} />);
+    expect(unpriced.textContent).not.toContain('View comps');
+
+    const noIdentity = await mount(<EditorHarness initialRows={[manualRow({ brand: '', partNumber: '', estimatedResaleValue: '90' })]} />);
+    expect(noIdentity.textContent).not.toContain('View comps');
   });
 });

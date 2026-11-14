@@ -14,11 +14,12 @@ import { registerProfitRoutes } from './routes/profit.js';
 import { registerScanRoutes } from './routes/scan.js';
 import { registerIdentifyPartsRoutes } from './routes/identifyParts.js';
 import { registerIdentifyPartsJobsRoutes } from './routes/identifyPartsJobs.js';
+import { registerPriceCompsRoutes } from './routes/priceComps.js';
 import { startScheduler } from './scan/scheduler.js';
 import { startIdentifyPartsWorkerPool } from './jobs/identifyPartsWorkerPool.js';
 import { startPricePartsWorkerPool } from './jobs/pricePartsWorkerPool.js';
 import { startPriceRefreshScheduler } from './jobs/priceRefreshScheduler.js';
-import { closeConnection } from './db/client.js';
+import { beginShutdown, closeConnection } from './db/client.js';
 import { PHOTOS_DIR } from './photos/photoStorage.js';
 
 // Backend app shell. Builds the Fastify instance wired to the shared pino
@@ -69,6 +70,7 @@ await registerProfitRoutes(server);
 await registerScanRoutes(server);
 await registerIdentifyPartsRoutes(server);
 await registerIdentifyPartsJobsRoutes(server);
+await registerPriceCompsRoutes(server);
 
 // Registers the once-daily scheduled scan job (T8, Req 6, 9) so eligible
 // Sources are re-scanned automatically, not only via T7's manual route.
@@ -143,7 +145,20 @@ async function gracefulShutdown(signal: NodeJS.Signals): Promise<void> {
   scheduledTask.stop();
   identifyPartsPool.stop();
   priceRefreshScheduledTask.stop();
-  pricePartsPool.stop();
+  // Awaited (unlike the other three stop() calls above, which are
+  // synchronous) because a price job spends most of its time awaiting the
+  // AI runner — entirely before it reaches any DB run/runAndReadAll call —
+  // so client.ts's own queueTail has no visibility into it. Without this
+  // await, closeConnection() below could run while a price job is still
+  // mid-flight, either losing its eventual write or racing a reopen of
+  // the connection it was about to write through.
+  await pricePartsPool.stop();
+  // Marks the shutdown as started before closeConnection() runs, so a
+  // caller that somehow still slips a getConnection() call in after this
+  // point (identify-parts jobs are out of scope for this fix — T4) gets a
+  // clear rejection instead of silently reopening a fresh DuckDBInstance
+  // and rerunning every migration on a database that is closing.
+  beginShutdown();
   await server.close();
   await closeConnection();
   logger.info('Graceful shutdown complete');

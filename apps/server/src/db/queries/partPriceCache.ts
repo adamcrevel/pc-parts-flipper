@@ -7,7 +7,7 @@
 import { getConnection } from '../client.js';
 import { newId } from '../id.js';
 import { toNullableNumber } from '../sqlHelpers.js';
-import type { ComponentCategory } from '@pc-parts-flipper/shared';
+import type { ComponentCategory, PriceComp } from '@pc-parts-flipper/shared';
 import type { PartPriceCacheEntry } from '../types.js';
 
 // Same pattern as referencePhotos.ts's / sourcingAttempts.ts's
@@ -24,6 +24,7 @@ function mapRow(row: Record<string, unknown>): PartPriceCacheEntry {
     brand: row.brand as string,
     partNumber: row.part_number as string,
     estimatedResaleValue: toNullableNumber(row.estimated_resale_value as string | null),
+    comps: JSON.parse((row.comps as string | null) ?? '[]') as PriceComp[],
     lastResearchedAt: row.last_researched_at as string | null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
@@ -96,26 +97,30 @@ export async function insertPriceCacheEntry(
  * but couldn't price the combo), only `last_researched_at` is touched —
  * `estimated_resale_value` is deliberately left out of that SET clause so a
  * later null-finding refresh can never regress a prior successful cached
- * value back down to null.
+ * value back down to null. `comps` (pricing-comps feature T2) is always
+ * written, regardless of whether `value` is null — the supporting evidence
+ * a research pass found is recorded even when it yielded no confident
+ * price, same as `last_researched_at`.
  */
 export async function updatePriceCacheEntryValue(
   category: ComponentCategory,
   brand: string,
   partNumber: string,
   value: number | null,
+  comps: PriceComp[] = [],
 ): Promise<void> {
   const connection = await getConnection();
   const setSql =
     value === null
-      ? `last_researched_at = current_timestamp`
-      : `estimated_resale_value = $value, last_researched_at = current_timestamp`;
+      ? `last_researched_at = current_timestamp, comps = $comps`
+      : `estimated_resale_value = $value, last_researched_at = current_timestamp, comps = $comps`;
   await connection.run(
     `UPDATE part_price_cache
      SET ${setSql}, updated_at = current_timestamp
      WHERE component_category = $category AND brand = $brand AND part_number = $part_number`,
     value === null
-      ? { category, brand, part_number: partNumber }
-      : { category, brand, part_number: partNumber, value },
+      ? { category, brand, part_number: partNumber, comps: JSON.stringify(comps) }
+      : { category, brand, part_number: partNumber, value, comps: JSON.stringify(comps) },
   );
 }
 

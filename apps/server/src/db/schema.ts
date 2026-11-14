@@ -324,6 +324,12 @@ export const ALTER_STATEMENTS: readonly string[] = [
   // transitionListingMarketplaceStatus) sets or clears them.
   `ALTER TABLE listings ADD COLUMN IF NOT EXISTS marketplace_status VARCHAR`,
   `ALTER TABLE listings ADD COLUMN IF NOT EXISTS marketplace_status_detected_at TIMESTAMP`,
+  // pricing-comps feature (T2): JSON-encoded array of PriceComp objects
+  // (see packages/shared/src/priceComps.ts) backing one cached price-
+  // research entry's supporting evidence. Same JSON-as-VARCHAR convention
+  // as identity_candidates above, for the same reason: DuckDB's native
+  // LIST type has empty-array type-inference ambiguity in the Node client.
+  `ALTER TABLE part_price_cache ADD COLUMN IF NOT EXISTS comps VARCHAR DEFAULT '[]'`,
 ];
 
 // -- Phase 4: indexes ------------------------------------------------------

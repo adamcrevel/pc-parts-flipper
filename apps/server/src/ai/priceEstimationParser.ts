@@ -10,6 +10,7 @@
 // structurally valid {"confident":true,"priceUsd":<finite positive number>}
 // response; every other case is logged at Warn (never Error — an honest "I
 // don't know" is not a failure) and returns null. Never invents a number.
+import type { PriceComp } from '@pc-parts-flipper/shared';
 import { logger } from '../logger.js';
 import { extractBracketedJson, stripCodeFence } from './identificationParser.js';
 
@@ -98,4 +99,103 @@ export function parsePriceEstimationResponse(rawStdout: string): number | null {
     'AI price estimation returned confident=true but with a malformed priceUsd field; treating as no confident price',
   );
   return null;
+}
+
+// Up to this many comps are kept, regardless of how many the model listed —
+// enough to support the estimate without the response ballooning.
+const MAX_PRICE_COMPS = 5;
+
+// A comp with no usable title/url is not worth keeping — the UI links out to
+// `url` directly, so a non-http(s) string or empty title would render a dead
+// or unsafe link. Returns the validated {title, url} pair, or undefined when
+// either is unusable.
+function coerceCompIdentity(entry: object): { title: string; url: string } | undefined {
+  const title: unknown = 'title' in entry ? entry.title : undefined;
+  const url: unknown = 'url' in entry ? entry.url : undefined;
+  const urlIsHttp = typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'));
+
+  if (typeof title !== 'string' || title.length === 0 || !urlIsHttp) {
+    return undefined;
+  }
+  return { title, url: url as string };
+}
+
+// Coerces a comp entry's three optional fields together: `priceUsd` to a
+// finite positive number or null (mirrors parsePriceEstimationResponse's own
+// priceUsd check above — only a trustworthy number is kept, anything else
+// becomes null rather than a silently-wrong figure), `condition` to a string
+// or null, and `saleType` to one of the two allowed values or null. None of
+// the three failing independently costs the comp its title/url — a comp
+// with an unusable optional field is still worth keeping, just with that
+// field nulled out.
+function coerceCompFields(entry: object): Pick<PriceComp, 'priceUsd' | 'condition' | 'saleType'> {
+  const rawPriceUsd: unknown = 'priceUsd' in entry ? entry.priceUsd : undefined;
+  const rawCondition: unknown = 'condition' in entry ? entry.condition : undefined;
+  const rawSaleType: unknown = 'saleType' in entry ? entry.saleType : undefined;
+
+  return {
+    priceUsd: typeof rawPriceUsd === 'number' && Number.isFinite(rawPriceUsd) && rawPriceUsd > 0 ? rawPriceUsd : null,
+    condition: typeof rawCondition === 'string' ? rawCondition : null,
+    saleType: rawSaleType === 'sold' || rawSaleType === 'listed' ? rawSaleType : null,
+  };
+}
+
+/**
+ * Parses the runner's raw stdout for the up-to-5 real comps the model cited
+ * alongside its price estimate (pricing-comps feature T1) — a sibling to
+ * parsePriceEstimationResponse above, which it does not call or affect.
+ * Reuses the same two-attempt JSON recovery (direct parse of the
+ * fence-stripped text, then the outermost `{...}` payload extracted from the
+ * original raw text) since both functions read the same response object,
+ * just different fields of it.
+ *
+ * Never throws: a missing or malformed `comps` array is the normal shape
+ * when the model found no clean comps to cite (or answered with
+ * confident:false), so this resolves to `[]` rather than failing the whole
+ * response. Each entry is validated independently, mirroring
+ * identificationParser.ts's coerceIdentityField style — `title` must be a
+ * non-empty string and `url` a string starting with `http://`/`https://`
+ * (the UI links out to it, so an unusable value is dropped rather than
+ * passed through); `priceUsd` is coerced to a finite positive number or
+ * null, `condition` to a string or null, `saleType` to 'sold'/'listed' or
+ * null. An entry with no usable title/url is dropped with a Warn log; any
+ * other malformed field on an otherwise-usable entry is coerced and kept
+ * rather than dropping the whole comp. The result is capped at
+ * MAX_PRICE_COMPS regardless of how many the model listed. `linkStatus` is
+ * always set to null here — the model never reports it, and link-liveness
+ * verification (pricing-comps feature T7) runs as a separate later pass.
+ */
+export function parsePriceComps(rawStdout: string): PriceComp[] {
+  const text = stripCodeFence(rawStdout);
+  const parsed = parseResponseJson(rawStdout, text);
+
+  if (typeof parsed !== 'object' || parsed === null) {
+    return [];
+  }
+
+  const rawComps: unknown = 'comps' in parsed ? parsed.comps : undefined;
+  if (!Array.isArray(rawComps)) {
+    return [];
+  }
+
+  const comps: PriceComp[] = [];
+  for (const entry of rawComps) {
+    if (comps.length >= MAX_PRICE_COMPS) {
+      break;
+    }
+    if (typeof entry !== 'object' || entry === null) {
+      logger.warn({ entry }, 'AI price estimation returned a malformed comp entry; dropping it');
+      continue;
+    }
+
+    const identity = coerceCompIdentity(entry);
+    if (identity === undefined) {
+      logger.warn({ entry }, 'AI price estimation returned a comp with a missing/malformed title or url; dropping it');
+      continue;
+    }
+
+    comps.push({ title: identity.title, url: identity.url, ...coerceCompFields(entry), linkStatus: null });
+  }
+
+  return comps;
 }
