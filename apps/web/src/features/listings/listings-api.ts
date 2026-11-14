@@ -1,6 +1,8 @@
 import type {
   AcceptListingResponse,
+  ComponentCategory,
   CreateListingInput,
+  GetPriceCompsResponse,
   IdentifyPartsJob,
   IdentifyPartsBulkResponse,
   IdentifyPartsBulkResult,
@@ -134,4 +136,10 @@ export async function ackIdentifyPartsJob(jobId: string): Promise<void> {
 export async function enqueueBulkIdentifyParts(listingIds: string[]): Promise<IdentifyPartsBulkResult[]> {
   const response = await apiClient.post<IdentifyPartsBulkResponse>('/api/listings/identify-parts/bulk', { listingIds });
   return response.results;
+}
+
+/** Fetches the current price-research state (estimate, comps, last-researched timestamp) for one (category, brand, partNumber) combo (T3's GET /api/price-comps). */
+export function fetchPriceComps(category: ComponentCategory, brand: string, partNumber: string): Promise<GetPriceCompsResponse> {
+  const params = new URLSearchParams({ category, brand, partNumber });
+  return apiClient.get<GetPriceCompsResponse>(`/api/price-comps?${params.toString()}`);
 }

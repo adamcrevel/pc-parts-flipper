@@ -46,6 +46,47 @@ let connectionPromise: Promise<DuckDBConnection> | null = null;
 // alongside it in closeConnection.
 let dbInstance: DuckDBInstance | null = null;
 
+// Module-scoped (not local to serializeConnection) so closeConnection()
+// below can await the full FIFO queue — not just its own CHECKPOINT call —
+// before disconnecting. A single shared connection only ever needs one
+// queue for its lifetime, so one module-level tail is sufficient; scoping
+// it inside serializeConnection instead would hide it from closeConnection,
+// leaving a gap where a run/runAndReadAll call enqueued concurrently with
+// shutdown is still waiting its turn in the queue when disconnectSync()
+// fires on the now-closing connection.
+let queueTail: Promise<unknown> = Promise.resolve();
+
+// Set only by the real process-shutdown sequence (index.ts's
+// gracefulShutdown, via beginShutdown() below) — NOT by every
+// closeConnection() call. Several test files in apps/server/test/ call
+// closeConnection() mid-run to release a seeding connection before
+// spawning a separate server process against the same data directory,
+// then later call getConnection() again in THIS process (e.g.
+// pricePartsConcurrency.test.ts reopens after the spawned server stops,
+// to read back final state) — that reopen is a legitimate, non-shutdown
+// reuse of the module and must keep working. Only a caller that has
+// explicitly called beginShutdown() (the real shutdown path) should have
+// getConnection() refuse to lazily reopen a fresh DuckDBInstance/rerun
+// migrations afterward.
+let shuttingDown = false;
+
+/**
+ * Marks the shutdown sequence as started. After this call, getConnection()
+ * refuses to open a fresh connection (it would otherwise silently reopen
+ * the database file and rerun every migration if called after
+ * closeConnection() has already nulled out connectionPromise — see
+ * getConnection()'s own doc). index.ts's gracefulShutdown() calls this
+ * before closeConnection() so a price/identify job that is still mid-
+ * flight (e.g. awaiting the AI runner, not yet at any run/runAndReadAll
+ * call) cannot slip a getConnection() call in after the connection has
+ * started closing. There is no matching "end shutdown" reset: once a real
+ * process shutdown begins, the process exits shortly after, so the flag
+ * never needs to flip back.
+ */
+export function beginShutdown(): void {
+  shuttingDown = true;
+}
+
 /**
  * Wraps `connection` so calls to `run`/`runAndReadAll` — the only two
  * methods any query module in this codebase invokes (see queries/*.ts and
@@ -56,7 +97,6 @@ let dbInstance: DuckDBInstance | null = null;
  * pass through untouched.
  */
 function serializeConnection(connection: DuckDBConnection): DuckDBConnection {
-  let queueTail: Promise<unknown> = Promise.resolve();
   const SERIALIZED_METHODS: Record<string, true> = { run: true, runAndReadAll: true };
   return new Proxy(connection, {
     get(target, prop, receiver) {
@@ -91,8 +131,21 @@ function serializeConnection(connection: DuckDBConnection): DuckDBConnection {
  * calls this instead of touching DuckDB directly. The returned connection
  * is wrapped so concurrent callers queue rather than race (see
  * serializeConnection above).
+ *
+ * Rejects without opening anything once beginShutdown() has been called
+ * (real process shutdown in progress) — otherwise a caller mid-flight when
+ * shutdown starts (e.g. a price job awaiting the AI runner, not yet at any
+ * run/runAndReadAll call) could reach this after closeConnection() has
+ * already nulled connectionPromise, silently reopening a fresh
+ * DuckDBInstance and rerunning every migration on a database the process
+ * is in the middle of shutting down.
  */
 export function getConnection(): Promise<DuckDBConnection> {
+  if (shuttingDown) {
+    return Promise.reject(
+      new Error('cannot open database connection: shutdown already in progress'),
+    );
+  }
   connectionPromise ??= initializeConnection();
   return connectionPromise;
 }
@@ -123,6 +176,15 @@ export async function closeConnection(): Promise<void> {
   }
   const connection = await connectionPromise;
   await connection.run('CHECKPOINT');
+  // connection.run('CHECKPOINT') above only waits for the CHECKPOINT
+  // operation itself to settle; by the time it resolves, the module-level
+  // queueTail has already advanced past it, but anything enqueued
+  // *concurrently* with this shutdown (after CHECKPOINT was enqueued but
+  // before it ran) would still be chained behind it and not yet started.
+  // Awaiting the queue's current tail here closes that gap, so
+  // disconnectSync() below never fires while a still-queued
+  // run/runAndReadAll call is waiting its turn on this connection.
+  await queueTail;
   connection.disconnectSync();
   dbInstance?.closeSync();
   connectionPromise = null;
@@ -131,6 +193,11 @@ export async function closeConnection(): Promise<void> {
 
 // Creates the data directory if missing, opens (or creates) the DuckDB file,
 // and applies every pending migration before handing back the connection.
+// Migrations run through the same serializing wrapper every other caller
+// uses (wrap first, migrate second) rather than on the raw connection, so
+// migrate.ts's statements queue identically to every other run/
+// runAndReadAll call instead of bypassing the proxy — there is no code
+// path left that touches this connection without going through the queue.
 async function initializeConnection(): Promise<DuckDBConnection> {
   await mkdir(DATA_DIR, { recursive: true });
   // Info: trace connection target. T3's pino logger supersedes this console
@@ -138,7 +205,9 @@ async function initializeConnection(): Promise<DuckDBConnection> {
   console.log(`[db] opening DuckDB file at ${DB_PATH}`);
   const instance = await DuckDBInstance.create(DB_PATH);
   const connection = await instance.connect();
-  await runMigrations(connection);
+  const wrapped = serializeConnection(connection);
+  await runMigrations(wrapped);
   dbInstance = instance;
-  return serializeConnection(connection);
+  return wrapped;
 }
+

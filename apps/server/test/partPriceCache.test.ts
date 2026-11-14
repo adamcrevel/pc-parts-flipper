@@ -210,6 +210,81 @@ describe('Part Price Cache — updatePriceCacheEntryValue', () => {
     const afterNullRefresh = await db.findPriceCacheEntry('Case', 'Fractal Design', 'Meshify 2');
     expect(afterNullRefresh?.estimatedResaleValue).toBe(75);
   });
+
+  // pricing-comps feature (T2): comps are recorded regardless of whether a
+  // confident price was found (Req 3) — proven for both the priced and
+  // null-value branches, since comps is written on every call.
+  it('writes comps alongside a priced value', async () => {
+    await db.insertPriceCacheEntry('GPU', 'NVIDIA', 'RTX 3080');
+
+    await db.updatePriceCacheEntryValue('GPU', 'NVIDIA', 'RTX 3080', 300, [
+      { title: 'RTX 3080 sold', url: 'https://example.com/1', priceUsd: 300, condition: 'used', saleType: 'sold' },
+    ]);
+
+    const entry = await db.findPriceCacheEntry('GPU', 'NVIDIA', 'RTX 3080');
+    expect(entry?.comps).toEqual([
+      { title: 'RTX 3080 sold', url: 'https://example.com/1', priceUsd: 300, condition: 'used', saleType: 'sold' },
+    ]);
+  });
+
+  it('writes comps even when no confident price was found', async () => {
+    await db.insertPriceCacheEntry('Motherboard', 'ASUS', 'ROG STRIX Z790-E');
+
+    await db.updatePriceCacheEntryValue('Motherboard', 'ASUS', 'ROG STRIX Z790-E', null, [
+      {
+        title: 'ROG STRIX Z790-E listing',
+        url: 'https://example.com/2',
+        priceUsd: null,
+        condition: null,
+        saleType: 'listed',
+      },
+    ]);
+
+    const entry = await db.findPriceCacheEntry('Motherboard', 'ASUS', 'ROG STRIX Z790-E');
+    expect(entry?.estimatedResaleValue).toBeNull();
+    expect(entry?.comps).toEqual([
+      {
+        title: 'ROG STRIX Z790-E listing',
+        url: 'https://example.com/2',
+        priceUsd: null,
+        condition: null,
+        saleType: 'listed',
+      },
+    ]);
+  });
+
+  it('defaults comps to an empty array when the parameter is omitted', async () => {
+    await db.insertPriceCacheEntry('RAM', 'Corsair', 'Vengeance 32GB');
+
+    await db.updatePriceCacheEntryValue('RAM', 'Corsair', 'Vengeance 32GB', 100);
+
+    const entry = await db.findPriceCacheEntry('RAM', 'Corsair', 'Vengeance 32GB');
+    expect(entry?.comps).toEqual([]);
+  });
+
+  // Req 2: comps are "replaced wholesale on refresh", same lifecycle as
+  // the cached price itself — never accumulated across calls. Proven by
+  // writing two different single-element comps arrays back to back and
+  // asserting the stored value is exactly the second array (length 1,
+  // the second comp's own title/url), not a length-2 array containing
+  // both. If production code appended instead of overwriting, this
+  // would observe a 2-element array and fail.
+  it('replaces the previous comps array wholesale on a second call, never appending', async () => {
+    await db.insertPriceCacheEntry('Storage', 'WD', 'Black SN850X 1TB');
+
+    await db.updatePriceCacheEntryValue('Storage', 'WD', 'Black SN850X 1TB', 90, [
+      { title: 'First comp', url: 'https://example.com/first', priceUsd: 90, condition: 'used', saleType: 'sold' },
+    ]);
+
+    await db.updatePriceCacheEntryValue('Storage', 'WD', 'Black SN850X 1TB', 95, [
+      { title: 'Second comp', url: 'https://example.com/second', priceUsd: 95, condition: 'new', saleType: 'listed' },
+    ]);
+
+    const entry = await db.findPriceCacheEntry('Storage', 'WD', 'Black SN850X 1TB');
+    expect(entry?.comps).toEqual([
+      { title: 'Second comp', url: 'https://example.com/second', priceUsd: 95, condition: 'new', saleType: 'listed' },
+    ]);
+  });
 });
 
 describe('Part Price Cache — listAllPriceCacheEntries', () => {

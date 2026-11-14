@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { CollapsibleSection } from '@/components/ui/collapsible';
 import { AiSuggestedBadge } from '@/features/listings/ai-suggested-badge';
 import { IdentityCandidatesPicker } from '@/features/listings/identity-candidates-picker';
+import { PriceCompsViewer } from '@/features/listings/price-comps-viewer';
 
 // The fixed category list (assumption A8) the <select> below renders.
 const CATEGORY_OPTIONS: readonly ComponentCategory[] = ['CPU', 'GPU', 'Motherboard', 'RAM', 'Storage', 'PSU', 'Case', 'Cooler', 'Other'];
@@ -269,6 +270,10 @@ export function ExpectedPartsEditor({ rows, rowErrors, onChange, listingNonWorki
                     />
                     {errors.estimatedResaleValue && <p className="text-xs text-destructive">{errors.estimatedResaleValue}</p>}
                   </div>
+
+                  {row.brand !== '' && row.partNumber !== '' && row.estimatedResaleValue.trim() !== '' && (
+                    <PriceCompsViewer category={row.componentCategory} brand={row.brand} partNumber={row.partNumber} />
+                  )}
                 </div>
               }
             >

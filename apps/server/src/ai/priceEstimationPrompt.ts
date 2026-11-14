@@ -45,10 +45,11 @@ export function buildPriceEstimationPrompt(category: ComponentCategory, brand: s
     '3. Report one single price estimate, not a range.',
     '4. Be honest and conservative. If you cannot find enough real market activity for this exact part to support a confident number, say so plainly — set "confident" to false — rather than guessing. An honest "not confident" is far more useful than a confident wrong price.',
     '5. Do NOT invent, round-trip-guess, or pad a number you cannot actually support from what you found.',
+    '6. List up to 5 of the real comps (sold listings or current asking prices) you found and based your estimate on, each with its title, URL, price in USD, condition, and whether it was a completed sale ("sold") or a current asking price ("listed").',
     '',
     'RESPOND WITH ONLY RAW JSON. No markdown, no code fences, no commentary before or after:',
-    '{"confident":true,"priceUsd":45.00}',
+    '{"confident":true,"priceUsd":45.00,"comps":[{"title":"Example Part - Used","url":"https://example.com/listing","priceUsd":45.00,"condition":"used","saleType":"sold"}]}',
     'OR, if you cannot confidently estimate a price:',
-    '{"confident":false,"priceUsd":null}',
+    '{"confident":false,"priceUsd":null,"comps":[]}',
   ].join('\n');
 }

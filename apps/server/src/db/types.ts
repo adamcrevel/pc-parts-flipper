@@ -7,7 +7,7 @@
 // re-exported from @pc-parts-flipper/shared via db/index.ts instead, since
 // each of those is an exact duplicate of its packages/shared counterpart
 // once corrected — one declaration per entity, not two free to drift apart.
-import type { ComponentCategory } from '@pc-parts-flipper/shared';
+import type { ComponentCategory, PriceComp } from '@pc-parts-flipper/shared';
 
 // -- Rows --------------------------------------------------------------
 
@@ -38,7 +38,10 @@ export interface SourcingAttempt {
  * partNumber) combo, updated in the background by the price-estimation
  * feature (assumed to exist by Req 7, built by a later task). Queries from
  * this table populate Expected Parts' estimated_resale_value defaulting (see
- * pricePartsJobs.ts) when an Expected Part is first identified.
+ * pricePartsJobs.ts) when an Expected Part is first identified. `comps`
+ * (pricing-comps feature T2) is the supporting evidence the research found
+ * for `estimatedResaleValue` — always `[]` for a combo that has never been
+ * researched or whose last research found no usable comps, never null.
  */
 export interface PartPriceCacheEntry {
   id: string;
@@ -46,6 +49,7 @@ export interface PartPriceCacheEntry {
   brand: string;
   partNumber: string;
   estimatedResaleValue: number | null;
+  comps: PriceComp[];
   lastResearchedAt: string | null;
   createdAt: string;
   updatedAt: string;

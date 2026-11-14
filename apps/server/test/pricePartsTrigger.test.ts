@@ -62,6 +62,7 @@ function cacheFixture(estimatedResaleValue: number | null): PartPriceCacheEntry 
     brand: 'NVIDIA',
     partNumber: 'RTX 3060',
     estimatedResaleValue,
+    comps: [],
     lastResearchedAt: estimatedResaleValue === null ? null : '2026-01-01T00:00:00.000Z',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',

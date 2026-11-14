@@ -232,6 +232,9 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'last_researched_at',
     'created_at',
     'updated_at',
+    // pricing-comps feature (T2): appended by ALTER_STATEMENTS, same
+    // DDL-order convention as retry_count/next_retry_at above.
+    'comps',
   ],
   // Price-research job queue (part-price-estimation feature): same
   // queued-row/poll-for-completion shape as identify_parts_jobs above, but

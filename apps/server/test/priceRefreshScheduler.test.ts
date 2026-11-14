@@ -57,6 +57,7 @@ function makeEntry(overrides: Partial<PartPriceCacheEntry>): PartPriceCacheEntry
     brand: 'Intel',
     partNumber: 'i7-9700K',
     estimatedResaleValue: null,
+    comps: [],
     lastResearchedAt: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',

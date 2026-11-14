@@ -238,3 +238,145 @@ describe('parsePriceEstimationResponse — prose-wrapped JSON recovery (sourcing
     expect(warnSpy).toHaveBeenCalled();
   });
 });
+
+describe('parsePriceComps', () => {
+  it('parses a valid comps array into PriceComp objects with all fields intact', () => {
+    const raw = JSON.stringify({
+      confident: true,
+      priceUsd: 45,
+      comps: [
+        { title: 'Used GPU - Sold', url: 'https://example.com/1', priceUsd: 40, condition: 'used', saleType: 'sold' },
+        { title: 'Used GPU - Listed', url: 'http://example.com/2', priceUsd: 50, condition: 'good', saleType: 'listed' },
+      ],
+    });
+
+    expect(parser.parsePriceComps(raw)).toEqual([
+      { title: 'Used GPU - Sold', url: 'https://example.com/1', priceUsd: 40, condition: 'used', saleType: 'sold', linkStatus: null },
+      { title: 'Used GPU - Listed', url: 'http://example.com/2', priceUsd: 50, condition: 'good', saleType: 'listed', linkStatus: null },
+    ]);
+  });
+
+  it('returns [] when comps is missing from an otherwise-valid response', () => {
+    const raw = JSON.stringify({ confident: true, priceUsd: 45 });
+
+    expect(parser.parsePriceComps(raw)).toEqual([]);
+  });
+
+  it('returns [] when comps is not an array', () => {
+    const raw = JSON.stringify({ confident: true, priceUsd: 45, comps: 'none' });
+
+    expect(parser.parsePriceComps(raw)).toEqual([]);
+  });
+
+  it('returns [] without throwing for non-JSON prose carrying no payload at all', () => {
+    expect(() => parser.parsePriceComps('I was rate limited and gave up.')).not.toThrow();
+    expect(parser.parsePriceComps('I was rate limited and gave up.')).toEqual([]);
+  });
+
+  it('caps the result at 5 comps even when the model lists more', () => {
+    const comps = Array.from({ length: 8 }, (_, i) => ({
+      title: `Comp ${i}`,
+      url: `https://example.com/${i}`,
+      priceUsd: 10 + i,
+      condition: 'used',
+      saleType: 'sold',
+    }));
+    const raw = JSON.stringify({ confident: true, priceUsd: 45, comps });
+
+    const result = parser.parsePriceComps(raw);
+    expect(result).toHaveLength(5);
+    expect(result.map((c) => c.title)).toEqual(['Comp 0', 'Comp 1', 'Comp 2', 'Comp 3', 'Comp 4']);
+  });
+
+  it('drops an entry with a missing title and logs a Warn, keeping the other valid entries', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    const raw = JSON.stringify({
+      confident: true,
+      priceUsd: 45,
+      comps: [
+        { url: 'https://example.com/1', priceUsd: 40, condition: 'used', saleType: 'sold' },
+        { title: 'Valid Comp', url: 'https://example.com/2', priceUsd: 50, condition: 'good', saleType: 'listed' },
+      ],
+    });
+
+    const result = parser.parsePriceComps(raw);
+    expect(result).toEqual([{ title: 'Valid Comp', url: 'https://example.com/2', priceUsd: 50, condition: 'good', saleType: 'listed', linkStatus: null }]);
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it('drops an entry with an empty-string title', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    const raw = JSON.stringify({ confident: true, priceUsd: 45, comps: [{ title: '', url: 'https://example.com/1', priceUsd: 40, condition: 'used', saleType: 'sold' }] });
+
+    expect(parser.parsePriceComps(raw)).toEqual([]);
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it('drops an entry whose url is not http(s) (e.g. a javascript: URL) and logs a Warn', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    const raw = JSON.stringify({ confident: true, priceUsd: 45, comps: [{ title: 'Sketchy', url: 'javascript:alert(1)', priceUsd: 40, condition: 'used', saleType: 'sold' }] });
+
+    expect(parser.parsePriceComps(raw)).toEqual([]);
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it('drops an entry with a missing url', () => {
+    const raw = JSON.stringify({ confident: true, priceUsd: 45, comps: [{ title: 'No URL' }] });
+
+    expect(parser.parsePriceComps(raw)).toEqual([]);
+  });
+
+  it('drops a non-object entry (e.g. a bare string in the array) and logs a Warn', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    const raw = JSON.stringify({ confident: true, priceUsd: 45, comps: ['not an object', null] });
+
+    expect(parser.parsePriceComps(raw)).toEqual([]);
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it('coerces a malformed priceUsd (string, zero, negative, non-finite) to null rather than dropping the comp', () => {
+    const testCases = [
+      { priceUsd: '40', expected: null },
+      { priceUsd: 0, expected: null },
+      { priceUsd: -5, expected: null },
+      { priceUsd: null, expected: null },
+      { priceUsd: 40, expected: 40 },
+    ];
+
+    for (const { priceUsd, expected } of testCases) {
+      const raw = JSON.stringify({ confident: true, priceUsd: 45, comps: [{ title: 'Comp', url: 'https://example.com/1', priceUsd, condition: 'used', saleType: 'sold' }] });
+      expect(parser.parsePriceComps(raw)[0]!.priceUsd).toBe(expected);
+    }
+  });
+
+  it('coerces a non-string condition to null rather than dropping the comp', () => {
+    const raw = JSON.stringify({ confident: true, priceUsd: 45, comps: [{ title: 'Comp', url: 'https://example.com/1', priceUsd: 40, condition: 123, saleType: 'sold' }] });
+
+    expect(parser.parsePriceComps(raw)[0]!.condition).toBeNull();
+  });
+
+  it('coerces a saleType outside sold/listed to null rather than dropping the comp', () => {
+    const raw = JSON.stringify({ confident: true, priceUsd: 45, comps: [{ title: 'Comp', url: 'https://example.com/1', priceUsd: 40, condition: 'used', saleType: 'auctioned' }] });
+
+    expect(parser.parsePriceComps(raw)[0]!.saleType).toBeNull();
+  });
+
+  it('recovers comps from a payload wrapped in incidental prose (same bracket-extraction fallback as the price parser)', () => {
+    const raw = 'Based on recent sold listings:\n{"confident":true,"priceUsd":42.5,"comps":[{"title":"Comp","url":"https://example.com/1","priceUsd":42.5,"condition":"used","saleType":"sold"}]}\nPrices vary by condition.';
+
+    expect(parser.parsePriceComps(raw)).toEqual([{ title: 'Comp', url: 'https://example.com/1', priceUsd: 42.5, condition: 'used', saleType: 'sold', linkStatus: null }]);
+  });
+
+  it('strips a markdown code fence the model added despite being told not to', () => {
+    const raw = '```json\n{"confident":true,"priceUsd":42,"comps":[{"title":"Comp","url":"https://example.com/1","priceUsd":42,"condition":"used","saleType":"sold"}]}\n```';
+
+    expect(parser.parsePriceComps(raw)).toEqual([{ title: 'Comp', url: 'https://example.com/1', priceUsd: 42, condition: 'used', saleType: 'sold', linkStatus: null }]);
+  });
+
+  it('returns [] for an explicit confident:false, comps:[] response, without throwing', () => {
+    const raw = JSON.stringify({ confident: false, priceUsd: null, comps: [] });
+
+    expect(() => parser.parsePriceComps(raw)).not.toThrow();
+    expect(parser.parsePriceComps(raw)).toEqual([]);
+  });
+});

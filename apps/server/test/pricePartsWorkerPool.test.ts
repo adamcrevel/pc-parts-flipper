@@ -10,14 +10,16 @@
 // re-proving buildPriceEstimationPrompt/parsePriceEstimationResponse or the
 // DB layer, which already have their own direct suites.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { PriceComp } from '@pc-parts-flipper/shared';
 import type { PricePartsJob } from '../src/db/index.js';
 
 const claimNextQueuedPriceJob = vi.fn<[], Promise<PricePartsJob | null>>();
 const completePriceJob = vi.fn<[string], Promise<void>>();
 const retryOrFailPriceJob = vi.fn<[string, string], Promise<void>>();
 const resetOrphanedPriceJobsToQueued = vi.fn<[], Promise<string[]>>();
-const updatePriceCacheEntryValue = vi.fn<[string, string, string, number | null], Promise<void>>();
+const updatePriceCacheEntryValue = vi.fn<[string, string, string, number | null, PriceComp[]], Promise<void>>();
 const propagateCachedPriceToExpectedParts = vi.fn<[string, string, string, number], Promise<void>>();
+const verifyAndResolveComps = vi.fn<[PriceComp[]], Promise<PriceComp[]>>();
 
 // Mocking the whole db/index.js barrel (rather than the single
 // pricePartsJobs.ts/partPriceCache.ts query files) matches how the worker
@@ -30,10 +32,21 @@ vi.mock('../src/db/index.js', () => ({
   completePriceJob: (...args: [string]) => completePriceJob(...args),
   retryOrFailPriceJob: (...args: [string, string]) => retryOrFailPriceJob(...args),
   resetOrphanedPriceJobsToQueued: (...args: []) => resetOrphanedPriceJobsToQueued(...args),
-  updatePriceCacheEntryValue: (...args: [string, string, string, number | null]) =>
+  updatePriceCacheEntryValue: (...args: [string, string, string, number | null, PriceComp[]]) =>
     updatePriceCacheEntryValue(...args),
   propagateCachedPriceToExpectedParts: (...args: [string, string, string, number]) =>
     propagateCachedPriceToExpectedParts(...args),
+}));
+
+// Mocked separately from db/index.js and ompSourcingRunner.js above: the
+// pool's own wiring (T8) must hand parsePriceComps' raw output through
+// this verifier before it ever reaches updatePriceCacheEntryValue, so the
+// mock defaults to identity (comps in === comps out) to keep every
+// pre-existing assertion below — written before T8 wired verification in
+// — valid without edits; only the dedicated T8 test further down installs
+// a mock whose output differs from its input.
+vi.mock('../src/ai/compLinkVerifier.js', () => ({
+  verifyAndResolveComps: (...args: [PriceComp[]]) => verifyAndResolveComps(...args),
 }));
 
 const ompSourcingRunner = vi.fn<[string, { timeoutMs?: number } | undefined], Promise<string>>();
@@ -70,6 +83,7 @@ beforeEach(() => {
   resetOrphanedPriceJobsToQueued.mockReset().mockResolvedValue([]);
   updatePriceCacheEntryValue.mockReset().mockResolvedValue(undefined);
   propagateCachedPriceToExpectedParts.mockReset().mockResolvedValue(undefined);
+  verifyAndResolveComps.mockReset().mockImplementation(async (comps) => comps);
   ompSourcingRunner.mockReset();
   vi.spyOn(logger, 'info').mockImplementation(() => logger);
   vi.spyOn(logger, 'error').mockImplementation(() => logger);
@@ -92,31 +106,96 @@ describe('startPricePartsWorkerPool (T5, Req 11)', () => {
     );
   });
 
-  it('claims a queued job, caches the found price, propagates it, and completes the job', async () => {
+  it('claims a queued job, caches the found price and comps, propagates it, and completes the job', async () => {
     const job = jobFixture('job-A');
     claimNextQueuedPriceJob.mockResolvedValueOnce(job).mockResolvedValue(null);
-    ompSourcingRunner.mockResolvedValue('{"confident":true,"priceUsd":45.5}');
+    ompSourcingRunner.mockResolvedValue(
+      '{"confident":true,"priceUsd":45.5,"comps":[{"title":"i7-9700K sold","url":"https://example.com/a","priceUsd":45,"condition":"used","saleType":"sold"}]}',
+    );
 
     activeHandle = startPricePartsWorkerPool();
 
     await vi.waitFor(() => expect(completePriceJob).toHaveBeenCalledTimes(1));
 
-    expect(updatePriceCacheEntryValue).toHaveBeenCalledWith('CPU', 'Intel', 'i7-9700K', 45.5);
+    expect(updatePriceCacheEntryValue).toHaveBeenCalledWith('CPU', 'Intel', 'i7-9700K', 45.5, [
+      { title: 'i7-9700K sold', url: 'https://example.com/a', priceUsd: 45, condition: 'used', saleType: 'sold', linkStatus: null },
+    ]);
     expect(propagateCachedPriceToExpectedParts).toHaveBeenCalledWith('CPU', 'Intel', 'i7-9700K', 45.5);
     expect(completePriceJob).toHaveBeenCalledWith('job-A');
     expect(retryOrFailPriceJob).not.toHaveBeenCalled();
   });
 
-  it('completes a no-confident-price job with the cache value left null and never propagates', async () => {
-    const job = jobFixture('job-B');
+  // pricing-comps feature (T8): the raw comps parsePriceComps returns must
+  // pass through verifyAndResolveComps before they reach the cache. This
+  // mock's output deliberately differs from its input (drops one comp,
+  // renames the title of the other) so the assertion below is
+  // discriminating — it would fail if processJob's `verifiedComps`
+  // substitution were ever reverted to passing the raw `comps` straight
+  // into updatePriceCacheEntryValue.
+  it('passes parsed comps through verifyAndResolveComps and caches its (not the raw parser) output', async () => {
+    const job = jobFixture('job-D');
     claimNextQueuedPriceJob.mockResolvedValueOnce(job).mockResolvedValue(null);
-    ompSourcingRunner.mockResolvedValue('{"confident":false,"priceUsd":null}');
+    ompSourcingRunner.mockResolvedValue(
+      '{"confident":true,"priceUsd":45.5,"comps":[' +
+        '{"title":"i7-9700K sold","url":"https://example.com/a","priceUsd":45,"condition":"used","saleType":"sold"},' +
+        '{"title":"i7-9700K listing","url":"https://example.com/b","priceUsd":null,"condition":null,"saleType":"listed"}' +
+        ']}',
+    );
+    const rawComps: PriceComp[] = [
+      {
+        title: 'i7-9700K sold',
+        url: 'https://example.com/a',
+        priceUsd: 45,
+        condition: 'used',
+        saleType: 'sold',
+        linkStatus: null,
+      },
+      {
+        title: 'i7-9700K listing',
+        url: 'https://example.com/b',
+        priceUsd: null,
+        condition: null,
+        saleType: 'listed',
+        linkStatus: null,
+      },
+    ];
+    const verifiedComps: PriceComp[] = [
+      {
+        title: 'i7-9700K sold',
+        url: 'https://web.archive.org/web/2026/https://example.com/a',
+        priceUsd: 45,
+        condition: 'used',
+        saleType: 'sold',
+        linkStatus: 'archived',
+      },
+    ];
+    verifyAndResolveComps.mockResolvedValueOnce(verifiedComps);
 
     activeHandle = startPricePartsWorkerPool();
 
     await vi.waitFor(() => expect(completePriceJob).toHaveBeenCalledTimes(1));
 
-    expect(updatePriceCacheEntryValue).toHaveBeenCalledWith('CPU', 'Intel', 'i7-9700K', null);
+    expect(verifyAndResolveComps).toHaveBeenCalledWith(rawComps);
+    expect(updatePriceCacheEntryValue).toHaveBeenCalledWith('CPU', 'Intel', 'i7-9700K', 45.5, verifiedComps);
+  });
+
+  // pricing-comps feature (T2): comps found by the AI must be cached even
+  // when the run as a whole yields no confident price (Req 3) — the
+  // supporting evidence the model cited is still worth keeping.
+  it('completes a no-confident-price job with the cache value left null but comps still recorded, and never propagates', async () => {
+    const job = jobFixture('job-B');
+    claimNextQueuedPriceJob.mockResolvedValueOnce(job).mockResolvedValue(null);
+    ompSourcingRunner.mockResolvedValue(
+      '{"confident":false,"priceUsd":null,"comps":[{"title":"i7-9700K listing","url":"https://example.com/b","priceUsd":null,"condition":null,"saleType":"listed"}]}',
+    );
+
+    activeHandle = startPricePartsWorkerPool();
+
+    await vi.waitFor(() => expect(completePriceJob).toHaveBeenCalledTimes(1));
+
+    expect(updatePriceCacheEntryValue).toHaveBeenCalledWith('CPU', 'Intel', 'i7-9700K', null, [
+      { title: 'i7-9700K listing', url: 'https://example.com/b', priceUsd: null, condition: null, saleType: 'listed', linkStatus: null },
+    ]);
     expect(propagateCachedPriceToExpectedParts).not.toHaveBeenCalled();
     expect(completePriceJob).toHaveBeenCalledWith('job-B');
     expect(retryOrFailPriceJob).not.toHaveBeenCalled();
@@ -132,6 +211,33 @@ describe('startPricePartsWorkerPool (T5, Req 11)', () => {
     await vi.waitFor(() => expect(retryOrFailPriceJob).toHaveBeenCalledTimes(1));
 
     expect(retryOrFailPriceJob).toHaveBeenCalledWith('job-C', 'omp spawn failed');
+    expect(completePriceJob).not.toHaveBeenCalled();
+    expect(updatePriceCacheEntryValue).not.toHaveBeenCalled();
+    expect(propagateCachedPriceToExpectedParts).not.toHaveBeenCalled();
+  });
+
+  // pricing-comps feature (T8, Req 9 backstop): an unexpected rejection
+  // from verifyAndResolveComps itself (not from any one comp's own
+  // per-comp isolation inside T7, but the verifier call as a whole) must
+  // fall through to processJob's existing catch/retryOrFailPriceJob path
+  // exactly like an ompSourcingRunner crash above, never an uncaught
+  // rejection that crashes the pool. This is discriminating from the
+  // ompSourcingRunner-crash case above: it fails if processJob's call to
+  // verifyAndResolveComps were ever wrapped in its own try/catch that
+  // swallowed the error and fell back to the raw parsed comps instead of
+  // letting it propagate to the shared catch — updatePriceCacheEntryValue
+  // would then be called instead of staying untouched.
+  it('retries (requeues, never permanently fails) a job whose verifyAndResolveComps call rejects', async () => {
+    const job = jobFixture('job-E');
+    claimNextQueuedPriceJob.mockResolvedValueOnce(job).mockResolvedValue(null);
+    ompSourcingRunner.mockResolvedValue('{"confident":true,"priceUsd":45.5,"comps":[]}');
+    verifyAndResolveComps.mockRejectedValueOnce(new Error('verifier crashed'));
+
+    activeHandle = startPricePartsWorkerPool();
+
+    await vi.waitFor(() => expect(retryOrFailPriceJob).toHaveBeenCalledTimes(1));
+
+    expect(retryOrFailPriceJob).toHaveBeenCalledWith('job-E', 'verifier crashed');
     expect(completePriceJob).not.toHaveBeenCalled();
     expect(updatePriceCacheEntryValue).not.toHaveBeenCalled();
     expect(propagateCachedPriceToExpectedParts).not.toHaveBeenCalled();
